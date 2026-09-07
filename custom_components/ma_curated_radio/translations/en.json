@@ -5,19 +5,18 @@
         "title": "Music Assistant Curated Radio",
         "description": "Pick the Music Assistant player to watch. When someone picks a song on it by hand, the queue is refilled with recognisable tracks in the same lane.",
         "data": {
-          "ma_config_entry_id": "Music Assistant instance",
           "player": "Player",
           "lastfm_api_key": "Last.fm API key"
         },
         "data_description": {
-          "ma_config_entry_id": "The Music Assistant integration entry that owns the player.",
-          "player": "The Music Assistant player entity, not the underlying device entity.",
+          "player": "The Music Assistant player entity, not the underlying device entity. The Music Assistant instance is worked out from it.",
           "lastfm_api_key": "Used for similar-artist lookups. A free key from last.fm/api/account/create is enough; the shared secret is not needed."
         }
       }
     },
     "error": {
-      "invalid_api_key": "Last.fm rejected that API key."
+      "invalid_api_key": "Last.fm rejected that API key.",
+      "not_music_assistant": "That entity does not belong to a Music Assistant config entry."
     },
     "abort": {
       "already_configured": "That player is already set up."

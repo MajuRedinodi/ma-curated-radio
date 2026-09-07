@@ -54,13 +54,16 @@ Copy `custom_components/ma_curated_radio` into your Home Assistant
 
 ## Setup
 
-The config flow asks for three things:
+The config flow asks for two things:
 
 | Field | Notes |
 |---|---|
-| Music Assistant instance | The Music Assistant config entry that owns the player. |
 | Player | The **Music Assistant** `media_player` entity, not the underlying device entity. If your speaker appears twice, you want the one Music Assistant provides. |
 | Last.fm API key | Validated during setup, and stored in the config entry rather than `secrets.yaml`. |
+
+The Music Assistant instance is read off the player from the entity
+registry, so there is nothing to pick and no way to pair a player with the
+wrong instance.
 
 Add the integration once per player you want this behaviour on.
 

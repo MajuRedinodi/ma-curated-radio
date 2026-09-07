@@ -15,6 +15,7 @@ from homeassistant.config_entries import (
     OptionsFlowWithReload,
 )
 from homeassistant.core import callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
@@ -50,9 +51,6 @@ from .lastfm import async_validate_api_key
 
 STEP_USER_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_MA_CONFIG_ENTRY_ID): selector.ConfigEntrySelector(
-            selector.ConfigEntrySelectorConfig(integration=MA_DOMAIN)
-        ),
         vol.Required(CONF_PLAYER): selector.EntitySelector(
             selector.EntitySelectorConfig(domain="media_player", integration=MA_DOMAIN)
         ),
@@ -166,8 +164,12 @@ class MaCuratedRadioConfigFlow(ConfigFlow, domain=DOMAIN):
             await self.async_set_unique_id(user_input[CONF_PLAYER])
             self._abort_if_unique_id_configured()
 
+            ma_entry_id = self._music_assistant_entry_id(user_input[CONF_PLAYER])
             session = async_get_clientsession(self.hass)
-            if not await async_validate_api_key(
+
+            if ma_entry_id is None:
+                errors[CONF_PLAYER] = "not_music_assistant"
+            elif not await async_validate_api_key(
                 session, user_input[CONF_LASTFM_API_KEY]
             ):
                 errors[CONF_LASTFM_API_KEY] = "invalid_api_key"
@@ -178,7 +180,10 @@ class MaCuratedRadioConfigFlow(ConfigFlow, domain=DOMAIN):
                     if player is not None
                     else None
                 ) or user_input[CONF_PLAYER]
-                return self.async_create_entry(title=title, data=user_input)
+                return self.async_create_entry(
+                    title=title,
+                    data={**user_input, CONF_MA_CONFIG_ENTRY_ID: ma_entry_id},
+                )
 
         return self.async_show_form(
             step_id="user",
@@ -187,6 +192,25 @@ class MaCuratedRadioConfigFlow(ConfigFlow, domain=DOMAIN):
             ),
             errors=errors,
         )
+
+    def _music_assistant_entry_id(self, player: str) -> str | None:
+        """Find the Music Assistant config entry that owns this player.
+
+        Asking the user to pick the instance separately needed a
+        ``config_entry`` selector, which the frontend cannot render inside a
+        config flow: it takes the whole form down with it, leaving a dialog
+        with nothing but a Submit button. The entity registry already knows
+        the answer, and deriving it also makes a player/instance mismatch
+        impossible.
+        """
+        registry = er.async_get(self.hass)
+        entry = registry.async_get(player)
+        if entry is None or entry.config_entry_id is None:
+            return None
+        owner = self.hass.config_entries.async_get_entry(entry.config_entry_id)
+        if owner is None or owner.domain != MA_DOMAIN:
+            return None
+        return owner.entry_id
 
     @staticmethod
     @callback
