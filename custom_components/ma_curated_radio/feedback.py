@@ -112,6 +112,43 @@ class SkipMemory:
         self._prune()
         return set(self._artists)
 
+    @property
+    def muted_display(self) -> dict[str, str]:
+        """Muted artists mapped to when the mute lifts, for display."""
+        self._prune()
+        return {
+            name: dt_util.utc_from_timestamp(until).isoformat()
+            for name, until in sorted(self._artists.items(), key=lambda kv: kv[1])
+        }
+
+    @property
+    def suppressed_count(self) -> int:
+        """How many individual tracks are currently held off."""
+        self._prune()
+        return len(self._tracks)
+
+    async def async_unmute(self, artist: str) -> bool:
+        """Lift the mute on one artist. Returns False if it was not muted."""
+        self._prune()
+        if self._artists.pop(artist.lower(), None) is None:
+            return False
+        if self._streak.artist == artist.lower():
+            self._streak.reset()
+        await self._async_save()
+        _LOGGER.info("Unmuted %s", artist)
+        return True
+
+    async def async_unmute_all(self) -> int:
+        """Lift every artist mute. Returns how many were lifted."""
+        self._prune()
+        count = len(self._artists)
+        if count:
+            self._artists.clear()
+            self._streak.reset()
+            await self._async_save()
+            _LOGGER.info("Unmuted %s artist(s)", count)
+        return count
+
     async def async_record_played(self) -> None:
         """Note that a track finished, which breaks any skip run."""
         self._streak.reset()

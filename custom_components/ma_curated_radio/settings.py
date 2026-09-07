@@ -11,6 +11,7 @@ from .const import (
     CONF_ARTIST_STRIKE_LIMIT,
     CONF_COOLDOWN_ENTITY,
     CONF_COOLDOWN_SECONDS,
+    CONF_ENABLED,
     CONF_FILTER_HOLIDAY,
     CONF_FILTER_LIVE,
     CONF_HISTORY_MINUTES,
@@ -29,6 +30,7 @@ from .const import (
     DEFAULT_ARTIST_MUTE_DAYS,
     DEFAULT_ARTIST_STRIKE_LIMIT,
     DEFAULT_COOLDOWN_SECONDS,
+    DEFAULT_ENABLED,
     DEFAULT_FILTER_HOLIDAY,
     DEFAULT_FILTER_LIVE,
     DEFAULT_HISTORY_MINUTES,
@@ -50,6 +52,7 @@ class Settings:
 
     player: str
     ma_config_entry_id: str
+    enabled: bool
     lastfm_api_key: str
     max_artists: int
     tracks_per_artist: int
@@ -74,6 +77,7 @@ class Settings:
         merged = {**entry.data, **entry.options}
         return cls(
             player=str(merged.get(CONF_PLAYER, "")),
+            enabled=bool(merged.get(CONF_ENABLED, DEFAULT_ENABLED)),
             ma_config_entry_id=str(merged.get(CONF_MA_CONFIG_ENTRY_ID, "")),
             lastfm_api_key=str(merged.get(CONF_LASTFM_API_KEY, "")),
             max_artists=int(merged.get(CONF_MAX_ARTISTS, DEFAULT_MAX_ARTISTS)),

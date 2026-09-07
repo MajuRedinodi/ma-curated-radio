@@ -65,6 +65,62 @@
       }
     }
   },
+  "entity": {
+    "switch": {
+      "enabled": {
+        "name": "Curated radio"
+      },
+      "filter_live": {
+        "name": "Skip live recordings"
+      },
+      "filter_holiday": {
+        "name": "Skip holiday tracks"
+      }
+    },
+    "select": {
+      "seed_lean": {
+        "name": "Station style",
+        "state": {
+          "format": "Format radio",
+          "balanced": "Balanced",
+          "artist": "Artist radio"
+        }
+      }
+    },
+    "number": {
+      "max_artists": {
+        "name": "Similar artists per batch"
+      },
+      "tracks_per_artist": {
+        "name": "Tracks per artist"
+      },
+      "max_consecutive": {
+        "name": "Most in a row from one artist"
+      },
+      "refill_threshold": {
+        "name": "Refill threshold"
+      },
+      "artist_strike_limit": {
+        "name": "Skips before muting an artist"
+      }
+    },
+    "sensor": {
+      "muted_artists": {
+        "name": "Muted artists"
+      },
+      "last_batch": {
+        "name": "Last batch seed"
+      }
+    },
+    "button": {
+      "build_batch": {
+        "name": "Build a batch now"
+      },
+      "unmute_all": {
+        "name": "Unmute all artists"
+      }
+    }
+  },
   "selector": {
     "seed_lean": {
       "options": {
@@ -75,6 +131,30 @@
     }
   },
   "services": {
+    "unmute_artist": {
+      "name": "Unmute artist",
+      "description": "Gives a muted artist another chance straight away, without waiting for the mute to expire.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Player configuration",
+          "description": "Which configured player to act on. Optional when only one is set up."
+        },
+        "artist": {
+          "name": "Artist",
+          "description": "The artist to unmute, as listed on the Muted artists sensor."
+        }
+      }
+    },
+    "forget_feedback": {
+      "name": "Forget feedback",
+      "description": "Wipes every remembered skip and mute for this player, starting the learning over.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Player configuration",
+          "description": "Which configured player to act on. Optional when only one is set up."
+        }
+      }
+    },
     "run_batch": {
       "name": "Run batch",
       "description": "Builds one continuation batch immediately, seeded from whatever is playing.",
@@ -96,6 +176,9 @@
     },
     "entry_required": {
       "message": "More than one player is configured, so config_entry_id is required."
+    },
+    "not_muted": {
+      "message": "{artist} is not currently muted."
     }
   }
 }

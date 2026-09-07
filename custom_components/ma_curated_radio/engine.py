@@ -14,8 +14,14 @@ from dataclasses import dataclass, field
 
 import aiohttp
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 
-from .const import LASTFM_POOL_SIZE, MODE_REFILL, SEED_LEAN_MULTIPLIER
+from .const import (
+    LASTFM_POOL_SIZE,
+    MODE_REFILL,
+    SEED_LEAN_MULTIPLIER,
+    signal_update,
+)
 from .feedback import SkipMemory
 from .filters import (
     base_title,
@@ -64,20 +70,33 @@ class CuratedRadioEngine:
         settings: Settings,
         session: aiohttp.ClientSession,
         skips: SkipMemory,
+        entry_id: str,
     ) -> None:
         """Set up the engine and its per-player memory."""
         self._hass = hass
+        self._entry_id = entry_id
         self._settings = settings
         self._session = session
         self._skips = skips
         self._history = TitleHistory(settings.history_minutes)
         self._native = NativeClient(hass, settings.ma_config_entry_id)
         self._lock = asyncio.Lock()
+        self._last_batch: BatchResult | None = None
 
     @property
     def history(self) -> TitleHistory:
         """The rolling title history, exposed for diagnostics and tests."""
         return self._history
+
+    @property
+    def last_batch(self) -> BatchResult | None:
+        """What the most recent run did, for the status sensor."""
+        return self._last_batch
+
+    def apply_settings(self, settings: Settings) -> None:
+        """Adopt changed settings without rebuilding the engine."""
+        self._settings = settings
+        self._history.set_window(settings.history_minutes)
 
     async def async_run(self, mode: str) -> BatchResult:
         """Build and enqueue one batch.
@@ -86,10 +105,13 @@ class CuratedRadioEngine:
         ``mode: single`` behaviour of the script this replaces.
         """
         if self._lock.locked():
-            _LOGGER.debug("Continuation already running; skipping %s request", mode)
+            _LOGGER.debug("A batch is already building; skipping %s request", mode)
             return BatchResult(mode=mode, skipped_reason="already_running")
         async with self._lock:
-            return await self._async_build(mode)
+            result = await self._async_build(mode)
+        self._last_batch = result
+        async_dispatcher_send(self._hass, signal_update(self._entry_id))
+        return result
 
     async def _async_build(self, mode: str) -> BatchResult:
         """Do the work of one batch."""

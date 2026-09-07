@@ -13,3 +13,22 @@ run_batch:
           options:
             - replace
             - refill
+unmute_artist:
+  fields:
+    config_entry_id:
+      required: false
+      selector:
+        config_entry:
+          integration: ma_curated_radio
+    artist:
+      required: true
+      example: Maisie Peters
+      selector:
+        text:
+forget_feedback:
+  fields:
+    config_entry_id:
+      required: false
+      selector:
+        config_entry:
+          integration: ma_curated_radio

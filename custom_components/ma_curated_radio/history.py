@@ -49,6 +49,11 @@ class TitleHistory:
         self.prune()
         return len(self._items)
 
+    def set_window(self, minutes: int) -> None:
+        """Change the retention window, keeping what still fits."""
+        self._window = timedelta(minutes=minutes)
+        self.prune()
+
     def clear(self) -> None:
         """Forget everything."""
         self._items.clear()

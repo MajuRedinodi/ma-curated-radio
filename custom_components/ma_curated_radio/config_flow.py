@@ -9,11 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 import voluptuous as vol
-from homeassistant.config_entries import (
-    ConfigFlow,
-    ConfigFlowResult,
-    OptionsFlowWithReload,
-)
+from homeassistant.config_entries import ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.core import callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import selector
@@ -262,8 +258,12 @@ class MaCuratedRadioConfigFlow(ConfigFlow, domain=DOMAIN):
         return MaCuratedRadioOptionsFlow()
 
 
-class MaCuratedRadioOptionsFlow(OptionsFlowWithReload):
-    """Tune batch sizes, filters and the cooldown without re-adding."""
+class MaCuratedRadioOptionsFlow(OptionsFlow):
+    """Tune batch sizes, filters and the cooldown without re-adding.
+
+    Saving applies the change in place through the entry update listener
+    rather than reloading, so the settings entities stay alive.
+    """
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None

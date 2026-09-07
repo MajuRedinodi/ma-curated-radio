@@ -75,6 +75,10 @@ class CuratedRadioDetector:
         self._expected_next = ""
         self._task: asyncio.Task[None] | None = None
 
+    def apply_settings(self, settings: Settings) -> None:
+        """Adopt changed settings without rebuilding the detector."""
+        self._settings = settings
+
     @property
     def expected_next(self) -> str:
         """URI the queue is expected to play after the current track."""
@@ -104,6 +108,11 @@ class CuratedRadioDetector:
         new_track = new_state.attributes.get("media_content_id")
         old_track = old_state.attributes.get("media_content_id") if old_state else None
         if new_track == old_track:
+            return
+        if not self._settings.enabled:
+            # Switched off. Still worth following the queue so that turning
+            # it back on does not read the next track as a manual pick.
+            self._expected_next = ""
             return
 
         outgoing = _snapshot(old_state)

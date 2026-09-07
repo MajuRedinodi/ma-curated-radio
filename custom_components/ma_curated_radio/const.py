@@ -94,3 +94,17 @@ DEFAULT_ARTIST_STRIKE_LIMIT: Final = 3
 # Generous enough that a fade-out or trailing silence does not read as a
 # skip, tight enough that bailing out of the last chorus does.
 SKIP_GRACE_SECONDS: Final = 15.0
+
+# --- Entities ----------------------------------------------------------------
+
+CONF_ENABLED: Final = "enabled"
+DEFAULT_ENABLED: Final = True
+
+SERVICE_UNMUTE_ARTIST: Final = "unmute_artist"
+SERVICE_FORGET_FEEDBACK: Final = "forget_feedback"
+ATTR_ARTIST: Final = "artist"
+
+
+def signal_update(entry_id: str) -> str:
+    """Dispatcher signal telling this entry's entities to re-read state."""
+    return f"{DOMAIN}_update_{entry_id}"
