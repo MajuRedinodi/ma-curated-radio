@@ -40,9 +40,12 @@ DEFAULT_FILTER_LIVE: Final = True
 DEFAULT_FILTER_HOLIDAY: Final = True
 DEFAULT_USE_NATIVE_TOP_TRACKS: Final = True
 
-# How many extra similar artists to ask Last.fm for beyond the cap, so the
-# collab-credit filter has slack to work with before we shuffle and trim.
-LASTFM_OVERFETCH: Final = 3
+# How many similar artists to ask Last.fm for, regardless of how many end
+# up in a batch. Last.fm ranks by match score, and the goal is a station
+# format rather than an artist's three nearest neighbours, so the shuffle
+# should draw from the whole adjacent field. Tying this to the cap made
+# repeated batches off one seed converge on the same few faces.
+LASTFM_POOL_SIZE: Final = 25
 
 # --- Batch modes -------------------------------------------------------------
 

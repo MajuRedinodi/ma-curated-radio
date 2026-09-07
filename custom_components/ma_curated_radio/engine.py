@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 import aiohttp
 from homeassistant.core import HomeAssistant
 
-from .const import LASTFM_OVERFETCH, MODE_REFILL
+from .const import LASTFM_POOL_SIZE, MODE_REFILL
 from .filters import (
     base_title,
     clean_similar_artists,
@@ -149,15 +149,18 @@ class CuratedRadioEngine:
         )
 
     async def _async_similar_artists(self, seed: str) -> list[str]:
-        """Pick a shuffled, capped set of Last.fm-similar artists."""
+        """Pick a shuffled, capped set of Last.fm-similar artists.
+
+        The pool is deliberately much larger than the cap. The goal is what
+        a station playing the seed artist would also play, not the seed
+        artist's nearest neighbours, so the shuffle draws from the whole
+        adjacent field rather than the top few.
+        """
         settings = self._settings
         if settings.max_artists <= 0 or not settings.lastfm_api_key:
             return []
         names = await async_get_similar_artists(
-            self._session,
-            settings.lastfm_api_key,
-            seed,
-            settings.max_artists + LASTFM_OVERFETCH,
+            self._session, settings.lastfm_api_key, seed, LASTFM_POOL_SIZE
         )
         candidates = clean_similar_artists(names, seed)
         random.shuffle(candidates)
