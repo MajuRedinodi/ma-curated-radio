@@ -1,0 +1,23 @@
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RET", "C4", "PL", "TRY"]
+ignore = [
+  # Home Assistant fixes these call signatures; unused parameters are required.
+  "ARG001",
+  "ARG004",
+  # Long lines are left to the formatter.
+  "E501",
+  # Message-in-raise reads better than a constant for one-off errors.
+  "TRY003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"custom_components/ma_curated_radio/ma.py" = ["BLE001"]
+"custom_components/ma_curated_radio/engine.py" = ["BLE001"]
+"custom_components/ma_curated_radio/coordinator.py" = ["BLE001"]
+
+[tool.ruff.lint.isort]
+known-third-party = ["homeassistant", "voluptuous", "aiohttp"]

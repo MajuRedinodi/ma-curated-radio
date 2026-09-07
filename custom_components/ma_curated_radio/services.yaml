@@ -1,0 +1,15 @@
+run_batch:
+  fields:
+    config_entry_id:
+      required: false
+      selector:
+        config_entry:
+          integration: ma_curated_radio
+    mode:
+      required: false
+      default: replace
+      selector:
+        select:
+          options:
+            - replace
+            - refill

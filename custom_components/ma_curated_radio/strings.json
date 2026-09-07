@@ -1,0 +1,83 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Music Assistant Curated Radio",
+        "description": "Pick the Music Assistant player to watch. When someone picks a song on it by hand, the queue is refilled with recognisable tracks in the same lane.",
+        "data": {
+          "ma_config_entry_id": "Music Assistant instance",
+          "player": "Player",
+          "lastfm_api_key": "Last.fm API key"
+        },
+        "data_description": {
+          "ma_config_entry_id": "The Music Assistant integration entry that owns the player.",
+          "player": "The Music Assistant player entity, not the underlying device entity.",
+          "lastfm_api_key": "Used for similar-artist lookups. A free key from last.fm/api/account/create is enough; the shared secret is not needed."
+        }
+      }
+    },
+    "error": {
+      "invalid_api_key": "Last.fm rejected that API key."
+    },
+    "abort": {
+      "already_configured": "That player is already set up."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Curated Radio options",
+        "data": {
+          "max_artists": "Similar artists per batch",
+          "tracks_per_artist": "Tracks per artist",
+          "refill_threshold": "Refill threshold",
+          "history_minutes": "Repeat memory (minutes)",
+          "settle_seconds": "Settle delay (seconds)",
+          "cooldown_entity": "Cooldown script or automation",
+          "cooldown_seconds": "Cooldown window (seconds)",
+          "provider_filter": "Provider filter",
+          "filter_live": "Skip live recordings",
+          "filter_holiday": "Skip holiday tracks",
+          "use_native_top_tracks": "Prefer real top tracks"
+        },
+        "data_description": {
+          "max_artists": "How many Last.fm-similar artists to pull in alongside the artist that seeded the batch. Zero keeps every batch to the seed artist alone.",
+          "tracks_per_artist": "How many tracks to take from each artist, seed included.",
+          "refill_threshold": "Top the queue up once this many tracks or fewer remain after the one playing.",
+          "history_minutes": "How long a track title stays excluded from new batches. Zero disables repeat memory.",
+          "settle_seconds": "How long to wait after a manual pick before rewriting the queue, so the player has time to settle.",
+          "cooldown_entity": "If another routine also rebuilds this player's queue on a schedule, point this at it so its rebuild is never mistaken for a manual pick. Leave empty if nothing else touches the queue.",
+          "cooldown_seconds": "How long after that routine runs to skip detection entirely.",
+          "provider_filter": "Comma-separated provider prefixes to restrict tracks to, for example tidal. Leave empty to allow every provider.",
+          "filter_live": "Drop live versions, which rank high in popularity searches but rarely suit background listening.",
+          "filter_holiday": "Drop Christmas and other holiday content, which a popularity ranking will surface year round.",
+          "use_native_top_tracks": "Ask Music Assistant for genuine top tracks where its client supports it, falling back to relevance-ranked search otherwise."
+        }
+      }
+    }
+  },
+  "services": {
+    "run_batch": {
+      "name": "Run batch",
+      "description": "Builds one continuation batch immediately, seeded from whatever is playing.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Player configuration",
+          "description": "Which configured player to build a batch for. Optional when only one is set up."
+        },
+        "mode": {
+          "name": "Mode",
+          "description": "Replace drops everything queued after the current track and starts fresh. Refill appends without touching what is already queued."
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "unknown_entry": {
+      "message": "No loaded Music Assistant Curated Radio configuration with ID {entry_id}."
+    },
+    "entry_required": {
+      "message": "More than one player is configured, so config_entry_id is required."
+    }
+  }
+}

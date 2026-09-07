@@ -1,0 +1,13 @@
+{
+  "domain": "ma_curated_radio",
+  "name": "Music Assistant Curated Radio",
+  "after_dependencies": ["music_assistant"],
+  "codeowners": ["@MajuRedinodi"],
+  "config_flow": true,
+  "documentation": "https://github.com/MajuRedinodi/ma-curated-radio",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/MajuRedinodi/ma-curated-radio/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}
