@@ -2,8 +2,7 @@
 
 One run reads the seed artist off whatever is playing, asks Last.fm for a
 few similar artists, pulls each artist's best-known tracks, filters them,
-interleaves them round-robin so no artist plays twice in a row, and
-enqueues the result.
+orders them so no artist monopolises a run, and enqueues the result.
 """
 
 from __future__ import annotations
@@ -16,14 +15,15 @@ from dataclasses import dataclass, field
 import aiohttp
 from homeassistant.core import HomeAssistant
 
-from .const import LASTFM_POOL_SIZE, MODE_REFILL
+from .const import LASTFM_POOL_SIZE, MODE_REFILL, SEED_LEAN_MULTIPLIER
+from .feedback import SkipMemory
 from .filters import (
     base_title,
     clean_similar_artists,
-    interleave,
     is_holiday,
     is_live,
     matches_provider,
+    sequence,
 )
 from .history import TitleHistory
 from .lastfm import async_get_similar_artists
@@ -63,11 +63,13 @@ class CuratedRadioEngine:
         hass: HomeAssistant,
         settings: Settings,
         session: aiohttp.ClientSession,
+        skips: SkipMemory,
     ) -> None:
         """Set up the engine and its per-player memory."""
         self._hass = hass
         self._settings = settings
         self._session = session
+        self._skips = skips
         self._history = TitleHistory(settings.history_minutes)
         self._native = NativeClient(hass, settings.ma_config_entry_id)
         self._lock = asyncio.Lock()
@@ -110,17 +112,20 @@ class CuratedRadioEngine:
             if mode == MODE_REFILL
             else set()
         )
-        recent_titles = self._history.current()
+        # Recently played titles age out in hours; skipped ones are held off
+        # for weeks. Both are just titles the batch must not contain.
+        recent_titles = self._history.current() | self._skips.suppressed_titles
 
         per_artist: list[list[str]] = []
         title_by_uri: dict[str, str] = {}
-        for artist in artists:
+        for index, artist in enumerate(artists):
             tracks = await self._async_tracks_for(artist)
             uris, titles = self._select(
                 tracks,
                 current_uri=queue.current_uri,
                 excluded_titles=recent_titles | set(title_by_uri.values()),
                 excluded_uris=already_queued,
+                limit=self._track_cap(is_seed=index == 0),
             )
             if uris:
                 per_artist.append(uris)
@@ -132,7 +137,7 @@ class CuratedRadioEngine:
                 mode=mode, seed_artist=seed, artists=artists, skipped_reason="no_tracks"
             )
 
-        ordered = interleave(per_artist)
+        ordered = sequence(per_artist, self._settings.max_consecutive)
         enqueued = await self._async_enqueue(ordered, mode)
         if enqueued:
             self._history.add([title_by_uri[uri] for uri in enqueued])
@@ -163,8 +168,24 @@ class CuratedRadioEngine:
             self._session, settings.lastfm_api_key, seed, LASTFM_POOL_SIZE
         )
         candidates = clean_similar_artists(names, seed)
+        muted = self._skips.muted_artists
+        candidates = [name for name in candidates if name.lower() not in muted]
         random.shuffle(candidates)
         return candidates[: settings.max_artists]
+
+    def _track_cap(self, *, is_seed: bool) -> int:
+        """How many tracks this artist contributes to the batch.
+
+        Only the seed is affected. Artist radio should mostly play the
+        artist you picked; a format station treats it as one act among
+        several. Muting never applies to the seed, since it is playing
+        because you chose it.
+        """
+        cap = self._settings.tracks_per_artist
+        if not is_seed:
+            return cap
+        multiplier = SEED_LEAN_MULTIPLIER.get(self._settings.seed_lean, 1.0)
+        return max(1, round(cap * multiplier))
 
     async def _async_tracks_for(self, artist: str) -> list[TrackInfo]:
         """Get an artist's best-known tracks, natively if possible."""
@@ -183,6 +204,7 @@ class CuratedRadioEngine:
         current_uri: str,
         excluded_titles: set[str],
         excluded_uris: set[str],
+        limit: int,
     ) -> tuple[list[str], list[str]]:
         """Filter one artist's tracks down to this batch's picks.
 
@@ -192,7 +214,7 @@ class CuratedRadioEngine:
         uris: list[str] = []
         titles: list[str] = []
         for track in tracks:
-            if len(uris) >= settings.tracks_per_artist:
+            if len(uris) >= limit:
                 break
             if not track.uri or track.uri == current_uri or track.uri in excluded_uris:
                 continue

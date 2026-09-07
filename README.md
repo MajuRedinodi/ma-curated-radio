@@ -75,7 +75,12 @@ button. Defaults in brackets.
 | Option | What it does |
 |---|---|
 | Similar artists per batch [3] | How many Last.fm-similar artists join the seed artist. Zero keeps every batch to the seed artist alone. |
-| Tracks per artist [3] | How many tracks to take from each artist, seed included. Three artists at three tracks is a twelve-track batch. |
+| Tracks per artist [3] | How many tracks to take from each artist. The seed may get more, depending on station style. |
+| Station style [format] | **Artist radio** leans hard on whoever you picked, the way artist radio on a streaming service does. **Format radio** treats them as one act among several, like a station that happens to play them. **Balanced** sits between. |
+| Most in a row from one artist [2] | How many tracks by the same artist may play back to back. Two lets an artist station feel like an artist station without anyone monopolising the hour. |
+| Skipped song stays away for [30 days] | Skip a song and it will not be queued again for this long. |
+| Skips in a row before muting an artist [3] | Skip this many of one artist's tracks consecutively and they stop being suggested. |
+| Muted artist stays away for [30 days] | How long a muted artist stays out of the similar-artist pool. |
 | Refill threshold [2] | Top the queue up once this many tracks or fewer remain after the one playing. |
 | Repeat memory [120 min] | How long a title stays excluded from new batches. Zero disables repeat memory. |
 | Settle delay [3 s] | How long to wait after a manual pick before rewriting the queue. |
@@ -100,11 +105,35 @@ data:
 
 `config_entry_id` is optional when only one player is configured.
 
+## What it learns from skips
+
+Skipping is the only feedback nobody has to be asked for, so it is the only
+feedback this collects. A track abandoned with more than fifteen seconds
+left counts as a skip; one that runs out counts as played.
+
+Two consequences, deliberately different in weight:
+
+- **The song goes away.** Skipped tracks are not queued again for a month
+  by default. Being wrong about one song out of an artist's catalogue is
+  cheap.
+- **Three skips in a row mutes the artist.** Consecutive is the whole
+  point. Three unlucky picks spread across an evening mean nothing; three
+  in a row means that artist is wrong for this room. A single track played
+  through resets the run.
+
+Two things it deliberately does not treat as a skip. Jumping to a different
+song by hand is a choice about where to go, not a verdict on what was
+playing. And the artist you pick yourself is never muted, however much of
+theirs you skip, because you asked for them.
+
+This is the one piece of state that survives a restart, since feedback that
+evaporates is not feedback.
+
 ## Notes and limitations
 
-- **The seed artist plays first each batch.** It leads the round-robin, so
-  one more track by the artist you just picked comes before the rotation
-  starts.
+- **The seed artist leads each batch.** That is the intent rather than an
+  accident: picking a song should get you a station built around it. Set
+  station style to format radio if you want it evened out.
 - **Rapid Previous-Previous can read as a manual pick.** Rare, and the
   result is still on-genre.
 - **Similar-artist results occasionally include collaboration credits**

@@ -96,17 +96,39 @@ def matches_provider(uri: str, provider_filter: str) -> bool:
     return any(scheme == p or scheme.startswith(p) for p in allowed)
 
 
-def interleave(lists: list[list[str]]) -> list[str]:
-    """Round-robin interleave, one item per list per pass.
+def sequence(lists: list[list[str]], max_consecutive: int = 2) -> list[str]:
+    """Order tracks across artists, capping how many play back to back.
 
-    Keeps a single artist from playing twice in a row unless every other
-    artist's list has already run out.
+    At each position it takes from whichever artist has the most left,
+    which produces plain round-robin when every artist contributes the same
+    number of tracks, and spreads the surplus when one contributes more (a
+    seed-heavy "artist radio" batch). An artist that has just played
+    ``max_consecutive`` times in a row is skipped over.
+
+    The cap is a preference, not a guarantee: when only the blocked
+    artist has tracks left, playing them beats dropping them.
     """
-    if not lists:
+    pools = [list(items) for items in lists if items]
+    if not pools:
         return []
+
     ordered: list[str] = []
-    for index in range(max(len(items) for items in lists)):
-        for items in lists:
-            if index < len(items):
-                ordered.append(items[index])
+    last: int | None = None
+    run = 0
+
+    while any(pools):
+        pick = None
+        for index, pool in enumerate(pools):
+            if not pool or (index == last and run >= max_consecutive):
+                continue
+            if pick is None or len(pool) > len(pools[pick]):
+                pick = index
+        if pick is None:
+            # Everything else is exhausted; the tail is one artist's.
+            pick = next(i for i, pool in enumerate(pools) if pool)
+
+        ordered.append(pools[pick].pop(0))
+        run = run + 1 if pick == last else 1
+        last = pick
+
     return ordered

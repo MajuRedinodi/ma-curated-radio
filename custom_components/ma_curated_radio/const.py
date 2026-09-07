@@ -62,3 +62,35 @@ ATTR_CONFIG_ENTRY_ID: Final = "config_entry_id"
 # Where users get the API key the config flow asks for. Linked from the
 # setup form, since a key nobody can find is a key nobody enters.
 LASTFM_SIGNUP_URL: Final = "https://www.last.fm/api/account/create"
+
+# --- Listener feedback -------------------------------------------------------
+
+CONF_SEED_LEAN: Final = "seed_lean"
+CONF_MAX_CONSECUTIVE: Final = "max_consecutive"
+CONF_TRACK_SUPPRESS_DAYS: Final = "track_suppress_days"
+CONF_ARTIST_MUTE_DAYS: Final = "artist_mute_days"
+CONF_ARTIST_STRIKE_LIMIT: Final = "artist_strike_limit"
+
+# How much of a batch the seed artist gets. "artist" is artist radio, where
+# picking Taylor should mostly get you Taylor. "format" is a station that
+# merely happens to play her.
+SEED_LEAN_FORMAT: Final = "format"
+SEED_LEAN_BALANCED: Final = "balanced"
+SEED_LEAN_ARTIST: Final = "artist"
+SEED_LEANS: Final = [SEED_LEAN_FORMAT, SEED_LEAN_BALANCED, SEED_LEAN_ARTIST]
+SEED_LEAN_MULTIPLIER: Final = {
+    SEED_LEAN_FORMAT: 1.0,
+    SEED_LEAN_BALANCED: 1.5,
+    SEED_LEAN_ARTIST: 2.0,
+}
+
+DEFAULT_SEED_LEAN: Final = SEED_LEAN_FORMAT
+DEFAULT_MAX_CONSECUTIVE: Final = 2
+DEFAULT_TRACK_SUPPRESS_DAYS: Final = 30
+DEFAULT_ARTIST_MUTE_DAYS: Final = 30
+DEFAULT_ARTIST_STRIKE_LIMIT: Final = 3
+
+# A track abandoned with more than this long left was skipped, not finished.
+# Generous enough that a fade-out or trailing silence does not read as a
+# skip, tight enough that bailing out of the last chorus does.
+SKIP_GRACE_SECONDS: Final = 15.0

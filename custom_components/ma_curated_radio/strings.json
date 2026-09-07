@@ -29,6 +29,11 @@
         "data": {
           "max_artists": "Similar artists per batch",
           "tracks_per_artist": "Tracks per artist",
+          "seed_lean": "Station style",
+          "max_consecutive": "Most in a row from one artist",
+          "track_suppress_days": "Skipped song stays away for (days)",
+          "artist_strike_limit": "Skips in a row before muting an artist",
+          "artist_mute_days": "Muted artist stays away for (days)",
           "refill_threshold": "Refill threshold",
           "history_minutes": "Repeat memory (minutes)",
           "settle_seconds": "Settle delay (seconds)",
@@ -41,7 +46,12 @@
         },
         "data_description": {
           "max_artists": "How many Last.fm-similar artists to pull in alongside the artist that seeded the batch. Zero keeps every batch to the seed artist alone.",
-          "tracks_per_artist": "How many tracks to take from each artist, seed included.",
+          "tracks_per_artist": "How many tracks to take from each artist. The artist you picked may get more, depending on the station style.",
+          "seed_lean": "Artist radio leans hard on whoever you picked, the way picking one song on a streaming service does. Format radio treats them as one act among several, like a station that happens to play them. Balanced sits between.",
+          "max_consecutive": "How many tracks from the same artist may play back to back. Two keeps an artist station from feeling like a shuffle without letting anyone monopolise the hour.",
+          "track_suppress_days": "Skip a song and it will not be queued again for this long. Zero stops remembering skipped songs.",
+          "artist_strike_limit": "Skip this many of one artist's tracks in a row and the artist stops being suggested. Consecutive is the point: unlucky picks spread across an evening mean nothing, three in a row means the artist is wrong for the room. Zero disables muting.",
+          "artist_mute_days": "How long a muted artist stays out of the similar-artist pool. The artist you pick yourself is never muted.",
           "refill_threshold": "Top the queue up once this many tracks or fewer remain after the one playing.",
           "history_minutes": "How long a track title stays excluded from new batches. Zero disables repeat memory.",
           "settle_seconds": "How long to wait after a manual pick before rewriting the queue, so the player has time to settle.",
@@ -52,6 +62,15 @@
           "filter_holiday": "Drop Christmas and other holiday content, which a popularity ranking will surface year round.",
           "use_native_top_tracks": "Ask Music Assistant for genuine top tracks where its client supports it, falling back to relevance-ranked search otherwise."
         }
+      }
+    }
+  },
+  "selector": {
+    "seed_lean": {
+      "options": {
+        "format": "Format radio",
+        "balanced": "Balanced",
+        "artist": "Artist radio"
       }
     }
   },

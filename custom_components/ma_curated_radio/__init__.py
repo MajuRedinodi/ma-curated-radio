@@ -23,6 +23,7 @@ from .const import (
 )
 from .coordinator import CuratedRadioDetector
 from .engine import CuratedRadioEngine
+from .feedback import SkipMemory
 from .settings import Settings
 
 _LOGGER = logging.getLogger(__name__)
@@ -44,6 +45,7 @@ class RuntimeData:
     settings: Settings
     engine: CuratedRadioEngine
     detector: CuratedRadioDetector
+    skips: SkipMemory
 
 
 type MaCuratedRadioConfigEntry = ConfigEntry[RuntimeData]
@@ -67,11 +69,20 @@ async def async_setup_entry(
     if ma_entry is None or ma_entry.state is not ConfigEntryState.LOADED:
         raise ConfigEntryNotReady("Music Assistant is not loaded yet")
 
-    engine = CuratedRadioEngine(hass, settings, async_get_clientsession(hass))
-    detector = CuratedRadioDetector(hass, settings, engine)
+    skips = SkipMemory(
+        hass,
+        entry.entry_id,
+        track_days=settings.track_suppress_days,
+        artist_days=settings.artist_mute_days,
+        strike_limit=settings.artist_strike_limit,
+    )
+    await skips.async_load()
+
+    engine = CuratedRadioEngine(hass, settings, async_get_clientsession(hass), skips)
+    detector = CuratedRadioDetector(hass, settings, engine, skips)
     entry.async_on_unload(detector.async_start())
     entry.runtime_data = RuntimeData(
-        settings=settings, engine=engine, detector=detector
+        settings=settings, engine=engine, detector=detector, skips=skips
     )
 
     _LOGGER.debug("Watching %s for manual picks", settings.player)

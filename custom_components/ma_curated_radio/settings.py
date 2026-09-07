@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from homeassistant.config_entries import ConfigEntry
 
 from .const import (
+    CONF_ARTIST_MUTE_DAYS,
+    CONF_ARTIST_STRIKE_LIMIT,
     CONF_COOLDOWN_ENTITY,
     CONF_COOLDOWN_SECONDS,
     CONF_FILTER_HOLIDAY,
@@ -15,20 +17,28 @@ from .const import (
     CONF_LASTFM_API_KEY,
     CONF_MA_CONFIG_ENTRY_ID,
     CONF_MAX_ARTISTS,
+    CONF_MAX_CONSECUTIVE,
     CONF_PLAYER,
     CONF_PROVIDER_FILTER,
     CONF_REFILL_THRESHOLD,
+    CONF_SEED_LEAN,
     CONF_SETTLE_SECONDS,
+    CONF_TRACK_SUPPRESS_DAYS,
     CONF_TRACKS_PER_ARTIST,
     CONF_USE_NATIVE_TOP_TRACKS,
+    DEFAULT_ARTIST_MUTE_DAYS,
+    DEFAULT_ARTIST_STRIKE_LIMIT,
     DEFAULT_COOLDOWN_SECONDS,
     DEFAULT_FILTER_HOLIDAY,
     DEFAULT_FILTER_LIVE,
     DEFAULT_HISTORY_MINUTES,
     DEFAULT_MAX_ARTISTS,
+    DEFAULT_MAX_CONSECUTIVE,
     DEFAULT_PROVIDER_FILTER,
     DEFAULT_REFILL_THRESHOLD,
+    DEFAULT_SEED_LEAN,
     DEFAULT_SETTLE_SECONDS,
+    DEFAULT_TRACK_SUPPRESS_DAYS,
     DEFAULT_TRACKS_PER_ARTIST,
     DEFAULT_USE_NATIVE_TOP_TRACKS,
 )
@@ -52,6 +62,11 @@ class Settings:
     filter_live: bool
     filter_holiday: bool
     use_native_top_tracks: bool
+    seed_lean: str
+    max_consecutive: int
+    track_suppress_days: int
+    artist_mute_days: int
+    artist_strike_limit: int
 
     @classmethod
     def from_entry(cls, entry: ConfigEntry) -> Settings:
@@ -85,5 +100,18 @@ class Settings:
             ),
             use_native_top_tracks=bool(
                 merged.get(CONF_USE_NATIVE_TOP_TRACKS, DEFAULT_USE_NATIVE_TOP_TRACKS)
+            ),
+            seed_lean=str(merged.get(CONF_SEED_LEAN, DEFAULT_SEED_LEAN)),
+            max_consecutive=int(
+                merged.get(CONF_MAX_CONSECUTIVE, DEFAULT_MAX_CONSECUTIVE)
+            ),
+            track_suppress_days=int(
+                merged.get(CONF_TRACK_SUPPRESS_DAYS, DEFAULT_TRACK_SUPPRESS_DAYS)
+            ),
+            artist_mute_days=int(
+                merged.get(CONF_ARTIST_MUTE_DAYS, DEFAULT_ARTIST_MUTE_DAYS)
+            ),
+            artist_strike_limit=int(
+                merged.get(CONF_ARTIST_STRIKE_LIMIT, DEFAULT_ARTIST_STRIKE_LIMIT)
             ),
         )

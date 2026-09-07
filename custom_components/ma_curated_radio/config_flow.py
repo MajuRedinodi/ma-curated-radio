@@ -20,6 +20,8 @@ from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import (
+    CONF_ARTIST_MUTE_DAYS,
+    CONF_ARTIST_STRIKE_LIMIT,
     CONF_COOLDOWN_ENTITY,
     CONF_COOLDOWN_SECONDS,
     CONF_FILTER_HOLIDAY,
@@ -28,25 +30,34 @@ from .const import (
     CONF_LASTFM_API_KEY,
     CONF_MA_CONFIG_ENTRY_ID,
     CONF_MAX_ARTISTS,
+    CONF_MAX_CONSECUTIVE,
     CONF_PLAYER,
     CONF_PROVIDER_FILTER,
     CONF_REFILL_THRESHOLD,
+    CONF_SEED_LEAN,
     CONF_SETTLE_SECONDS,
+    CONF_TRACK_SUPPRESS_DAYS,
     CONF_TRACKS_PER_ARTIST,
     CONF_USE_NATIVE_TOP_TRACKS,
+    DEFAULT_ARTIST_MUTE_DAYS,
+    DEFAULT_ARTIST_STRIKE_LIMIT,
     DEFAULT_COOLDOWN_SECONDS,
     DEFAULT_FILTER_HOLIDAY,
     DEFAULT_FILTER_LIVE,
     DEFAULT_HISTORY_MINUTES,
     DEFAULT_MAX_ARTISTS,
+    DEFAULT_MAX_CONSECUTIVE,
     DEFAULT_PROVIDER_FILTER,
     DEFAULT_REFILL_THRESHOLD,
+    DEFAULT_SEED_LEAN,
     DEFAULT_SETTLE_SECONDS,
+    DEFAULT_TRACK_SUPPRESS_DAYS,
     DEFAULT_TRACKS_PER_ARTIST,
     DEFAULT_USE_NATIVE_TOP_TRACKS,
     DOMAIN,
     LASTFM_SIGNUP_URL,
     MA_DOMAIN,
+    SEED_LEANS,
 )
 from .lastfm import async_validate_api_key
 
@@ -87,6 +98,32 @@ def _options_schema(current: dict[str, Any]) -> vol.Schema:
                 CONF_TRACKS_PER_ARTIST,
                 default=value(CONF_TRACKS_PER_ARTIST, DEFAULT_TRACKS_PER_ARTIST),
             ): _number(1, 10),
+            vol.Required(
+                CONF_SEED_LEAN,
+                default=value(CONF_SEED_LEAN, DEFAULT_SEED_LEAN),
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=SEED_LEANS,
+                    translation_key="seed_lean",
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Required(
+                CONF_MAX_CONSECUTIVE,
+                default=value(CONF_MAX_CONSECUTIVE, DEFAULT_MAX_CONSECUTIVE),
+            ): _number(1, 5),
+            vol.Required(
+                CONF_TRACK_SUPPRESS_DAYS,
+                default=value(CONF_TRACK_SUPPRESS_DAYS, DEFAULT_TRACK_SUPPRESS_DAYS),
+            ): _number(0, 365),
+            vol.Required(
+                CONF_ARTIST_STRIKE_LIMIT,
+                default=value(CONF_ARTIST_STRIKE_LIMIT, DEFAULT_ARTIST_STRIKE_LIMIT),
+            ): _number(0, 10),
+            vol.Required(
+                CONF_ARTIST_MUTE_DAYS,
+                default=value(CONF_ARTIST_MUTE_DAYS, DEFAULT_ARTIST_MUTE_DAYS),
+            ): _number(0, 365),
             vol.Required(
                 CONF_REFILL_THRESHOLD,
                 default=value(CONF_REFILL_THRESHOLD, DEFAULT_REFILL_THRESHOLD),
@@ -144,6 +181,10 @@ def _coerce_ints(data: dict[str, Any]) -> dict[str, Any]:
         CONF_HISTORY_MINUTES,
         CONF_SETTLE_SECONDS,
         CONF_COOLDOWN_SECONDS,
+        CONF_MAX_CONSECUTIVE,
+        CONF_TRACK_SUPPRESS_DAYS,
+        CONF_ARTIST_STRIKE_LIMIT,
+        CONF_ARTIST_MUTE_DAYS,
     )
     return {
         key: int(val) if key in integer_keys else val for key, val in data.items()
