@@ -32,3 +32,35 @@ forget_feedback:
       selector:
         config_entry:
           integration: ma_curated_radio
+build_playlist:
+  fields:
+    config_entry_id:
+      required: false
+      selector:
+        config_entry:
+          integration: ma_curated_radio
+    name:
+      required: false
+      default: Curated Radio
+      example: Curated Radio
+      selector:
+        text:
+    seed_artist:
+      required: false
+      example: Taylor Swift
+      selector:
+        text:
+    length:
+      required: false
+      default: 50
+      selector:
+        number:
+          min: 1
+          max: 500
+          step: 1
+          mode: box
+    provider:
+      required: false
+      example: tidal
+      selector:
+        text:

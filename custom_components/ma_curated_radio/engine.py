@@ -17,8 +17,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 
 from .const import (
+    DEFAULT_PLAYLIST_LENGTH,
     LASTFM_POOL_SIZE,
     MODE_REFILL,
+    PLAYLIST_CHUNK,
+    PLAYLIST_MAX_ROUNDS,
     SEED_LEAN_MULTIPLIER,
     signal_update,
 )
@@ -35,6 +38,7 @@ from .history import TitleHistory
 from .lastfm import async_get_similar_artists
 from .ma import (
     NativeClient,
+    PlaylistUnsupportedError,
     TrackInfo,
     async_get_queue,
     async_play_media,
@@ -43,6 +47,18 @@ from .ma import (
 from .settings import Settings
 
 _LOGGER = logging.getLogger(__name__)
+
+
+@dataclass(slots=True)
+class PlaylistResult:
+    """What one playlist build actually did."""
+
+    name: str
+    seed_artist: str = ""
+    artists: list[str] = field(default_factory=list)
+    tracks: int = 0
+    replaced: int = 0
+    error: str = ""
 
 
 @dataclass(slots=True)
@@ -286,3 +302,116 @@ class CuratedRadioEngine:
                 continue
             enqueued.append(uri)
         return enqueued
+
+    async def async_build_playlist(
+        self,
+        *,
+        name: str,
+        seed_artist: str = "",
+        length: int = DEFAULT_PLAYLIST_LENGTH,
+        provider: str = "",
+    ) -> PlaylistResult:
+        """Fill a provider playlist with the same music this queues.
+
+        A playlist is for somewhere Home Assistant cannot reach, most
+        obviously a car, so it is built long and in one go rather than
+        refilled as it plays. Each round reseeds off one of the artists it
+        just used, which reproduces over 60 tracks the drift an evening of
+        refills produces live.
+
+        Nothing is enqueued and playback is untouched. The skip memory is
+        read so rejected songs and muted artists stay out, but the rolling
+        repeat history is deliberately not written: a 60-track build would
+        flood a two-hour window and starve the live queue.
+        """
+        settings = self._settings
+
+        if not seed_artist:
+            queue = await async_get_queue(self._hass, settings.player)
+            seed_artist = queue.seed_artist if queue else ""
+        if not seed_artist:
+            return PlaylistResult(name=name, error="no_seed_artist")
+
+        ordered: list[str] = []
+        seen_titles = self._history.current() | self._skips.suppressed_titles
+        artists_used: list[str] = []
+        current_seed = seed_artist
+
+        for _ in range(PLAYLIST_MAX_ROUNDS):
+            if len(ordered) >= length:
+                break
+            round_artists = [current_seed, *await self._async_similar_artists(current_seed)]
+            per_artist: list[list[str]] = []
+            for index, artist in enumerate(round_artists):
+                tracks = await self._async_tracks_for(artist)
+                uris, titles = self._select(
+                    tracks,
+                    current_uri="",
+                    excluded_titles=seen_titles,
+                    excluded_uris=set(ordered),
+                    limit=self._track_cap(is_seed=index == 0),
+                )
+                if provider:
+                    uris = [u for u in uris if matches_provider(u, provider)]
+                    titles = titles[: len(uris)]
+                if uris:
+                    per_artist.append(uris)
+                    seen_titles.update(titles)
+                    if artist not in artists_used:
+                        artists_used.append(artist)
+            if not per_artist:
+                break
+            ordered.extend(sequence(per_artist, settings.max_consecutive))
+
+            # Reseed off a similar artist from this round, the same way a
+            # refill reseeds off whatever happens to be playing.
+            candidates = round_artists[1:]
+            current_seed = random.choice(candidates) if candidates else current_seed
+
+        ordered = ordered[:length]
+        if not ordered:
+            return PlaylistResult(name=name, seed_artist=seed_artist, error="no_tracks")
+
+        try:
+            written, replaced = await self._async_write_playlist(name, provider, ordered)
+        except PlaylistUnsupportedError as err:
+            _LOGGER.warning("Cannot manage playlists: %s", err)
+            return PlaylistResult(
+                name=name, seed_artist=seed_artist, error="playlists_unsupported"
+            )
+
+        _LOGGER.debug(
+            "Wrote %s track(s) to playlist %s, seeded from %s via %s",
+            written,
+            name,
+            seed_artist,
+            ", ".join(artists_used),
+        )
+        return PlaylistResult(
+            name=name,
+            seed_artist=seed_artist,
+            artists=artists_used,
+            tracks=written,
+            replaced=replaced,
+        )
+
+    async def _async_write_playlist(
+        self, name: str, provider: str, uris: list[str]
+    ) -> tuple[int, int]:
+        """Create or refresh the named playlist. Returns (written, removed).
+
+        Refreshed in place rather than recreated so the link stays stable
+        for anything pointing at it, a car stereo included.
+        """
+        playlist = await self._native.async_find_playlist(name)
+        replaced = 0
+        if playlist is None:
+            playlist = await self._native.async_create_playlist(name, provider)
+        else:
+            replaced = await self._native.async_clear_playlist(playlist)
+
+        for start in range(0, len(uris), PLAYLIST_CHUNK):
+            await self._native.async_add_playlist_tracks(
+                playlist, uris[start : start + PLAYLIST_CHUNK]
+            )
+        return len(uris), replaced

@@ -108,3 +108,22 @@ ATTR_ARTIST: Final = "artist"
 def signal_update(entry_id: str) -> str:
     """Dispatcher signal telling this entry's entities to re-read state."""
     return f"{DOMAIN}_update_{entry_id}"
+
+# --- Playlist building -------------------------------------------------------
+
+SERVICE_BUILD_PLAYLIST: Final = "build_playlist"
+ATTR_NAME: Final = "name"
+ATTR_SEED_ARTIST: Final = "seed_artist"
+ATTR_LENGTH: Final = "length"
+ATTR_PROVIDER: Final = "provider"
+
+DEFAULT_PLAYLIST_NAME: Final = "Curated Radio"
+DEFAULT_PLAYLIST_LENGTH: Final = 50
+
+# Tracks are appended in chunks rather than one call, since a long build
+# would otherwise be a single very large request.
+PLAYLIST_CHUNK: Final = 25
+
+# Ceiling on reseed rounds, so an artist whose neighbours all come back
+# empty cannot spin forever chasing a length it will never reach.
+PLAYLIST_MAX_ROUNDS: Final = 25

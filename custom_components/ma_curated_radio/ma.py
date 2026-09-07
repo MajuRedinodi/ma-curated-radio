@@ -28,6 +28,14 @@ from .const import MA_DOMAIN
 _LOGGER = logging.getLogger(__name__)
 
 
+class PlaylistUnsupportedError(RuntimeError):
+    """The installed Music Assistant client cannot manage playlists.
+
+    Unlike every other native call here, playlist building has no service
+    equivalent to fall back to, so this is raised rather than swallowed.
+    """
+
+
 def field_of(obj: Any, key: str, default: Any = None) -> Any:
     """Read ``key`` off a mapping or an object, tolerating either shape.
 
@@ -239,7 +247,7 @@ class NativeClient:
             if not matches:
                 return []
             match = matches[0]
-            tracks = await mass.music.artists.get_artist_toptracks(
+            tracks = await mass.music.get_artist_tracks(
                 text_of(match, "item_id"), text_of(match, "provider")
             )
         except (AttributeError, TypeError) as err:
@@ -287,3 +295,61 @@ class NativeClient:
             if uri:
                 uris.add(uri)
         return uris
+
+    async def async_find_playlist(self, name: str) -> Any | None:
+        """Return the library playlist with this exact name, or None."""
+        mass = self._mass()
+        if mass is None:
+            return None
+        try:
+            playlists = await mass.music.get_library_playlists(search=name)
+        except (AttributeError, TypeError) as err:
+            raise PlaylistUnsupportedError(str(err)) from err
+        wanted = name.strip().lower()
+        for playlist in playlists or []:
+            if text_of(playlist, "name").lower() == wanted:
+                return playlist
+        return None
+
+    async def async_create_playlist(self, name: str, provider: str | None) -> Any:
+        """Create a playlist, optionally on a named provider."""
+        mass = self._mass()
+        if mass is None:
+            raise PlaylistUnsupportedError("Music Assistant client unavailable")
+        try:
+            return await mass.music.create_playlist(name, provider or None)
+        except (AttributeError, TypeError) as err:
+            raise PlaylistUnsupportedError(str(err)) from err
+
+    async def async_clear_playlist(self, playlist: Any) -> int:
+        """Empty a playlist. Returns how many tracks were removed.
+
+        Removal is by position, and every position must go in one call
+        because each removal shifts the ones after it.
+        """
+        mass = self._mass()
+        if mass is None:
+            raise PlaylistUnsupportedError("Music Assistant client unavailable")
+        item_id = text_of(playlist, "item_id")
+        try:
+            existing = await mass.music.get_playlist_tracks(
+                item_id, text_of(playlist, "provider"), force_refresh=True
+            )
+            if not existing:
+                return 0
+            await mass.music.remove_playlist_tracks(
+                item_id, tuple(range(len(existing)))
+            )
+        except (AttributeError, TypeError) as err:
+            raise PlaylistUnsupportedError(str(err)) from err
+        return len(existing)
+
+    async def async_add_playlist_tracks(self, playlist: Any, uris: list[str]) -> None:
+        """Append tracks to a playlist."""
+        mass = self._mass()
+        if mass is None:
+            raise PlaylistUnsupportedError("Music Assistant client unavailable")
+        try:
+            await mass.music.add_playlist_tracks(text_of(playlist, "item_id"), uris)
+        except (AttributeError, TypeError) as err:
+            raise PlaylistUnsupportedError(str(err)) from err

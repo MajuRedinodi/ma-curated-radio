@@ -18,10 +18,17 @@ from homeassistant.helpers.typing import ConfigType
 from .const import (
     ATTR_ARTIST,
     ATTR_CONFIG_ENTRY_ID,
+    ATTR_LENGTH,
     ATTR_MODE,
+    ATTR_NAME,
+    ATTR_PROVIDER,
+    ATTR_SEED_ARTIST,
+    DEFAULT_PLAYLIST_LENGTH,
+    DEFAULT_PLAYLIST_NAME,
     DOMAIN,
     MODE_REPLACE,
     MODES,
+    SERVICE_BUILD_PLAYLIST,
     SERVICE_FORGET_FEEDBACK,
     SERVICE_RUN_BATCH,
     SERVICE_UNMUTE_ARTIST,
@@ -50,6 +57,17 @@ RUN_BATCH_SCHEMA = vol.Schema(
     {**_ENTRY_FIELD, vol.Optional(ATTR_MODE, default=MODE_REPLACE): vol.In(MODES)}
 )
 UNMUTE_ARTIST_SCHEMA = vol.Schema({**_ENTRY_FIELD, vol.Required(ATTR_ARTIST): cv.string})
+BUILD_PLAYLIST_SCHEMA = vol.Schema(
+    {
+        **_ENTRY_FIELD,
+        vol.Optional(ATTR_NAME, default=DEFAULT_PLAYLIST_NAME): cv.string,
+        vol.Optional(ATTR_SEED_ARTIST, default=""): cv.string,
+        vol.Optional(ATTR_LENGTH, default=DEFAULT_PLAYLIST_LENGTH): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=500)
+        ),
+        vol.Optional(ATTR_PROVIDER, default=""): cv.string,
+    }
+)
 FORGET_FEEDBACK_SCHEMA = vol.Schema(_ENTRY_FIELD)
 
 
@@ -93,6 +111,12 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         SERVICE_FORGET_FEEDBACK,
         _make_forget_feedback(hass),
         schema=FORGET_FEEDBACK_SCHEMA,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_BUILD_PLAYLIST,
+        _make_build_playlist(hass),
+        schema=BUILD_PLAYLIST_SCHEMA,
     )
     return True
 
@@ -210,3 +234,29 @@ def _make_forget_feedback(hass: HomeAssistant):
         async_dispatcher_send(hass, signal_update(entry.entry_id))
 
     return _forget_feedback
+
+
+def _make_build_playlist(hass: HomeAssistant):
+    """Build the build_playlist action handler."""
+
+    async def _build_playlist(call: ServiceCall) -> None:
+        """Fill a provider playlist without touching playback."""
+        entry = _resolve(hass, call.data.get(ATTR_CONFIG_ENTRY_ID))
+        result = await entry.runtime_data.engine.async_build_playlist(
+            name=call.data[ATTR_NAME],
+            seed_artist=call.data[ATTR_SEED_ARTIST],
+            length=call.data[ATTR_LENGTH],
+            provider=call.data[ATTR_PROVIDER],
+        )
+        if result.error == "playlists_unsupported":
+            raise ServiceValidationError(
+                translation_domain=DOMAIN, translation_key="playlists_unsupported"
+            )
+        if result.error:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="playlist_empty",
+                translation_placeholders={"name": result.name},
+            )
+
+    return _build_playlist

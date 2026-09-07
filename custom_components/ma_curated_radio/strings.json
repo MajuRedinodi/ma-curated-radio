@@ -131,6 +131,32 @@
     }
   },
   "services": {
+    "build_playlist": {
+      "name": "Build playlist",
+      "description": "Fills a playlist on your music provider with the same music this queues at home, for somewhere Home Assistant cannot reach. Playback is untouched.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Player configuration",
+          "description": "Which configured player to act on. Optional when only one is set up."
+        },
+        "name": {
+          "name": "Playlist name",
+          "description": "The playlist is refreshed in place if it already exists, so the name stays stable for anything pointing at it."
+        },
+        "seed_artist": {
+          "name": "Seed artist",
+          "description": "The artist to build around. Leave empty to use whatever is playing now."
+        },
+        "length": {
+          "name": "Tracks",
+          "description": "How many tracks to put in the playlist. It reseeds as it goes, so a long playlist drifts the way a long evening does."
+        },
+        "provider": {
+          "name": "Provider",
+          "description": "Music provider to create the playlist on, for example tidal. Leave empty to let Music Assistant choose. Tracks are filtered to match, since a provider playlist can only hold that provider's tracks."
+        }
+      }
+    },
     "unmute_artist": {
       "name": "Unmute artist",
       "description": "Gives a muted artist another chance straight away, without waiting for the mute to expire.",
@@ -179,6 +205,12 @@
     },
     "not_muted": {
       "message": "{artist} is not currently muted."
+    },
+    "playlists_unsupported": {
+      "message": "This Music Assistant version does not expose playlist management to Home Assistant, so playlists cannot be built. Everything else is unaffected."
+    },
+    "playlist_empty": {
+      "message": "Found nothing to put in {name}. Check that something is playing, or pass a seed artist."
     }
   }
 }

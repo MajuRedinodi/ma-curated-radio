@@ -105,6 +105,50 @@ data:
 
 `config_entry_id` is optional when only one player is configured.
 
+`ma_curated_radio.unmute_artist` lets one muted artist back in immediately,
+and `ma_curated_radio.forget_feedback` wipes every remembered skip and mute.
+
+## Taking it with you
+
+Home Assistant cannot reach a car stereo, and Android Auto only runs apps
+that implement Android's own media API, so this integration can never
+appear there. What it can do is put the same music somewhere that already
+has a car app.
+
+```yaml
+action: ma_curated_radio.build_playlist
+data:
+  name: Curated Radio
+  seed_artist: Taylor Swift   # optional; defaults to what is playing
+  length: 60
+  provider: tidal             # optional; a provider playlist holds only its own tracks
+```
+
+That writes a playlist on your music provider using the same similar-artist
+pool, the same filters and the same skip memory. Open it in that provider's
+own app and you get the selection this builds at home, in the car, without
+subscribing to anything new.
+
+It reseeds as it goes, so a 60-track playlist drifts the way an evening of
+refills does rather than being one batch repeated. The playlist is
+refreshed in place if it already exists, so the name stays stable for
+anything pointing at it.
+
+Two honest limits:
+
+- **Nothing comes back.** Home Assistant cannot see what you skip in
+  another app, so driving teaches this nothing. The playlist benefits from
+  what it has already learned; it does not learn while you use it.
+- **This is the one feature that cannot degrade gracefully.** Playlist
+  management is only available through Music Assistant's client, with no
+  equivalent on the Home Assistant service surface. Where that is
+  unavailable the action raises a clear error rather than failing quietly.
+  Everything else in this integration keeps working regardless.
+
+Playback is untouched throughout. Nothing is enqueued, nothing is
+reseeded, and the rolling repeat history is deliberately not written to, so
+a long playlist build cannot starve the live queue.
+
 ## What it learns from skips
 
 Skipping is the only feedback nobody has to be asked for, so it is the only
