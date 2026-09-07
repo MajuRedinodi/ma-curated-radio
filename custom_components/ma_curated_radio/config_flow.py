@@ -45,6 +45,7 @@ from .const import (
     DEFAULT_TRACKS_PER_ARTIST,
     DEFAULT_USE_NATIVE_TOP_TRACKS,
     DOMAIN,
+    LASTFM_SIGNUP_URL,
     MA_DOMAIN,
 )
 from .lastfm import async_validate_api_key
@@ -191,6 +192,7 @@ class MaCuratedRadioConfigFlow(ConfigFlow, domain=DOMAIN):
                 STEP_USER_SCHEMA, user_input or {}
             ),
             errors=errors,
+            description_placeholders={"lastfm_url": LASTFM_SIGNUP_URL},
         )
 
     def _music_assistant_entry_id(self, player: str) -> str | None:

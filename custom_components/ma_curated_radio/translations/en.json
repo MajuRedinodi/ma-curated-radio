@@ -3,14 +3,14 @@
     "step": {
       "user": {
         "title": "Music Assistant Curated Radio",
-        "description": "Pick the Music Assistant player to watch. When someone picks a song on it by hand, the queue is refilled with recognisable tracks in the same lane.",
+        "description": "Pick the Music Assistant player to watch. When someone picks a song on it by hand, the queue is refilled with recognisable tracks in the same lane.\n\nYou will need a free Last.fm API key. [Create one here]({lastfm_url}) and paste the **API key** below; the shared secret is not needed.",
         "data": {
           "player": "Player",
           "lastfm_api_key": "Last.fm API key"
         },
         "data_description": {
           "player": "The Music Assistant player entity, not the underlying device entity. The Music Assistant instance is worked out from it.",
-          "lastfm_api_key": "Used for similar-artist lookups. A free key from last.fm/api/account/create is enough; the shared secret is not needed."
+          "lastfm_api_key": "Used only for similar-artist lookups. Every request is anonymous and read-only."
         }
       }
     },

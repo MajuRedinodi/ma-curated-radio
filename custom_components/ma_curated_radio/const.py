@@ -55,3 +55,7 @@ MODES: Final = [MODE_REPLACE, MODE_REFILL]
 SERVICE_RUN_BATCH: Final = "run_batch"
 ATTR_MODE: Final = "mode"
 ATTR_CONFIG_ENTRY_ID: Final = "config_entry_id"
+
+# Where users get the API key the config flow asks for. Linked from the
+# setup form, since a key nobody can find is a key nobody enters.
+LASTFM_SIGNUP_URL: Final = "https://www.last.fm/api/account/create"
