@@ -97,6 +97,10 @@ class CuratedRadioEngine:
         self._history = TitleHistory(settings.history_minutes)
         self._native = NativeClient(hass, settings.ma_config_entry_id)
         self._lock = asyncio.Lock()
+        # Deliberately a separate lock. Sharing the batch lock would let a
+        # long playlist build starve the live queue, since async_run skips
+        # rather than waits when the batch lock is held.
+        self._playlist_lock = asyncio.Lock()
         self._last_batch: BatchResult | None = None
 
     @property
@@ -191,7 +195,9 @@ class CuratedRadioEngine:
             mode=mode, seed_artist=seed, artists=artists, queued=len(enqueued)
         )
 
-    async def _async_similar_artists(self, seed: str) -> list[str]:
+    async def _async_similar_artists(
+        self, seed: str, cache: dict[str, list[str]] | None = None
+    ) -> list[str]:
         """Pick a shuffled, capped set of Last.fm-similar artists.
 
         The pool is deliberately much larger than the cap. The goal is what
@@ -202,9 +208,14 @@ class CuratedRadioEngine:
         settings = self._settings
         if settings.max_artists <= 0 or not settings.lastfm_api_key:
             return []
-        names = await async_get_similar_artists(
-            self._session, settings.lastfm_api_key, seed, LASTFM_POOL_SIZE
-        )
+        if cache is not None and seed in cache:
+            names = cache[seed]
+        else:
+            names = await async_get_similar_artists(
+                self._session, settings.lastfm_api_key, seed, LASTFM_POOL_SIZE
+            )
+            if cache is not None:
+                cache[seed] = names
         candidates = clean_similar_artists(names, seed)
         muted = self._skips.muted_artists
         candidates = [name for name in candidates if name.lower() not in muted]
@@ -225,15 +236,28 @@ class CuratedRadioEngine:
         multiplier = SEED_LEAN_MULTIPLIER.get(self._settings.seed_lean, 1.0)
         return max(1, round(cap * multiplier))
 
-    async def _async_tracks_for(self, artist: str) -> list[TrackInfo]:
-        """Get an artist's best-known tracks, natively if possible."""
+    async def _async_tracks_for(
+        self, artist: str, cache: dict[str, list[TrackInfo]] | None = None
+    ) -> list[TrackInfo]:
+        """Get an artist's best-known tracks, natively if possible.
+
+        The optional cache is per playlist build. The same few artists
+        recur in every round, and without it each recurrence costs a fresh
+        search plus a track fetch.
+        """
+        if cache is not None and artist in cache:
+            return cache[artist]
+        tracks: list[TrackInfo] = []
         if self._settings.use_native_top_tracks:
-            tracks = await self._native.async_top_tracks(artist)
-            if tracks:
-                return tracks
-        return await async_search_tracks(
-            self._hass, self._settings.ma_config_entry_id, artist
-        )
+            native = await self._native.async_top_tracks(artist)
+            tracks = native or []
+        if not tracks:
+            tracks = await async_search_tracks(
+                self._hass, self._settings.ma_config_entry_id, artist
+            )
+        if cache is not None:
+            cache[artist] = tracks
+        return tracks
 
     def _select(
         self,
@@ -324,6 +348,23 @@ class CuratedRadioEngine:
         repeat history is deliberately not written: a 60-track build would
         flood a two-hour window and starve the live queue.
         """
+        if self._playlist_lock.locked():
+            _LOGGER.debug("A playlist build is already running; skipping")
+            return PlaylistResult(name=name, error="already_running")
+        async with self._playlist_lock:
+            return await self._async_build_playlist(
+                name=name, seed_artist=seed_artist, length=length, provider=provider
+            )
+
+    async def _async_build_playlist(
+        self,
+        *,
+        name: str,
+        seed_artist: str,
+        length: int,
+        provider: str,
+    ) -> PlaylistResult:
+        """Do the work of one playlist build."""
         settings = self._settings
 
         if not seed_artist:
@@ -337,13 +378,21 @@ class CuratedRadioEngine:
         artists_used: list[str] = []
         current_seed = seed_artist
 
+        # Scoped to this build. The same artists recur every round, and
+        # re-fetching them was most of the time a long build took.
+        similar_cache: dict[str, list[str]] = {}
+        track_cache: dict[str, list[TrackInfo]] = {}
+
         for _ in range(PLAYLIST_MAX_ROUNDS):
             if len(ordered) >= length:
                 break
-            round_artists = [current_seed, *await self._async_similar_artists(current_seed)]
+            round_artists = [
+                current_seed,
+                *await self._async_similar_artists(current_seed, similar_cache),
+            ]
             per_artist: list[list[str]] = []
             for index, artist in enumerate(round_artists):
-                tracks = await self._async_tracks_for(artist)
+                tracks = await self._async_tracks_for(artist, track_cache)
                 uris, titles = self._select(
                     tracks,
                     current_uri="",
