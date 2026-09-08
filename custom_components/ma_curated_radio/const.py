@@ -53,6 +53,23 @@ DEFAULT_USE_NATIVE_TOP_TRACKS: Final = False
 # repeated batches off one seed converge on the same few faces.
 LASTFM_POOL_SIZE: Final = 25
 
+# How many tracks to ask the provider for per artist.
+#
+# Music Assistant's search action takes no limit and returns five, which
+# for a whole session was the real constraint on every batch: the seed
+# contributed its entire catalogue in one go and then vanished from every
+# refill, because a title that just played is excluded and there was
+# nothing behind it. Artist radio drifted off its own seed by the second
+# batch, and the seed-lean multiplier could never bite because five tracks
+# minus the filters rarely reached the cap it was multiplying.
+#
+# This deliberately does not change what a first batch plays. Selection
+# still takes the top few in the provider's own relevance order, so the
+# extra depth is only ever reached by a later batch that has already used
+# the obvious hits. That is exactly where an artist station needs somewhere
+# left to go.
+SEARCH_LIMIT: Final = 25
+
 # --- Batch modes -------------------------------------------------------------
 
 MODE_REPLACE: Final = "replace"

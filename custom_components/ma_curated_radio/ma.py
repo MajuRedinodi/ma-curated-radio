@@ -250,6 +250,7 @@ class NativeClient:
         self._ma_entry_id = ma_entry_id
         self._top_tracks_available = True
         self._queue_items_available = True
+        self._search_available = True
 
     @property
     def top_tracks_available(self) -> bool:
@@ -310,6 +311,50 @@ class NativeClient:
             return None
 
         return [TrackInfo.from_item(track) for track in (tracks or [])]
+
+    async def async_search_tracks(
+        self, artist: str, limit: int
+    ) -> list[TrackInfo] | None:
+        """Search an artist's tracks natively, so a limit can be set.
+
+        Identical in intent to the service-based search, but the service
+        action exposes no limit and hands back five results. Five is fewer
+        than a single batch consumes, so every artist was a spent force the
+        moment it first appeared. None means "fall back to the service",
+        which is different from an empty list ("nothing matched").
+        """
+        if not self._search_available:
+            return None
+        mass = self._mass()
+        if mass is None:
+            self._search_available = False
+            _LOGGER.debug("Native client unavailable; using the search action")
+            return None
+
+        try:
+            results = await mass.music.search(
+                search_query=artist, media_types=["track"], limit=limit
+            )
+        except (AttributeError, TypeError) as err:
+            # The installed client does not take this shape. Stop trying.
+            self._search_available = False
+            _LOGGER.info(
+                "Music Assistant client has no usable search API (%s); falling "
+                "back to the search action, which returns only five tracks per "
+                "artist",
+                err,
+            )
+            return None
+        except Exception as err:  # noqa: BLE001 - one artist must not kill the batch
+            _LOGGER.debug("Native track search failed for %s: %s", artist, err)
+            return None
+
+        tracks = [
+            TrackInfo.from_item(item) for item in (field_of(results, "tracks", []) or [])
+        ]
+        # Search matches loosely enough to return the right words on the
+        # wrong record, exactly as the service surface does.
+        return [track for track in tracks if credits_artist(track.artists, artist)]
 
     async def async_queued_uris(self, queue_id: str) -> set[str]:
         """Return URIs already sitting in the queue, or an empty set.

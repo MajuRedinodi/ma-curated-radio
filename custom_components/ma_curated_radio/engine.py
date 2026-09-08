@@ -28,6 +28,7 @@ from .const import (
     PLAYLIST_CHUNK,
     PLAYLIST_MAX_ROUNDS,
     QUEUED_MEMORY,
+    SEARCH_LIMIT,
     SEED_LEAN_ARTIST,
     SEED_LEAN_DISCOVERY,
     SEED_LEAN_MULTIPLIER,
@@ -171,7 +172,10 @@ class CuratedRadioEngine:
         # A manual pick is a new station, so it re-anchors the session; a
         # refill continues the one already running.
         self._anchor(seed, restart=mode != MODE_REFILL)
-        artists = [seed, *await self._async_similar_artists(self._pool_seed(seed))]
+        artists = [
+            self._lead_artist(seed),
+            *await self._async_similar_artists(self._pool_seed(seed)),
+        ]
 
         # On a refill the tail of the queue is still populated, so avoid
         # re-adding anything already sitting there. Native-only; an empty
@@ -298,9 +302,16 @@ class CuratedRadioEngine:
             native = await self._native.async_top_tracks(artist)
             tracks = native or []
         if not tracks:
-            tracks = await async_search_tracks(
-                self._hass, self._settings.ma_config_entry_id, artist
-            )
+            # Native search first, purely so a limit can be passed. The
+            # service action returns five tracks and no more, which is less
+            # than one batch uses, so an artist reached on a refill had
+            # nothing left that had not just played.
+            searched = await self._native.async_search_tracks(artist, SEARCH_LIMIT)
+            if searched is None:
+                searched = await async_search_tracks(
+                    self._hass, self._settings.ma_config_entry_id, artist
+                )
+            tracks = searched
         if cache is not None:
             cache[artist] = tracks
         return tracks
@@ -484,7 +495,7 @@ class CuratedRadioEngine:
             if len(ordered) >= length:
                 break
             round_artists = [
-                current_seed,
+                self._lead_artist(current_seed, build_session),
                 *await self._async_similar_artists(
                     self._pool_seed(current_seed, build_session),
                     similar_cache,
@@ -596,6 +607,23 @@ class CuratedRadioEngine:
             _LOGGER.debug("Queue session anchored to %s", artist)
         else:
             self._listening.touch()
+
+    def _lead_artist(
+        self, current_artist: str, session: ListeningSession | None = None
+    ) -> str:
+        """Which artist leads the batch and takes the seed lean.
+
+        Artist radio leads with the artist you picked, not with whoever
+        happens to be playing when the queue runs down. Without this the
+        origin was excluded from its own station's refills: the pool is
+        drawn from the origin and a seed is always stripped from its own
+        similar-artists list, so the one artist the station is named after
+        was the one artist that could never appear in it again.
+        """
+        active = session or self._listening
+        if self._settings.seed_lean == SEED_LEAN_ARTIST and active.origin:
+            return active.origin
+        return current_artist
 
     def _pool_seed(
         self, current_artist: str, session: ListeningSession | None = None
