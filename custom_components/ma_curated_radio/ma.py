@@ -19,6 +19,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 from homeassistant.core import HomeAssistant
@@ -51,6 +52,26 @@ def field_of(obj: Any, key: str, default: Any = None) -> Any:
     return default if value is None else value
 
 
+def _popularity(item: Any) -> int:
+    """Provider popularity, 0 when unknown.
+
+    Only the native client carries metadata; the service surface returns
+    none, so this is zero on that path and the freshness boost simply
+    never fires.
+    """
+    value = field_of(field_of(item, "metadata"), "popularity", 0)
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _released(item: Any) -> datetime | None:
+    """Release date, or None when the provider did not say."""
+    value = field_of(field_of(item, "metadata"), "release_date")
+    return value if isinstance(value, datetime) else None
+
+
 def text_of(obj: Any, key: str) -> str:
     """Read ``key`` as a stripped string, or an empty string."""
     return str(field_of(obj, key, "") or "").strip()
@@ -65,6 +86,8 @@ class TrackInfo:
     version: str
     album: str
     duration: int = 0
+    popularity: int = 0
+    released: datetime | None = None
 
     @classmethod
     def from_item(cls, item: Any) -> TrackInfo:
@@ -75,6 +98,8 @@ class TrackInfo:
             version=text_of(item, "version"),
             album=text_of(field_of(item, "album"), "name"),
             duration=int(field_of(item, "duration", 0) or 0),
+            popularity=_popularity(item),
+            released=_released(item),
         )
 
 

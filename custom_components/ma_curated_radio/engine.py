@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 import aiohttp
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.util import dt as dt_util
 
 from .const import (
     DEFAULT_PLAYLIST_LENGTH,
@@ -33,6 +34,7 @@ from .feedback import SkipMemory
 from .filters import (
     base_title,
     clean_similar_artists,
+    hotness,
     is_holiday,
     is_live,
     is_non_song,
@@ -290,6 +292,27 @@ class CuratedRadioEngine:
             cache[artist] = tracks
         return tracks
 
+    def _by_hotness(self, tracks: list[TrackInfo]) -> list[TrackInfo]:
+        """Reorder an artist's tracks so a hot new release can get in.
+
+        Providers rank by cumulative plays, which buries anything recent.
+        Tracks scoring zero, meaning old, unpopular, or without the
+        metadata to tell, keep the provider's ordering exactly: the sort is
+        stable, so this is a no-op wherever the data is absent.
+        """
+        window = self._settings.fresh_days
+        if window <= 0:
+            return tracks
+        now = dt_util.utcnow()
+        scored = sorted(
+            tracks,
+            key=lambda t: hotness(t.released, t.popularity, window, now),
+            reverse=True,
+        )
+        if scored and scored[0] is not tracks[0]:
+            _LOGGER.debug("Promoted %s as a hot new release", scored[0].name)
+        return scored
+
     def _select(
         self,
         tracks: list[TrackInfo],
@@ -306,7 +329,7 @@ class CuratedRadioEngine:
         settings = self._settings
         uris: list[str] = []
         titles: list[str] = []
-        for track in tracks:
+        for track in self._by_hotness(tracks):
             if len(uris) >= limit:
                 break
             if not track.uri or track.uri == current_uri or track.uri in excluded_uris:

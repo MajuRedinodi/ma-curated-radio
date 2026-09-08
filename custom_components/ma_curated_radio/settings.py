@@ -16,6 +16,7 @@ from .const import (
     CONF_FAMILIARITY,
     CONF_FILTER_HOLIDAY,
     CONF_FILTER_LIVE,
+    CONF_FRESH_DAYS,
     CONF_HISTORY_MINUTES,
     CONF_LASTFM_API_KEY,
     CONF_MA_CONFIG_ENTRY_ID,
@@ -38,6 +39,7 @@ from .const import (
     DEFAULT_FAMILIARITY,
     DEFAULT_FILTER_HOLIDAY,
     DEFAULT_FILTER_LIVE,
+    DEFAULT_FRESH_DAYS,
     DEFAULT_HISTORY_MINUTES,
     DEFAULT_MAX_ARTISTS,
     DEFAULT_MAX_CONSECUTIVE,
@@ -78,6 +80,7 @@ class Settings:
     familiarity: str
     degrees: int
     min_duration: int
+    fresh_days: int
     max_consecutive: int
     track_suppress_days: int
     artist_mute_days: int
@@ -121,6 +124,7 @@ class Settings:
             familiarity=_familiarity(merged.get(CONF_FAMILIARITY, DEFAULT_FAMILIARITY)),
             degrees=int(merged.get(CONF_DEGREES, DEFAULT_DEGREES)),
             min_duration=int(merged.get(CONF_MIN_DURATION, DEFAULT_MIN_DURATION)),
+            fresh_days=int(merged.get(CONF_FRESH_DAYS, DEFAULT_FRESH_DAYS)),
             max_consecutive=int(
                 merged.get(CONF_MAX_CONSECUTIVE, DEFAULT_MAX_CONSECUTIVE)
             ),

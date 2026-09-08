@@ -24,6 +24,7 @@ from .const import (
     CONF_FAMILIARITY,
     CONF_FILTER_HOLIDAY,
     CONF_FILTER_LIVE,
+    CONF_FRESH_DAYS,
     CONF_HISTORY_MINUTES,
     CONF_LASTFM_API_KEY,
     CONF_MA_CONFIG_ENTRY_ID,
@@ -45,6 +46,7 @@ from .const import (
     DEFAULT_FAMILIARITY,
     DEFAULT_FILTER_HOLIDAY,
     DEFAULT_FILTER_LIVE,
+    DEFAULT_FRESH_DAYS,
     DEFAULT_HISTORY_MINUTES,
     DEFAULT_MAX_ARTISTS,
     DEFAULT_MAX_CONSECUTIVE,
@@ -130,6 +132,10 @@ def _options_schema(current: dict[str, Any]) -> vol.Schema:
                 default=value(CONF_MIN_DURATION, DEFAULT_MIN_DURATION),
             ): _number(0, 600),
             vol.Required(
+                CONF_FRESH_DAYS,
+                default=value(CONF_FRESH_DAYS, DEFAULT_FRESH_DAYS),
+            ): _number(0, 730),
+            vol.Required(
                 CONF_MAX_CONSECUTIVE,
                 default=value(CONF_MAX_CONSECUTIVE, DEFAULT_MAX_CONSECUTIVE),
             ): _number(1, 5),
@@ -208,6 +214,7 @@ def _coerce_ints(data: dict[str, Any]) -> dict[str, Any]:
         CONF_TRACK_SUPPRESS_DAYS,
         CONF_ARTIST_STRIKE_LIMIT,
         CONF_ARTIST_MUTE_DAYS,
+        CONF_FRESH_DAYS,
     )
     return {
         key: int(val) if key in integer_keys else val for key, val in data.items()

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import random
 import re
+from datetime import datetime
 from typing import Final
 
 # Word boundaries for the live-version check: anything that is not a letter
@@ -205,3 +206,36 @@ def weighted_sample(
 
     keyed.sort(key=lambda pair: pair[0], reverse=True)
     return [name for _, name in keyed[:count]]
+
+
+def freshness(released: datetime | None, window_days: int, now: datetime) -> float:
+    """How new a track is, 1.0 for today down to 0.0 at the window edge.
+
+    Outside the window, or with no release date at all, this is zero, so a
+    provider that does not report release dates simply never triggers any
+    promotion.
+    """
+    if released is None or window_days <= 0:
+        return 0.0
+    age_days = (now - released).days
+    if age_days < 0 or age_days > window_days:
+        return 0.0
+    return 1.0 - (age_days / window_days)
+
+
+def hotness(
+    released: datetime | None, popularity: int, window_days: int, now: datetime
+) -> float:
+    """Score a track for being both new and genuinely popular.
+
+    Provider top-track rankings are cumulative, so a song released last
+    month sits below five years of catalogue however big it is right now.
+    This is what lifts it: a track has to be recent *and* popular to be
+    promoted, so a new flop stays where the provider put it.
+
+    Zero for anything old, unpopular, or missing metadata, which leaves
+    the provider's own ordering untouched.
+    """
+    if popularity <= 0:
+        return 0.0
+    return freshness(released, window_days, now) * min(popularity, 100) / 100

@@ -188,3 +188,14 @@ FAMILIARITY_EXPONENT: Final = {
 
 # The premise is recognisable songs, so this leans that way by default.
 DEFAULT_FAMILIARITY: Final = FAMILIARITY_FAMILIAR
+
+# --- New releases ------------------------------------------------------------
+
+CONF_FRESH_DAYS: Final = "fresh_days"
+
+# Provider top-track rankings are cumulative, so a song released last month
+# ranks below years of catalogue no matter how big it is right now. Inside
+# this window a track is promoted in proportion to how new AND how popular
+# it is, so a hot new single surfaces while a new flop does not. Zero
+# disables the promotion entirely.
+DEFAULT_FRESH_DAYS: Final = 120
