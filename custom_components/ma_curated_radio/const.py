@@ -227,3 +227,14 @@ DEFAULT_EXPLICIT: Final = EXPLICIT_ANY
 # pick, however the expected-next comparison lands. Comfortably more than
 # any queue this builds.
 QUEUED_MEMORY: Final = 500
+
+# --- Bulk loads --------------------------------------------------------------
+
+CONF_BULK_TRACKS: Final = "bulk_tracks"
+
+# A manual pick is one track. A playlist or album load is many at once, and
+# is a deliberate choice to hear that playlist rather than an invitation to
+# replace it. Growth of at least this many tracks from something we did not
+# queue is treated as a bulk load and left alone. Ten sits well above a
+# single pick and below the smallest album. Zero disables the check.
+DEFAULT_BULK_TRACKS: Final = 10

@@ -9,6 +9,7 @@ from homeassistant.config_entries import ConfigEntry
 from .const import (
     CONF_ARTIST_MUTE_DAYS,
     CONF_ARTIST_STRIKE_LIMIT,
+    CONF_BULK_TRACKS,
     CONF_COOLDOWN_ENTITY,
     CONF_COOLDOWN_SECONDS,
     CONF_DEGREES,
@@ -34,6 +35,7 @@ from .const import (
     CONF_USE_NATIVE_TOP_TRACKS,
     DEFAULT_ARTIST_MUTE_DAYS,
     DEFAULT_ARTIST_STRIKE_LIMIT,
+    DEFAULT_BULK_TRACKS,
     DEFAULT_COOLDOWN_SECONDS,
     DEFAULT_DEGREES,
     DEFAULT_ENABLED,
@@ -71,6 +73,7 @@ class Settings:
     max_artists: int
     tracks_per_artist: int
     refill_threshold: int
+    bulk_tracks: int
     history_minutes: int
     settle_seconds: int
     cooldown_entity: str
@@ -106,6 +109,7 @@ class Settings:
             refill_threshold=int(
                 merged.get(CONF_REFILL_THRESHOLD, DEFAULT_REFILL_THRESHOLD)
             ),
+            bulk_tracks=int(merged.get(CONF_BULK_TRACKS, DEFAULT_BULK_TRACKS)),
             history_minutes=int(
                 merged.get(CONF_HISTORY_MINUTES, DEFAULT_HISTORY_MINUTES)
             ),

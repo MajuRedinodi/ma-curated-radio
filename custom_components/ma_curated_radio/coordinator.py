@@ -74,6 +74,7 @@ class CuratedRadioDetector:
         self._skips = skips
         self._expected_next = ""
         self._last_manual_pick: datetime | None = None
+        self._queue_items: int | None = None
         self._task: asyncio.Task[None] | None = None
 
     def apply_settings(self, settings: Settings) -> None:
@@ -161,6 +162,7 @@ class CuratedRadioDetector:
                 bool(self._expected_next)
                 and queue.current_uri != self._expected_next
                 and not ours
+                and not self._is_bulk_load(queue.items)
             )
 
             if not self._in_cooldown():
@@ -184,6 +186,8 @@ class CuratedRadioDetector:
             # than trusting the snapshot taken above.
             post = await async_get_queue(self._hass, self._settings.player)
             self._expected_next = post.next_uri if post else ""
+            if post is not None:
+                self._queue_items = post.items
         except asyncio.CancelledError:
             raise
         except Exception:  # noqa: BLE001 - the listener has to survive anything
@@ -213,6 +217,30 @@ class CuratedRadioDetector:
                 muted,
                 self._settings.artist_strike_limit,
             )
+
+    def _is_bulk_load(self, items: int) -> bool:
+        """True if the queue just grew by more than one track's worth.
+
+        A manual pick is a single track. A playlist or album load is many
+        at once, and choosing to play a playlist is a decision to hear that
+        playlist rather than an invitation to replace it.
+
+        Better than a timed cooldown on a named script: it needs no
+        configuration, covers albums and any other bulk load, and never
+        blinds detection for a window during which a genuine pick would be
+        missed.
+        """
+        threshold = self._settings.bulk_tracks
+        if threshold <= 0 or self._queue_items is None:
+            return False
+        if items - self._queue_items < threshold:
+            return False
+        _LOGGER.debug(
+            "Queue grew from %s to %s tracks; treating as a bulk load, not a pick",
+            self._queue_items,
+            items,
+        )
+        return True
 
     def _in_cooldown(self) -> bool:
         """True while a separate queue-rewriting routine is still settling.

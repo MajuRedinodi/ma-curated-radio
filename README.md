@@ -83,9 +83,10 @@ button. Defaults in brackets.
 | Skips in a row before muting an artist [3] | Skip this many of one artist's tracks consecutively and they stop being suggested. |
 | Muted artist stays away for [30 days] | How long a muted artist stays out of the similar-artist pool. |
 | Refill threshold [2] | Top the queue up once this many tracks or fewer remain after the one playing. |
+| Bulk load size [10 tracks] | A manual pick is one track; a playlist or album load is many at once. Anything outside this integration adding at least this many tracks is treated as a deliberate choice to hear that playlist and left alone. |
 | Repeat memory [120 min] | How long a title stays excluded from new batches. Zero disables repeat memory. |
 | Settle delay [3 s] | How long to wait after a manual pick before rewriting the queue. |
-| Cooldown script or automation | If another routine also rebuilds this player's queue on a schedule (a morning genre-radio automation, say), point this at it so its rebuild is never mistaken for a manual pick. |
+| Cooldown script or automation | Mostly unnecessary now that bulk loads are detected on their own. Point it at another routine that rebuilds this player's queue if you want belt and braces. |
 | Cooldown window [120 s] | How long after that routine runs to skip detection entirely. |
 | Provider filter | Comma-separated provider prefixes to restrict tracks to, e.g. `tidal`. Empty allows every provider. |
 | Explicit content [no preference] | **Clean only** drops anything flagged explicit, for when younger ears are in the room. **Prefer explicit** puts the original ahead of the radio edit. |

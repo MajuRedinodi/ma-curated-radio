@@ -18,6 +18,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .const import (
     CONF_ARTIST_MUTE_DAYS,
     CONF_ARTIST_STRIKE_LIMIT,
+    CONF_BULK_TRACKS,
     CONF_COOLDOWN_ENTITY,
     CONF_COOLDOWN_SECONDS,
     CONF_DEGREES,
@@ -42,6 +43,7 @@ from .const import (
     CONF_USE_NATIVE_TOP_TRACKS,
     DEFAULT_ARTIST_MUTE_DAYS,
     DEFAULT_ARTIST_STRIKE_LIMIT,
+    DEFAULT_BULK_TRACKS,
     DEFAULT_COOLDOWN_SECONDS,
     DEFAULT_DEGREES,
     DEFAULT_EXPLICIT,
@@ -169,6 +171,10 @@ def _options_schema(current: dict[str, Any]) -> vol.Schema:
                 default=value(CONF_REFILL_THRESHOLD, DEFAULT_REFILL_THRESHOLD),
             ): _number(0, 10),
             vol.Required(
+                CONF_BULK_TRACKS,
+                default=value(CONF_BULK_TRACKS, DEFAULT_BULK_TRACKS),
+            ): _number(0, 100),
+            vol.Required(
                 CONF_HISTORY_MINUTES,
                 default=value(CONF_HISTORY_MINUTES, DEFAULT_HISTORY_MINUTES),
             ): _number(0, 1440),
@@ -218,6 +224,7 @@ def _coerce_ints(data: dict[str, Any]) -> dict[str, Any]:
         CONF_MAX_ARTISTS,
         CONF_TRACKS_PER_ARTIST,
         CONF_REFILL_THRESHOLD,
+        CONF_BULK_TRACKS,
         CONF_HISTORY_MINUTES,
         CONF_SETTLE_SECONDS,
         CONF_COOLDOWN_SECONDS,
