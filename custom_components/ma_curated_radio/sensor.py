@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
+from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
+from homeassistant.util import dt as dt_util
 
 from .entity import CuratedRadioEntity
 
@@ -20,7 +24,9 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up the status sensors."""
-    async_add_entities([MutedArtistsSensor(entry), LastBatchSensor(entry)])
+    async_add_entities(
+        [MutedArtistsSensor(entry), LastBatchSensor(entry), LastManualPickSensor(entry)]
+    )
 
 
 class MutedArtistsSensor(CuratedRadioEntity, SensorEntity):
@@ -85,3 +91,42 @@ class LastBatchSensor(CuratedRadioEntity, SensorEntity):
             "tracks_queued": result.queued,
             "skipped_reason": result.skipped_reason or None,
         }
+
+
+class LastManualPickSensor(CuratedRadioEntity, RestoreEntity, SensorEntity):
+    """When somebody last jumped playback by hand.
+
+    Home Assistant marks a state change as user-driven only when it came
+    from inside Home Assistant, so a song chosen in the Music Assistant or
+    provider app is indistinguishable from an automation as far as
+    ``context.user_id`` is concerned. This detection does not rely on that,
+    which makes it a better "is a person actually listening" signal than
+    anything Home Assistant can work out on its own. Useful for automations
+    that should stand down while someone is clearly in the room.
+    """
+
+    _attr_translation_key = "last_manual_pick"
+    _attr_icon = "mdi:gesture-tap"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+
+    def __init__(self, entry: MaCuratedRadioConfigEntry) -> None:
+        """Bind to the detector."""
+        super().__init__(entry, "last_manual_pick")
+
+    async def async_added_to_hass(self) -> None:
+        """Carry the timestamp across restarts.
+
+        A restart is not evidence that nobody is listening, so the value
+        is restored rather than starting empty.
+        """
+        await super().async_added_to_hass()
+        last = await self.async_get_last_state()
+        if last is None or last.state in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+            return
+        if (restored := dt_util.parse_datetime(last.state)) is not None:
+            self.runtime.detector.restore_last_manual_pick(restored)
+
+    @property
+    def native_value(self) -> datetime | None:
+        """Timestamp of the last detected manual pick."""
+        return self.runtime.detector.last_manual_pick

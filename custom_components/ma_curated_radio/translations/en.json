@@ -129,6 +129,9 @@
       },
       "last_batch": {
         "name": "Last batch seed"
+      },
+      "last_manual_pick": {
+        "name": "Last manual pick"
       }
     },
     "button": {

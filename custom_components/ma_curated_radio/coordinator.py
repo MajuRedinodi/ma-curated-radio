@@ -73,6 +73,7 @@ class CuratedRadioDetector:
         self._engine = engine
         self._skips = skips
         self._expected_next = ""
+        self._last_manual_pick: datetime | None = None
         self._task: asyncio.Task[None] | None = None
 
     def apply_settings(self, settings: Settings) -> None:
@@ -83,6 +84,24 @@ class CuratedRadioDetector:
     def expected_next(self) -> str:
         """URI the queue is expected to play after the current track."""
         return self._expected_next
+
+    @property
+    def last_manual_pick(self) -> datetime | None:
+        """When somebody last jumped playback by hand.
+
+        Home Assistant only marks a state change as user-driven when it
+        originated inside Home Assistant, so a pick made in the Music
+        Assistant or provider app carries no user context and looks exactly
+        like an automation. This detection does not depend on that: the
+        queue predicted one track and a different one started, whoever
+        caused it and from wherever.
+        """
+        return self._last_manual_pick
+
+    def restore_last_manual_pick(self, when: datetime) -> None:
+        """Seed the timestamp from a restored sensor state after a restart."""
+        if self._last_manual_pick is None:
+            self._last_manual_pick = when
 
     def async_start(self) -> CALLBACK_TYPE:
         """Begin watching the player. Returns the unsubscribe callback."""
@@ -134,6 +153,7 @@ class CuratedRadioDetector:
                 if queue.current_uri != self._expected_next:
                     # Someone jumped playback. Let the player settle before
                     # rewriting the queue underneath it.
+                    self._last_manual_pick = dt_util.utcnow()
                     await asyncio.sleep(self._settings.settle_seconds)
                     await self._engine.async_run(MODE_REPLACE)
                 else:
