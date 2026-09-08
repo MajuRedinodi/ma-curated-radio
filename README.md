@@ -150,12 +150,8 @@ views:
           - type: heading
             heading: Now playing
             icon: mdi:speaker
-          - type: tile
+          - type: media-control
             entity: media_player.family_room_stereo_2
-            features:
-              - type: media-player-playback
-                controls: [previous, play_pause, next]
-              - type: media-player-volume-slider
             grid_options: {columns: full}
           - type: tile
             entity: switch.family_room_stereo_curated_radio

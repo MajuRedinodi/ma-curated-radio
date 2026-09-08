@@ -34,3 +34,16 @@ Entity ids in that YAML use the `family_room_stereo` slug, which readers
 are told to find and replace with their own. Keep that slug consistent
 throughout rather than genericising it: one placeholder that is obviously
 a real example beats a mix of styles.
+
+### What deliberately stays out
+
+The dashboard on the maintainer's own instance also carries a search box
+that starts a station: an `input_text`, an `input_select` of results, and
+two scripts driving `music_assistant.search`. None of that is in the
+README, and it must not be, because none of it is created by the
+integration. A card referencing a helper the reader does not have is the
+error card this rule exists to prevent.
+
+The right fix is to move that feature into the integration as a `text`
+entity plus a couple of buttons. Until then the divergence is deliberate,
+and this note is here so the next person does not helpfully "fix" it.
