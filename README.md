@@ -83,7 +83,7 @@ button. Defaults in brackets.
 | Skips in a row before muting an artist [3] | Skip this many of one artist's tracks consecutively and they stop being suggested. |
 | Muted artist stays away for [30 days] | How long a muted artist stays out of the similar-artist pool. |
 | Refill threshold [2] | Top the queue up once this many tracks or fewer remain after the one playing. |
-| Bulk load size [10 tracks] | A manual pick is one track; a playlist or album load is many at once. Anything outside this integration adding at least this many tracks is treated as a deliberate choice to hear that playlist and left alone. |
+| Bulk load size [3 tracks] | A manual pick is one track; a playlist or album load is several. Anything outside this integration adding at least this many tracks is left alone. Low on purpose: our own tracks are already excluded, so the only distinction left is one against several, and a five-track playlist deserves the same protection as a five-hundred-track one. |
 | Repeat memory [120 min] | How long a title stays excluded from new batches. Zero disables repeat memory. |
 | Settle delay [3 s] | How long to wait after a manual pick before rewriting the queue. |
 | Cooldown script or automation | Mostly unnecessary now that bulk loads are detected on their own. Point it at another routine that rebuilds this player's queue if you want belt and braces. |
