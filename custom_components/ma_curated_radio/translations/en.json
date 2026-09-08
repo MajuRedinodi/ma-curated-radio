@@ -144,6 +144,9 @@
       },
       "last_manual_pick": {
         "name": "Last manual pick"
+      },
+      "version": {
+        "name": "Version"
       }
     },
     "button": {

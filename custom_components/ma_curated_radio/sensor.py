@@ -6,12 +6,14 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
-from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
+from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN, EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
+from homeassistant.loader import async_get_integration
 from homeassistant.util import dt as dt_util
 
+from .const import DOMAIN
 from .entity import CuratedRadioEntity
 
 if TYPE_CHECKING:
@@ -24,8 +26,14 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up the status sensors."""
+    integration = await async_get_integration(hass, DOMAIN)
     async_add_entities(
-        [MutedArtistsSensor(entry), LastBatchSensor(entry), LastManualPickSensor(entry)]
+        [
+            MutedArtistsSensor(entry),
+            LastBatchSensor(entry),
+            LastManualPickSensor(entry),
+            VersionSensor(entry, str(integration.version)),
+        ]
     )
 
 
@@ -130,3 +138,28 @@ class LastManualPickSensor(CuratedRadioEntity, RestoreEntity, SensorEntity):
     def native_value(self) -> datetime | None:
         """Timestamp of the last detected manual pick."""
         return self.runtime.detector.last_manual_pick
+
+
+class VersionSensor(CuratedRadioEntity, SensorEntity):
+    """Which version of this integration is actually running.
+
+    Python caches modules, so an update that has been downloaded is not
+    the update that is running until Home Assistant restarts. Reading the
+    version off a dashboard answers "did the restart take" without
+    digging through the log for a behaviour that only shows up on the
+    next pick.
+    """
+
+    _attr_translation_key = "version"
+    _attr_icon = "mdi:tag-outline"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, entry: MaCuratedRadioConfigEntry, version: str) -> None:
+        """Hold the version read from the loaded manifest."""
+        super().__init__(entry, "version")
+        self._version = version
+
+    @property
+    def native_value(self) -> str:
+        """Version of the code currently loaded."""
+        return self._version
