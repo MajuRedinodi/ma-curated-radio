@@ -33,6 +33,7 @@ from .const import (
     SEED_LEAN_DISCOVERY,
     SEED_LEAN_MULTIPLIER,
     SESSION_EXPIRY_HOURS,
+    SPLIT_DUO_CREDITS,
     signal_update,
 )
 from .feedback import SkipMemory
@@ -123,6 +124,11 @@ class CuratedRadioEngine:
         # comparison says, and that is what stops our own music from
         # re-anchoring the session and resetting the drift fence.
         self._queued: deque[str] = deque(maxlen=QUEUED_MEMORY)
+        # Artist credits, by the seed name they were credited under.
+        # Providers split a duo into its members, and the first member on
+        # their own is often a different act entirely, so the pair has to
+        # survive long enough to ask Last.fm about the right one.
+        self._credits: dict[str, list[str]] = {}
 
     @property
     def history(self) -> TitleHistory:
@@ -169,6 +175,10 @@ class CuratedRadioEngine:
             return BatchResult(mode=mode, skipped_reason="no_seed_artist")
 
         seed = queue.seed_artist
+        # Remember the full credit before it is reduced to one name, so a
+        # duo the provider split can be asked about as a duo.
+        if len(queue.artists) == SPLIT_DUO_CREDITS:
+            self._credits[seed.lower()] = list(queue.artists)
         # A manual pick is a new station, so it re-anchors the session; a
         # refill continues the one already running.
         self._anchor(seed, restart=mode != MODE_REFILL)
@@ -246,9 +256,7 @@ class CuratedRadioEngine:
         if cache is not None and seed in cache:
             names = cache[seed]
         else:
-            names = await async_get_similar_artists(
-                self._session, settings.lastfm_api_key, seed, LASTFM_POOL_SIZE
-            )
+            names = await self._async_lookup_similar(seed)
             if cache is not None:
                 cache[seed] = names
         candidates = clean_similar_artists(names, seed)
@@ -270,6 +278,38 @@ class CuratedRadioEngine:
             [pair for pair in candidates if pair[0] in allowed],
             settings.max_artists,
             FAMILIARITY_EXPONENT.get(settings.familiarity, 1.0),
+        )
+
+    async def _async_lookup_similar(self, seed: str) -> list[tuple[str, float]]:
+        """Ask Last.fm about a seed, rejoining a duo the provider split.
+
+        Providers credit a duo as its two members, so Sonny & Cher's "The
+        Beat Goes On" arrives credited to Sonny and to Cher. The first
+        credit alone is a different act: Last.fm's "Sonny" is Skrillex,
+        whose given name is Sonny Moore, so picking a 1967 record seeded a
+        dubstep station off Skrillex, 3OH!3 and Sonny Moore.
+
+        Rejoining the pair asks about the act instead of about half of it.
+        When the two names are a one-off collaboration rather than a duo,
+        Last.fm's autocorrect resolves the pair back to the headline
+        artist, which is the answer the first credit would have given
+        anyway, so this is safe to try first and cheap to be wrong about.
+        """
+        key = self._settings.lastfm_api_key
+        credited = self._credits.get(seed.lower())
+        if credited and len(credited) == SPLIT_DUO_CREDITS:
+            joined = " & ".join(credited)
+            if joined.lower() != seed.lower():
+                names = await async_get_similar_artists(
+                    self._session, key, joined, LASTFM_POOL_SIZE
+                )
+                if names:
+                    _LOGGER.debug(
+                        "Asked Last.fm about %s rather than %s", joined, seed
+                    )
+                    return names
+        return await async_get_similar_artists(
+            self._session, key, seed, LASTFM_POOL_SIZE
         )
 
     def _track_cap(self, *, is_seed: bool) -> int:

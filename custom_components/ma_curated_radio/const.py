@@ -70,6 +70,12 @@ LASTFM_POOL_SIZE: Final = 25
 # left to go.
 SEARCH_LIMIT: Final = 25
 
+# How many credited artists make a track worth re-joining before asking
+# Last.fm about it. Two names is a duo the provider may have split; three
+# or more is a collaboration or a supergroup, where the first credit is
+# already the act and joining the rest would invent a name nobody uses.
+SPLIT_DUO_CREDITS: Final = 2
+
 # --- Batch modes -------------------------------------------------------------
 
 MODE_REPLACE: Final = "replace"
