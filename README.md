@@ -232,6 +232,19 @@ evaporates is not feedback.
   length, not its contents. Where the client is reachable, already-queued
   tracks are excluded too; where it is not, the repeat-memory window does
   the work on its own.
+- **There is no era filtering, and it is not an oversight.** Mixing an
+  artist's 2006 material with their 2022 material is a real weakness, and
+  the data to fix it is not there. Track search returns no year at all.
+  Fetching the album gets one, but it is the release year of *that
+  edition*: Den Harrow's "The Legend" reports 2008 for songs recorded
+  between 1984 and 1987, and a re-recorded single carries the year of the
+  re-recording. Current music usually sits on its original album so the
+  year is right; older music mostly arrives via compilations and remasters
+  so the year is wrong, and wrong in one direction. **Old songs look new.**
+  An era filter built on this would misjudge precisely the catalogue you
+  were trying to reach. Music Assistant's metadata has a single
+  `release_date` and no concept of an original release, so a correct
+  version needs an outside source such as MusicBrainz.
 
 ## Relationship to the blueprint version
 
