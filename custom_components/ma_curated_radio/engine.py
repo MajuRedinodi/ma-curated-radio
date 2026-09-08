@@ -25,6 +25,7 @@ from .const import (
     FAMILIARITY_EXPONENT,
     LASTFM_POOL_SIZE,
     MODE_REFILL,
+    PAIR_LISTENER_RATIO,
     PLAYLIST_CHUNK,
     PLAYLIST_MAX_ROUNDS,
     QUEUED_MEMORY,
@@ -50,7 +51,7 @@ from .filters import (
     weighted_sample,
 )
 from .history import TitleHistory
-from .lastfm import async_get_similar_artists
+from .lastfm import async_get_artist_listeners, async_get_similar_artists
 from .ma import (
     NativeClient,
     PlaylistUnsupportedError,
@@ -124,11 +125,11 @@ class CuratedRadioEngine:
         # comparison says, and that is what stops our own music from
         # re-anchoring the session and resetting the drift fence.
         self._queued: deque[str] = deque(maxlen=QUEUED_MEMORY)
-        # Artist credits, by the seed name they were credited under.
-        # Providers split a duo into its members, and the first member on
-        # their own is often a different act entirely, so the pair has to
-        # survive long enough to ask Last.fm about the right one.
-        self._credits: dict[str, list[str]] = {}
+        # The name to ask Last.fm about, for seeds whose credit needed
+        # resolving. Decided once when a station starts, because settling
+        # it costs two lookups and the answer cannot change while the
+        # same song is the reason the station exists.
+        self._alias: dict[str, str] = {}
 
     @property
     def history(self) -> TitleHistory:
@@ -175,21 +176,11 @@ class CuratedRadioEngine:
             return BatchResult(mode=mode, skipped_reason="no_seed_artist")
 
         seed = queue.seed_artist
-        # Remember the full credit before it is reduced to one name, so a
-        # duo the provider split can be asked about as a duo.
-        #
-        # Only on a pick, and always overwriting, because the pick is what
-        # defines the station. A duet that merely comes up later must not
-        # redefine it: "Die With A Smile" is credited to Lady Gaga and
-        # Bruno Mars, and Last.fm knows that pair as its own act whose
-        # neighbours are other duets rather than Lady Gaga's, so letting
-        # it through would quietly turn a Lady Gaga station into a
-        # collaborations station on the first refill.
+        # Settle which name Last.fm should be asked about, once, on the
+        # pick that starts the station. A duet that merely comes up later
+        # must not redefine it.
         if mode != MODE_REFILL:
-            if len(queue.artists) == SPLIT_DUO_CREDITS:
-                self._credits[seed.lower()] = list(queue.artists)
-            else:
-                self._credits.pop(seed.lower(), None)
+            await self._async_resolve_alias(seed, queue.artists)
         # A manual pick is a new station, so it re-anchors the session; a
         # refill continues the one already running.
         self._anchor(seed, restart=mode != MODE_REFILL)
@@ -291,34 +282,75 @@ class CuratedRadioEngine:
             FAMILIARITY_EXPONENT.get(settings.familiarity, 1.0),
         )
 
-    async def _async_lookup_similar(self, seed: str) -> list[tuple[str, float]]:
-        """Ask Last.fm about a seed, rejoining a duo the provider split.
+    async def _async_resolve_alias(self, seed: str, credited: list[str]) -> None:
+        """Decide whether a two-name credit is a duo or a collaboration.
 
-        Providers credit a duo as its two members, so Sonny & Cher's "The
-        Beat Goes On" arrives credited to Sonny and to Cher. The first
-        credit alone is a different act: Last.fm's "Sonny" is Skrillex,
-        whose given name is Sonny Moore, so picking a 1967 record seeded a
-        dubstep station off Skrillex, 3OH!3 and Sonny Moore.
+        Providers credit both the same way, as two artists on one track,
+        and both exist on Last.fm as an act in their own right, so the
+        names alone cannot separate them. Getting it wrong is expensive in
+        both directions:
 
-        Rejoining the pair asks about the act instead of about half of it.
-        When the two names are a one-off collaboration rather than a duo,
-        Last.fm's autocorrect resolves the pair back to the headline
-        artist, which is the answer the first credit would have given
-        anyway, so this is safe to try first and cheap to be wrong about.
+        * Treating a duo as two soloists asks about half an act. "The Beat
+          Goes On" is credited to Sonny and to Cher, and Last.fm's "Sonny"
+          is Skrillex, whose given name is Sonny Moore, so a 1967 record
+          seeded a dubstep station.
+        * Treating a collaboration as a duo asks about a footnote.
+          "Telephone" is credited to Lady Gaga and to Beyonce, and the
+          pair is its own Last.fm act whose neighbours are Gaga's pre-fame
+          bar band rather than her actual neighbours.
+
+        The audience tells them apart. A duo is how its members are known,
+        so the pair outdraws either name alone: Sonny & Cher have 528k
+        listeners against 181k for "Sonny". A duet is a footnote beside
+        either artist's own following: Lady Gaga & Beyonce have 34k
+        against Lady Gaga's 5.9 million. Three orders of magnitude sit
+        between those two cases, so the comparison needs no cleverness.
         """
+        key = seed.lower()
+        self._alias.pop(key, None)
+        if len(credited) != SPLIT_DUO_CREDITS or not self._settings.lastfm_api_key:
+            return
+        joined = " & ".join(credited)
+        if joined.lower() == key:
+            return
+
+        api_key = self._settings.lastfm_api_key
+        pair, alone = await asyncio.gather(
+            async_get_artist_listeners(self._session, api_key, joined),
+            async_get_artist_listeners(self._session, api_key, seed),
+        )
+        if pair and pair >= alone * PAIR_LISTENER_RATIO:
+            self._alias[key] = joined
+            _LOGGER.debug(
+                "%s is a duo (%s listeners against %s for %s alone); asking "
+                "Last.fm about the pair",
+                joined,
+                pair,
+                alone,
+                seed,
+            )
+            return
+        _LOGGER.debug(
+            "%s is a collaboration (%s listeners against %s for %s alone); "
+            "asking Last.fm about %s",
+            joined,
+            pair,
+            alone,
+            seed,
+            seed,
+        )
+
+    async def _async_lookup_similar(self, seed: str) -> list[tuple[str, float]]:
+        """Ask Last.fm about a seed, under its resolved name if it has one."""
         key = self._settings.lastfm_api_key
-        credited = self._credits.get(seed.lower())
-        if credited and len(credited) == SPLIT_DUO_CREDITS:
-            joined = " & ".join(credited)
-            if joined.lower() != seed.lower():
-                names = await async_get_similar_artists(
-                    self._session, key, joined, LASTFM_POOL_SIZE
-                )
-                if names:
-                    _LOGGER.debug(
-                        "Asked Last.fm about %s rather than %s", joined, seed
-                    )
-                    return names
+        asked = self._alias.get(seed.lower(), seed)
+        names = await async_get_similar_artists(
+            self._session, key, asked, LASTFM_POOL_SIZE
+        )
+        if names or asked == seed:
+            return names
+        # The pair looked like the act but Last.fm has no neighbours for
+        # it. Half an answer beats none.
         return await async_get_similar_artists(
             self._session, key, seed, LASTFM_POOL_SIZE
         )

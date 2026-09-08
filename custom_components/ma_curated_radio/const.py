@@ -76,6 +76,13 @@ SEARCH_LIMIT: Final = 25
 # already the act and joining the rest would invent a name nobody uses.
 SPLIT_DUO_CREDITS: Final = 2
 
+# How much of the first credit's audience the pair must hold before the
+# pair is treated as the act. Measured cases sit nowhere near the line:
+# Sonny & Cher draw 2.9 times "Sonny" alone, while Lady Gaga & Beyonce
+# draw 0.006 of Lady Gaga alone. Parity is simply the midpoint of a gap
+# three orders of magnitude wide, not a tuned figure.
+PAIR_LISTENER_RATIO: Final = 1.0
+
 # Placeholder option for the release dropdowns. A select entity with an
 # empty option list cannot render, and "nothing to release" is a state
 # worth showing rather than an empty control that looks broken.

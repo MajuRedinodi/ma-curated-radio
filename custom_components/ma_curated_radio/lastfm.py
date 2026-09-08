@@ -95,3 +95,41 @@ async def async_validate_api_key(
     name. An empty result for Cher means the key was rejected.
     """
     return bool(await async_get_similar_artists(session, api_key, "Cher", 1))
+
+
+async def async_get_artist_listeners(
+    session: aiohttp.ClientSession, api_key: str, artist: str
+) -> int:
+    """How many people Last.fm has scrobbling an artist. Zero if unknown.
+
+    Used to tell a duo apart from a collaboration. Both arrive from a
+    provider as two credited names, and both exist on Last.fm as their own
+    act, so the names alone cannot separate them. The audience can: a duo
+    is how its members are known, while a one-off duet is a footnote
+    beside either artist's own following.
+
+    Never raises: this only ever decides which of two names to ask about.
+    """
+    params = {
+        "method": "artist.getinfo",
+        "artist": artist,
+        "api_key": api_key,
+        "format": "json",
+        "autocorrect": "1",
+    }
+    try:
+        async with session.get(API_URL, params=params, timeout=TIMEOUT) as response:
+            if response.status != HTTPStatus.OK:
+                return 0
+            payload = await response.json(content_type=None)
+    except (aiohttp.ClientError, TimeoutError, ValueError) as err:
+        _LOGGER.debug("Last.fm artist lookup failed for %s: %s", artist, err)
+        return 0
+
+    if not isinstance(payload, dict) or "error" in payload:
+        return 0
+    stats = (payload.get("artist") or {}).get("stats") or {}
+    try:
+        return int(stats.get("listeners") or 0)
+    except (TypeError, ValueError):
+        return 0
