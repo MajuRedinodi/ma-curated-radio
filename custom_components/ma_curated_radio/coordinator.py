@@ -74,6 +74,7 @@ class CuratedRadioDetector:
         self._skips = skips
         self._expected_next = ""
         self._last_manual_pick: datetime | None = None
+        self._queue_items: int | None = None
         self._task: asyncio.Task[None] | None = None
 
     def apply_settings(self, settings: Settings) -> None:
@@ -185,6 +186,7 @@ class CuratedRadioDetector:
             # than trusting the snapshot taken above.
             post = await async_get_queue(self._hass, self._settings.player)
             self._expected_next = post.next_uri if post else ""
+            self._queue_items = post.items if post else queue.items
         except asyncio.CancelledError:
             raise
         except Exception:  # noqa: BLE001 - the listener has to survive anything
@@ -216,30 +218,45 @@ class CuratedRadioDetector:
             )
 
     def _is_bulk_load(self, queue: QueueSnapshot) -> bool:
-        """True if the whole queue came from somewhere else.
+        """True if the queue itself was replaced, rather than jumped within.
 
-        A manual pick is one track. A playlist or album load is many, and
-        choosing to play a playlist is a decision to hear that playlist
-        rather than an invitation to replace it.
+        A manual pick is one track. A playlist or album is many, and
+        choosing to play a playlist is a decision to hear it rather than an
+        invitation to replace it.
 
-        Judged on the queue's size rather than how much it grew, because
-        loading a playlist usually REPLACES the queue: swapping a
-        170-track queue for a 40-track playlist is a change of minus 130,
-        and a growth test sails straight past it.
+        Two measurements, because either alone gets a case wrong.
 
-        The second half matters just as much. A single track dropped into
-        our station leaves our music queued behind it, so if what plays
-        next is ours, one foreign track is exactly what it looks like.
-        Only when nothing that follows is ours did the queue really come
-        from elsewhere.
+        SIZE, because loading a playlist usually REPLACES the queue rather
+        than adding to it: swapping a 170-track queue for a 40-track
+        playlist is a change of minus 130, which a growth test sails past.
+
+        CHANGE, because size alone cannot see a pick made *during* a
+        playlist. Music Assistant inserts a picked track and jumps to it,
+        leaving the rest of the playlist queued behind, so the queue still
+        looks big and still looks foreign. What gives it away is that it
+        barely moved: inserting one track shifts the count by one, while
+        loading a playlist shifts it by hundreds.
+
+        Without a previous count, immediately after a restart, size has to
+        stand alone. Leaving a large unfamiliar queue alone is the safer
+        way to be wrong.
         """
         threshold = self._settings.bulk_tracks
         if threshold <= 0 or queue.items < threshold:
             return False
         if self._engine.was_queued(queue.next_uri):
             return False
+        moved = (
+            None
+            if self._queue_items is None
+            else abs(queue.items - self._queue_items)
+        )
+        if moved is not None and moved < threshold:
+            # Same queue, one track deep. Somebody jumped within it.
+            return False
         _LOGGER.debug(
-            "Queue holds %s tracks we did not choose; a bulk load, not a pick",
+            "Queue went from %s to %s tracks we did not choose; a bulk load, not a pick",
+            self._queue_items,
             queue.items,
         )
         return True
