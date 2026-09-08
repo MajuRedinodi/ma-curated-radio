@@ -30,6 +30,18 @@ HOLIDAY_TOKENS: Final = (
 # versions of the one collab song rather than real additional variety.
 COLLAB_MARKERS: Final = (",", " & ")
 
+# Spoken-word and filler entries that a genuine top-tracks ranking will
+# surface because they are recent and getting plays, but which nobody
+# wants queued. Duration catches most of it; these catch the long ones.
+NON_SONG_MARKERS: Final = (
+    "track by track",
+    "commentary",
+    "interlude",
+    "skit",
+    "voice memo",
+    "spoken word",
+)
+
 
 def base_title(name: str) -> str:
     """Normalise a track title for duplicate detection.
@@ -132,3 +144,24 @@ def sequence(lists: list[list[str]], max_consecutive: int = 2) -> list[str]:
         last = pick
 
     return ordered
+
+
+def is_too_short(duration: int, minimum: int) -> bool:
+    """Return True for anything too brief to be a song.
+
+    Commentary tracks, interludes and album skits run well under two
+    minutes. A duration of zero means the provider did not say, in which
+    case the track gets the benefit of the doubt.
+    """
+    return 0 < duration < minimum
+
+
+def is_non_song(name: str, version: str) -> bool:
+    """Return True for commentary and filler that runs long enough to pass.
+
+    Taylor Swift's "Track by Track" entries are the motivating case: they
+    are her talking about each song, they chart alongside the songs, and a
+    real top-tracks ranking puts them right at the top.
+    """
+    haystack = f"{name} {version}".lower()
+    return any(marker in haystack for marker in NON_SONG_MARKERS)

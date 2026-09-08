@@ -20,6 +20,7 @@ from .const import (
     CONF_MA_CONFIG_ENTRY_ID,
     CONF_MAX_ARTISTS,
     CONF_MAX_CONSECUTIVE,
+    CONF_MIN_DURATION,
     CONF_PLAYER,
     CONF_PROVIDER_FILTER,
     CONF_REFILL_THRESHOLD,
@@ -38,6 +39,7 @@ from .const import (
     DEFAULT_HISTORY_MINUTES,
     DEFAULT_MAX_ARTISTS,
     DEFAULT_MAX_CONSECUTIVE,
+    DEFAULT_MIN_DURATION,
     DEFAULT_PROVIDER_FILTER,
     DEFAULT_REFILL_THRESHOLD,
     DEFAULT_SEED_LEAN,
@@ -71,6 +73,7 @@ class Settings:
     use_native_top_tracks: bool
     seed_lean: str
     degrees: int
+    min_duration: int
     max_consecutive: int
     track_suppress_days: int
     artist_mute_days: int
@@ -112,6 +115,7 @@ class Settings:
             ),
             seed_lean=_seed_lean(merged.get(CONF_SEED_LEAN, DEFAULT_SEED_LEAN)),
             degrees=int(merged.get(CONF_DEGREES, DEFAULT_DEGREES)),
+            min_duration=int(merged.get(CONF_MIN_DURATION, DEFAULT_MIN_DURATION)),
             max_consecutive=int(
                 merged.get(CONF_MAX_CONSECUTIVE, DEFAULT_MAX_CONSECUTIVE)
             ),

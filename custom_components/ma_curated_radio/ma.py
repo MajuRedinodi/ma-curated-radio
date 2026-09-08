@@ -64,6 +64,7 @@ class TrackInfo:
     name: str
     version: str
     album: str
+    duration: int = 0
 
     @classmethod
     def from_item(cls, item: Any) -> TrackInfo:
@@ -73,6 +74,7 @@ class TrackInfo:
             name=text_of(item, "name"),
             version=text_of(item, "version"),
             album=text_of(field_of(item, "album"), "name"),
+            duration=int(field_of(item, "duration", 0) or 0),
         )
 
 

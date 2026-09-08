@@ -34,6 +34,8 @@ from .filters import (
     clean_similar_artists,
     is_holiday,
     is_live,
+    is_non_song,
+    is_too_short,
     matches_provider,
     sequence,
 )
@@ -204,7 +206,10 @@ class CuratedRadioEngine:
         )
 
     async def _async_similar_artists(
-        self, seed: str, cache: dict[str, list[str]] | None = None
+        self,
+        seed: str,
+        cache: dict[str, list[str]] | None = None,
+        session: ListeningSession | None = None,
     ) -> list[str]:
         """Pick a shuffled, capped set of Last.fm-similar artists.
 
@@ -228,13 +233,14 @@ class CuratedRadioEngine:
         muted = self._skips.muted_artists
         candidates = [name for name in candidates if name.lower() not in muted]
 
+        active = session or self._listening
         cap = self._degree_cap
-        allowed = self._listening.eligible(seed, candidates, cap)
-        if not allowed and self._listening.origin and seed != self._listening.origin:
+        allowed = active.eligible(seed, candidates, cap)
+        if not allowed and active.origin and seed != active.origin:
             # At the edge of the fence with nothing eligible nearby. Pull
             # back toward the origin rather than stalling out there.
             _LOGGER.debug("Nothing within %s degrees of %s; falling back", cap, seed)
-            return await self._async_similar_artists(self._listening.origin, cache)
+            return await self._async_similar_artists(active.origin, cache, active)
 
         random.shuffle(allowed)
         return allowed[: settings.max_artists]
@@ -298,6 +304,12 @@ class CuratedRadioEngine:
             if not track.uri or track.uri == current_uri or track.uri in excluded_uris:
                 continue
             if not matches_provider(track.uri, settings.provider_filter):
+                continue
+            # Commentary, interludes and skits chart alongside the songs,
+            # so a genuine top-tracks ranking hands them straight over.
+            if is_too_short(track.duration, settings.min_duration):
+                continue
+            if is_non_song(track.name, track.version):
                 continue
             if settings.filter_live and is_live(track.name, track.version):
                 continue
@@ -390,9 +402,12 @@ class CuratedRadioEngine:
         if not seed_artist:
             return PlaylistResult(name=name, error="no_seed_artist")
 
-        # A build is its own station, anchored to whatever seeded it, so it
-        # gets the same fence a listening session does.
-        self._anchor(seed_artist, restart=True)
+        # A build gets its own session rather than borrowing the live one.
+        # Sharing meant a manual pick mid-build re-anchored the fence
+        # underneath it, so a long playlist could end up half anchored to
+        # one artist and half to another with nothing to show for it.
+        build_session = ListeningSession.start(seed_artist)
+        _LOGGER.debug("Playlist session anchored to %s", seed_artist)
 
         ordered: list[str] = []
         seen_titles = self._history.current() | self._skips.suppressed_titles
@@ -410,7 +425,9 @@ class CuratedRadioEngine:
             round_artists = [
                 current_seed,
                 *await self._async_similar_artists(
-                    self._pool_seed(current_seed), similar_cache
+                    self._pool_seed(current_seed, build_session),
+                    similar_cache,
+                    build_session,
                 ),
             ]
             per_artist: list[list[str]] = []
@@ -503,7 +520,7 @@ class CuratedRadioEngine:
         return max(0, self._settings.degrees)
 
     def _anchor(self, artist: str, *, restart: bool) -> None:
-        """Establish or continue the session anchored to an artist.
+        """Establish or continue the live session anchored to an artist.
 
         A manual pick restarts it: you chose something else, so that is a
         new station. A session also restarts once it has gone stale, so
@@ -515,17 +532,20 @@ class CuratedRadioEngine:
             or self._listening.is_stale(SESSION_EXPIRY_HOURS)
         ):
             self._listening = ListeningSession.start(artist)
-            _LOGGER.debug("Session anchored to %s", artist)
+            _LOGGER.debug("Queue session anchored to %s", artist)
         else:
             self._listening.touch()
 
-    def _pool_seed(self, current_artist: str) -> str:
+    def _pool_seed(
+        self, current_artist: str, session: ListeningSession | None = None
+    ) -> str:
         """Which artist the similar-artist pool is drawn from.
 
         Artist radio always draws from the artist you picked, however far
         into the evening it is. Everything else draws from what is playing
         and relies on the degree fence to stay in the neighbourhood.
         """
-        if self._settings.seed_lean == SEED_LEAN_ARTIST and self._listening.origin:
-            return self._listening.origin
+        active = session or self._listening
+        if self._settings.seed_lean == SEED_LEAN_ARTIST and active.origin:
+            return active.origin
         return current_artist

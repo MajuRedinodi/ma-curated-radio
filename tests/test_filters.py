@@ -10,6 +10,8 @@ from filters import (
     clean_similar_artists,
     is_holiday,
     is_live,
+    is_non_song,
+    is_too_short,
     matches_provider,
     sequence,
 )
@@ -132,3 +134,35 @@ def _longest_run(ordered: list[str]) -> int:
         previous = item[0]
         longest = max(longest, run)
     return longest
+
+
+@pytest.mark.parametrize(
+    ("duration", "minimum", "expected"),
+    [
+        (38, 90, True),
+        (30, 90, True),
+        (67, 90, True),
+        (178, 90, False),
+        (90, 90, False),
+        # Zero means the provider did not say; assume it is a song.
+        (0, 90, False),
+        (30, 0, False),
+    ],
+)
+def test_is_too_short(duration, minimum, expected):
+    assert is_too_short(duration, minimum) is expected
+
+
+@pytest.mark.parametrize(
+    ("name", "version", "expected"),
+    [
+        ("Wi$h Li$t (Track by Track)", "", True),
+        ("Wood", "Track by Track", True),
+        ("Something", "Commentary", True),
+        ("Interlude II", "", True),
+        ("Cruel Summer", "", False),
+        ("Shake It Off", "Remastered", False),
+    ],
+)
+def test_is_non_song(name, version, expected):
+    assert is_non_song(name, version) is expected
