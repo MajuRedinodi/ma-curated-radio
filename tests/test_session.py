@@ -62,3 +62,27 @@ def test_unknown_parent_is_treated_as_the_frontier():
     """Somewhere the session never sanctioned cannot become free ground."""
     s = ListeningSession.start("Taylor Swift")
     assert s.eligible("Some Stranger", ["Metallica"], 3) == []
+
+
+def test_re_anchoring_defeats_the_fence():
+    """Why a false manual pick was worse than no fence at all.
+
+    The fence counts degrees from the session origin, and a manual pick
+    re-anchors that origin. So a spurious pick restarts the count from
+    wherever the music already drifted to, and three of them walk anywhere
+    while every individual step stays inside the limit.
+    """
+    walked = ["Lady Gaga", "Dua Lipa", "Purple Disco Machine", "Duke Dumont"]
+
+    # Re-anchoring at every step: each hop is one degree from a fresh
+    # origin, so nothing is ever out of bounds and the walk never ends.
+    for parent, child in zip(walked, walked[1:], strict=False):
+        reset = ListeningSession.start(parent)
+        assert reset.eligible(parent, [child], 3) == [child]
+
+    # Holding one origin: the same walk runs out of rope.
+    held = ListeningSession.start("Lady Gaga")
+    for parent, child in zip(walked, walked[1:], strict=False):
+        held.eligible(parent, [child], 3)
+    assert held.degree_of("Duke Dumont") == 3
+    assert held.eligible("Duke Dumont", ["Jax Jones"], 3) == []

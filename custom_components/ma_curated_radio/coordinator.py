@@ -149,10 +149,25 @@ class CuratedRadioDetector:
             if queue is None:
                 return
 
-            if self._expected_next and not self._in_cooldown():
-                if queue.current_uri != self._expected_next:
+            # A track this integration queued is never a manual pick, even
+            # when it fails the expected-next comparison. That comparison
+            # goes wrong for plenty of innocent reasons (a rapid Previous,
+            # a track that would not play, a queue rewrite landing mid
+            # change), and every false positive used to re-anchor the drift
+            # fence to wherever the music had already got to, which is how
+            # a Lady Gaga session ended up playing UK house.
+            ours = self._engine.was_queued(queue.current_uri)
+            picked = (
+                bool(self._expected_next)
+                and queue.current_uri != self._expected_next
+                and not ours
+            )
+
+            if not self._in_cooldown():
+                if picked:
                     # Someone jumped playback. Let the player settle before
                     # rewriting the queue underneath it.
+                    _LOGGER.debug("Manual pick: %s", queue.current_uri)
                     self._last_manual_pick = dt_util.utcnow()
                     await asyncio.sleep(self._settings.settle_seconds)
                     await self._engine.async_run(MODE_REPLACE)

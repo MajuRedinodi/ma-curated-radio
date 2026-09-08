@@ -221,3 +221,9 @@ EXPLICIT_PREFER: Final = "prefer"
 EXPLICIT_MODES: Final = [EXPLICIT_ANY, EXPLICIT_CLEAN, EXPLICIT_PREFER]
 
 DEFAULT_EXPLICIT: Final = EXPLICIT_ANY
+
+# How many recently enqueued track URIs to remember. Used to tell our own
+# music apart from a genuine manual pick: a track we queued is never a
+# pick, however the expected-next comparison lands. Comfortably more than
+# any queue this builds.
+QUEUED_MEMORY: Final = 500

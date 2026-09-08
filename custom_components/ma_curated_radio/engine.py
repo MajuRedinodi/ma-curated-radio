@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+from collections import deque
 from dataclasses import dataclass, field
 
 import aiohttp
@@ -26,6 +27,7 @@ from .const import (
     MODE_REFILL,
     PLAYLIST_CHUNK,
     PLAYLIST_MAX_ROUNDS,
+    QUEUED_MEMORY,
     SEED_LEAN_ARTIST,
     SEED_LEAN_DISCOVERY,
     SEED_LEAN_MULTIPLIER,
@@ -115,11 +117,20 @@ class CuratedRadioEngine:
         self._playlist_lock = asyncio.Lock()
         self._last_batch: BatchResult | None = None
         self._listening = ListeningSession()
+        # Everything this integration has put in the queue recently. A
+        # track we chose is never a manual pick, whatever the expected-next
+        # comparison says, and that is what stops our own music from
+        # re-anchoring the session and resetting the drift fence.
+        self._queued: deque[str] = deque(maxlen=QUEUED_MEMORY)
 
     @property
     def history(self) -> TitleHistory:
         """The rolling title history, exposed for diagnostics and tests."""
         return self._history
+
+    def was_queued(self, uri: str) -> bool:
+        """True if this integration put that track in the queue."""
+        return bool(uri) and uri in self._queued
 
     @property
     def last_batch(self) -> BatchResult | None:
@@ -394,6 +405,7 @@ class CuratedRadioEngine:
             )
             return []
 
+        self._queued.append(uris[0])
         enqueued = [uris[0]]
         for uri in uris[1:]:
             try:
@@ -401,6 +413,7 @@ class CuratedRadioEngine:
             except Exception as err:  # noqa: BLE001 - one bad track, keep going
                 _LOGGER.debug("Could not enqueue %s: %s", uri, err)
                 continue
+            self._queued.append(uri)
             enqueued.append(uri)
         return enqueued
 
