@@ -113,6 +113,12 @@
           "clean": "Clean only",
           "prefer": "Prefer explicit"
         }
+      },
+      "muted_artist": {
+        "name": "Muted artist to release"
+      },
+      "suppressed_track": {
+        "name": "Song to release"
       }
     },
     "number": {
@@ -155,6 +161,12 @@
       },
       "unmute_all": {
         "name": "Unmute all artists"
+      },
+      "unmute_selected": {
+        "name": "Unmute selected artist"
+      },
+      "allow_selected_track": {
+        "name": "Allow selected song"
       }
     }
   },
@@ -256,6 +268,9 @@
     },
     "not_muted": {
       "message": "{artist} is not currently muted."
+    },
+    "not_suppressed": {
+      "message": "{track} is not currently being held back."
     },
     "playlists_unsupported": {
       "message": "This Music Assistant version does not expose playlist management to Home Assistant, so playlists cannot be built. Everything else is unaffected."

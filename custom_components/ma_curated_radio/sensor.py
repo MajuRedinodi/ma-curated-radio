@@ -61,11 +61,17 @@ class MutedArtistsSensor(CuratedRadioEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Muted artist names, when each mute lifts, and skip totals."""
-        muted = self.runtime.skips.muted_display
+        skips = self.runtime.skips
+        muted = skips.muted_display
+        suppressed = skips.suppressed_display
         return {
             "artists": sorted(muted),
             "muted_until": muted,
-            "suppressed_tracks": self.runtime.skips.suppressed_count,
+            "suppressed_tracks": skips.suppressed_count,
+            # The titles as well as the count, so the list is inspectable
+            # from a dashboard rather than being a number you cannot act on.
+            "tracks": list(suppressed),
+            "tracks_until": suppressed,
         }
 
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
@@ -23,11 +23,13 @@ from .const import (
     ATTR_NAME,
     ATTR_PROVIDER,
     ATTR_SEED_ARTIST,
+    ATTR_TRACK,
     DEFAULT_PLAYLIST_LENGTH,
     DEFAULT_PLAYLIST_NAME,
     DOMAIN,
     MODE_REPLACE,
     MODES,
+    SERVICE_ALLOW_TRACK,
     SERVICE_BUILD_PLAYLIST,
     SERVICE_FORGET_FEEDBACK,
     SERVICE_RUN_BATCH,
@@ -57,6 +59,7 @@ RUN_BATCH_SCHEMA = vol.Schema(
     {**_ENTRY_FIELD, vol.Optional(ATTR_MODE, default=MODE_REPLACE): vol.In(MODES)}
 )
 UNMUTE_ARTIST_SCHEMA = vol.Schema({**_ENTRY_FIELD, vol.Required(ATTR_ARTIST): cv.string})
+ALLOW_TRACK_SCHEMA = vol.Schema({**_ENTRY_FIELD, vol.Required(ATTR_TRACK): cv.string})
 BUILD_PLAYLIST_SCHEMA = vol.Schema(
     {
         **_ENTRY_FIELD,
@@ -72,6 +75,18 @@ FORGET_FEEDBACK_SCHEMA = vol.Schema(_ENTRY_FIELD)
 
 
 @dataclass(slots=True)
+class Picked:
+    """Which remembered entry the release dropdowns are pointing at.
+
+    Deliberately not persisted. It is a cursor into a list, not a
+    setting, and the list it points into is rebuilt on every restart.
+    """
+
+    artist: str = ""
+    track: str = ""
+
+
+@dataclass(slots=True)
 class RuntimeData:
     """Live objects for one configured player."""
 
@@ -79,6 +94,10 @@ class RuntimeData:
     engine: CuratedRadioEngine
     detector: CuratedRadioDetector
     skips: SkipMemory
+    # Which artist and track the release dropdowns are pointing at. Held
+    # here rather than on the select entities so the buttons that act on
+    # them do not have to reach across the entity registry to find out.
+    picked: Picked = field(default_factory=Picked)
 
     def apply(self, settings: Settings) -> None:
         """Adopt changed settings in place.
@@ -105,6 +124,12 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         SERVICE_UNMUTE_ARTIST,
         _make_unmute_artist(hass),
         schema=UNMUTE_ARTIST_SCHEMA,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_ALLOW_TRACK,
+        _make_allow_track(hass),
+        schema=ALLOW_TRACK_SCHEMA,
     )
     hass.services.async_register(
         DOMAIN,
@@ -222,6 +247,24 @@ def _make_unmute_artist(hass: HomeAssistant):
         async_dispatcher_send(hass, signal_update(entry.entry_id))
 
     return _unmute_artist
+
+
+def _make_allow_track(hass: HomeAssistant):
+    """Build the allow_track action handler."""
+
+    async def _allow_track(call: ServiceCall) -> None:
+        """Let one held-off track be queued again."""
+        entry = _resolve(hass, call.data.get(ATTR_CONFIG_ENTRY_ID))
+        track = call.data[ATTR_TRACK]
+        if not await entry.runtime_data.skips.async_allow_track(track):
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="not_suppressed",
+                translation_placeholders={"track": track},
+            )
+        async_dispatcher_send(hass, signal_update(entry.entry_id))
+
+    return _allow_track
 
 
 def _make_forget_feedback(hass: HomeAssistant):

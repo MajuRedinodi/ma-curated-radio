@@ -76,6 +76,11 @@ SEARCH_LIMIT: Final = 25
 # already the act and joining the rest would invent a name nobody uses.
 SPLIT_DUO_CREDITS: Final = 2
 
+# Placeholder option for the release dropdowns. A select entity with an
+# empty option list cannot render, and "nothing to release" is a state
+# worth showing rather than an empty control that looks broken.
+NOTHING_REMEMBERED: Final = "Nothing to release"
+
 # --- Batch modes -------------------------------------------------------------
 
 MODE_REPLACE: Final = "replace"
@@ -135,8 +140,10 @@ CONF_ENABLED: Final = "enabled"
 DEFAULT_ENABLED: Final = True
 
 SERVICE_UNMUTE_ARTIST: Final = "unmute_artist"
+SERVICE_ALLOW_TRACK: Final = "allow_track"
 SERVICE_FORGET_FEEDBACK: Final = "forget_feedback"
 ATTR_ARTIST: Final = "artist"
+ATTR_TRACK: Final = "track"
 
 
 def signal_update(entry_id: str) -> str:

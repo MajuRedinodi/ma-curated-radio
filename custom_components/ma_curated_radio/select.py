@@ -18,6 +18,7 @@ from .const import (
     DEFAULT_SEED_LEAN,
     EXPLICIT_MODES,
     FAMILIARITIES,
+    NOTHING_REMEMBERED,
     SEED_LEANS,
 )
 from .entity import CuratedRadioEntity
@@ -33,7 +34,13 @@ async def async_setup_entry(
 ) -> None:
     """Set up the selects."""
     async_add_entities(
-        [StationStyleSelect(entry), FamiliaritySelect(entry), ExplicitSelect(entry)]
+        [
+            StationStyleSelect(entry),
+            FamiliaritySelect(entry),
+            ExplicitSelect(entry),
+            MutedArtistSelect(entry),
+            SuppressedTrackSelect(entry),
+        ]
     )
 
 
@@ -108,3 +115,104 @@ class StationStyleSelect(CuratedRadioEntity, SelectEntity):
     async def async_select_option(self, option: str) -> None:
         """Change the station style."""
         self._write_option(CONF_SEED_LEAN, option)
+
+
+class _ReleaseSelect(CuratedRadioEntity, SelectEntity):
+    """Base for the dropdowns that point at one remembered entry.
+
+    A dashboard cannot put a button next to each row of a templated list,
+    because card actions cannot be templated. A dropdown of what is
+    currently remembered, paired with a button that acts on the choice, is
+    the native way to release one thing at a time.
+
+    The options are rebuilt from the skip memory on every read, so an
+    entry released elsewhere disappears here without anything to keep in
+    sync. When nothing is remembered the list is a single placeholder,
+    since a select with no options cannot render.
+    """
+
+    _attr_entity_category = EntityCategory.CONFIG
+
+    @property
+    def _choices(self) -> list[str]:
+        """Whatever is currently remembered, most recent expiry last."""
+        raise NotImplementedError
+
+    @property
+    def _chosen(self) -> str:
+        """The stored cursor for this dropdown."""
+        raise NotImplementedError
+
+    def _store(self, value: str) -> None:
+        """Move the cursor."""
+        raise NotImplementedError
+
+    @property
+    def options(self) -> list[str]:
+        """Current entries, or a placeholder when there are none."""
+        return self._choices or [NOTHING_REMEMBERED]
+
+    @property
+    def current_option(self) -> str:
+        """The chosen entry, falling back to the first still present.
+
+        A cursor left pointing at something already released would make
+        the entity invalid, so it lands on whatever is at the top instead.
+        """
+        options = self.options
+        return self._chosen if self._chosen in options else options[0]
+
+    async def async_select_option(self, option: str) -> None:
+        """Point at a different entry."""
+        self._store(option)
+        self.async_write_ha_state()
+
+
+class MutedArtistSelect(_ReleaseSelect):
+    """Which muted artist the unmute button will release."""
+
+    _attr_translation_key = "muted_artist"
+    _attr_icon = "mdi:account-cancel"
+
+    def __init__(self, entry: MaCuratedRadioConfigEntry) -> None:
+        """Bind to the skip memory."""
+        super().__init__(entry, "muted_artist")
+
+    @property
+    def _choices(self) -> list[str]:
+        """Artists currently muted."""
+        return self.runtime.skips.muted_labels
+
+    @property
+    def _chosen(self) -> str:
+        """Cursor into the muted list."""
+        return self.runtime.picked.artist
+
+    def _store(self, value: str) -> None:
+        """Move the muted-artist cursor."""
+        self.runtime.picked.artist = value
+
+
+class SuppressedTrackSelect(_ReleaseSelect):
+    """Which held-off track the allow button will release."""
+
+    _attr_translation_key = "suppressed_track"
+    _attr_icon = "mdi:music-note-off"
+
+    def __init__(self, entry: MaCuratedRadioConfigEntry) -> None:
+        """Bind to the skip memory."""
+        super().__init__(entry, "suppressed_track")
+
+    @property
+    def _choices(self) -> list[str]:
+        """Tracks currently held off after being skipped."""
+        return self.runtime.skips.suppressed_labels
+
+    @property
+    def _chosen(self) -> str:
+        """Cursor into the held-off list."""
+        return self.runtime.picked.track
+
+    def _store(self, value: str) -> None:
+        """Move the held-off-track cursor."""
+        self.runtime.picked.track = value

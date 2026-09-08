@@ -208,7 +208,9 @@ class CuratedRadioDetector:
             outgoing.duration,
         )
         muted = await self._skips.async_record_skip(
-            base_title(outgoing.title), outgoing.artist
+            base_title(outgoing.title),
+            outgoing.artist,
+            label=" by ".join(p for p in (outgoing.title, outgoing.artist) if p),
         )
         if muted:
             _LOGGER.info(

@@ -25,6 +25,18 @@ unmute_artist:
       example: Maisie Peters
       selector:
         text:
+allow_track:
+  fields:
+    config_entry_id:
+      required: false
+      selector:
+        config_entry:
+          integration: ma_curated_radio
+    track:
+      required: true
+      example: Bad Romance by Lady Gaga
+      selector:
+        text:
 forget_feedback:
   fields:
     config_entry_id:

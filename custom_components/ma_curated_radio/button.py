@@ -23,7 +23,14 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up the buttons."""
-    async_add_entities([BuildBatchButton(entry), UnmuteAllButton(entry)])
+    async_add_entities(
+        [
+            BuildBatchButton(entry),
+            UnmuteAllButton(entry),
+            UnmuteSelectedButton(entry),
+            AllowSelectedTrackButton(entry),
+        ]
+    )
 
 
 class BuildBatchButton(CuratedRadioEntity, ButtonEntity):
@@ -55,4 +62,53 @@ class UnmuteAllButton(CuratedRadioEntity, ButtonEntity):
     async def async_press(self) -> None:
         """Lift every artist mute."""
         await self.runtime.skips.async_unmute_all()
+        async_dispatcher_send(self.hass, signal_update(self._entry.entry_id))
+
+
+class UnmuteSelectedButton(CuratedRadioEntity, ButtonEntity):
+    """Release just the artist the dropdown is pointing at."""
+
+    _attr_translation_key = "unmute_selected"
+    _attr_icon = "mdi:account-arrow-left"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, entry: MaCuratedRadioConfigEntry) -> None:
+        """Bind to the skip memory."""
+        super().__init__(entry, "unmute_selected")
+
+    async def async_press(self) -> None:
+        """Lift the mute on the chosen artist.
+
+        A cursor that has never been moved is empty, which is the common
+        case when there is exactly one entry and nobody touched the
+        dropdown, so fall back to the first thing on the list.
+        """
+        artists = self.runtime.skips.muted_labels
+        chosen = self.runtime.picked.artist or (artists[0] if artists else "")
+        if not chosen or chosen not in artists:
+            return
+        await self.runtime.skips.async_unmute(chosen)
+        self.runtime.picked.artist = ""
+        async_dispatcher_send(self.hass, signal_update(self._entry.entry_id))
+
+
+class AllowSelectedTrackButton(CuratedRadioEntity, ButtonEntity):
+    """Release just the track the dropdown is pointing at."""
+
+    _attr_translation_key = "allow_selected_track"
+    _attr_icon = "mdi:music-note-plus"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, entry: MaCuratedRadioConfigEntry) -> None:
+        """Bind to the skip memory."""
+        super().__init__(entry, "allow_selected_track")
+
+    async def async_press(self) -> None:
+        """Let the chosen track be queued again."""
+        tracks = self.runtime.skips.suppressed_labels
+        chosen = self.runtime.picked.track or (tracks[0] if tracks else "")
+        if not chosen or chosen not in tracks:
+            return
+        await self.runtime.skips.async_allow_track(chosen)
+        self.runtime.picked.track = ""
         async_dispatcher_send(self.hass, signal_update(self._entry.entry_id))
