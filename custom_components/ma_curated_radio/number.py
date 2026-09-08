@@ -16,11 +16,13 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .const import (
     CONF_ARTIST_STRIKE_LIMIT,
+    CONF_DEGREES,
     CONF_MAX_ARTISTS,
     CONF_MAX_CONSECUTIVE,
     CONF_REFILL_THRESHOLD,
     CONF_TRACKS_PER_ARTIST,
     DEFAULT_ARTIST_STRIKE_LIMIT,
+    DEFAULT_DEGREES,
     DEFAULT_MAX_ARTISTS,
     DEFAULT_MAX_CONSECUTIVE,
     DEFAULT_REFILL_THRESHOLD,
@@ -60,6 +62,16 @@ NUMBERS: tuple[CuratedRadioNumberDescription, ...] = (
         mode=NumberMode.BOX,
         option_key=CONF_TRACKS_PER_ARTIST,
         default=DEFAULT_TRACKS_PER_ARTIST,
+    ),
+    CuratedRadioNumberDescription(
+        key="degrees",
+        translation_key="degrees",
+        native_min_value=0,
+        native_max_value=6,
+        native_step=1,
+        mode=NumberMode.BOX,
+        option_key=CONF_DEGREES,
+        default=DEFAULT_DEGREES,
     ),
     CuratedRadioNumberDescription(
         key="max_consecutive",

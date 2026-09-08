@@ -20,6 +20,7 @@ from .const import (
     CONF_ARTIST_STRIKE_LIMIT,
     CONF_COOLDOWN_ENTITY,
     CONF_COOLDOWN_SECONDS,
+    CONF_DEGREES,
     CONF_FILTER_HOLIDAY,
     CONF_FILTER_LIVE,
     CONF_HISTORY_MINUTES,
@@ -38,6 +39,7 @@ from .const import (
     DEFAULT_ARTIST_MUTE_DAYS,
     DEFAULT_ARTIST_STRIKE_LIMIT,
     DEFAULT_COOLDOWN_SECONDS,
+    DEFAULT_DEGREES,
     DEFAULT_FILTER_HOLIDAY,
     DEFAULT_FILTER_LIVE,
     DEFAULT_HISTORY_MINUTES,
@@ -104,6 +106,10 @@ def _options_schema(current: dict[str, Any]) -> vol.Schema:
                     mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             ),
+            vol.Required(
+                CONF_DEGREES,
+                default=value(CONF_DEGREES, DEFAULT_DEGREES),
+            ): _number(0, 6),
             vol.Required(
                 CONF_MAX_CONSECUTIVE,
                 default=value(CONF_MAX_CONSECUTIVE, DEFAULT_MAX_CONSECUTIVE),
@@ -177,6 +183,7 @@ def _coerce_ints(data: dict[str, Any]) -> dict[str, Any]:
         CONF_HISTORY_MINUTES,
         CONF_SETTLE_SECONDS,
         CONF_COOLDOWN_SECONDS,
+        CONF_DEGREES,
         CONF_MAX_CONSECUTIVE,
         CONF_TRACK_SUPPRESS_DAYS,
         CONF_ARTIST_STRIKE_LIMIT,

@@ -11,6 +11,7 @@ from .const import (
     CONF_ARTIST_STRIKE_LIMIT,
     CONF_COOLDOWN_ENTITY,
     CONF_COOLDOWN_SECONDS,
+    CONF_DEGREES,
     CONF_ENABLED,
     CONF_FILTER_HOLIDAY,
     CONF_FILTER_LIVE,
@@ -30,6 +31,7 @@ from .const import (
     DEFAULT_ARTIST_MUTE_DAYS,
     DEFAULT_ARTIST_STRIKE_LIMIT,
     DEFAULT_COOLDOWN_SECONDS,
+    DEFAULT_DEGREES,
     DEFAULT_ENABLED,
     DEFAULT_FILTER_HOLIDAY,
     DEFAULT_FILTER_LIVE,
@@ -43,6 +45,8 @@ from .const import (
     DEFAULT_TRACK_SUPPRESS_DAYS,
     DEFAULT_TRACKS_PER_ARTIST,
     DEFAULT_USE_NATIVE_TOP_TRACKS,
+    LEGACY_SEED_LEANS,
+    SEED_LEANS,
 )
 
 
@@ -66,6 +70,7 @@ class Settings:
     filter_holiday: bool
     use_native_top_tracks: bool
     seed_lean: str
+    degrees: int
     max_consecutive: int
     track_suppress_days: int
     artist_mute_days: int
@@ -105,7 +110,8 @@ class Settings:
             use_native_top_tracks=bool(
                 merged.get(CONF_USE_NATIVE_TOP_TRACKS, DEFAULT_USE_NATIVE_TOP_TRACKS)
             ),
-            seed_lean=str(merged.get(CONF_SEED_LEAN, DEFAULT_SEED_LEAN)),
+            seed_lean=_seed_lean(merged.get(CONF_SEED_LEAN, DEFAULT_SEED_LEAN)),
+            degrees=int(merged.get(CONF_DEGREES, DEFAULT_DEGREES)),
             max_consecutive=int(
                 merged.get(CONF_MAX_CONSECUTIVE, DEFAULT_MAX_CONSECUTIVE)
             ),
@@ -119,3 +125,10 @@ class Settings:
                 merged.get(CONF_ARTIST_STRIKE_LIMIT, DEFAULT_ARTIST_STRIKE_LIMIT)
             ),
         )
+
+
+def _seed_lean(value: object) -> str:
+    """Normalise a station style, carrying old names forward."""
+    name = str(value or "")
+    name = LEGACY_SEED_LEANS.get(name, name)
+    return name if name in SEED_LEANS else DEFAULT_SEED_LEAN

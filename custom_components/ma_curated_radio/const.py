@@ -71,20 +71,25 @@ CONF_TRACK_SUPPRESS_DAYS: Final = "track_suppress_days"
 CONF_ARTIST_MUTE_DAYS: Final = "artist_mute_days"
 CONF_ARTIST_STRIKE_LIMIT: Final = "artist_strike_limit"
 
-# How much of a batch the seed artist gets. "artist" is artist radio, where
-# picking Taylor should mostly get you Taylor. "format" is a station that
-# merely happens to play her.
-SEED_LEAN_FORMAT: Final = "format"
-SEED_LEAN_BALANCED: Final = "balanced"
+# Station style governs two things at once: how much of a batch the seed
+# artist gets, and how far a session may wander from where it started.
+# They are one control because a mode that differs on only one of them is
+# not a different kind of station.
 SEED_LEAN_ARTIST: Final = "artist"
-SEED_LEANS: Final = [SEED_LEAN_FORMAT, SEED_LEAN_BALANCED, SEED_LEAN_ARTIST]
+SEED_LEAN_BALANCED: Final = "balanced"
+SEED_LEAN_DISCOVERY: Final = "discovery"
+SEED_LEANS: Final = [SEED_LEAN_ARTIST, SEED_LEAN_BALANCED, SEED_LEAN_DISCOVERY]
 SEED_LEAN_MULTIPLIER: Final = {
-    SEED_LEAN_FORMAT: 1.0,
-    SEED_LEAN_BALANCED: 1.5,
     SEED_LEAN_ARTIST: 2.0,
+    SEED_LEAN_BALANCED: 1.5,
+    SEED_LEAN_DISCOVERY: 1.0,
 }
 
-DEFAULT_SEED_LEAN: Final = SEED_LEAN_FORMAT
+# "format" was the old name for what is now discovery: even seed share,
+# no limit on wandering. Same behaviour, so old entries carry over.
+LEGACY_SEED_LEANS: Final = {"format": SEED_LEAN_DISCOVERY}
+
+DEFAULT_SEED_LEAN: Final = SEED_LEAN_BALANCED
 DEFAULT_MAX_CONSECUTIVE: Final = 2
 DEFAULT_TRACK_SUPPRESS_DAYS: Final = 30
 DEFAULT_ARTIST_MUTE_DAYS: Final = 30
@@ -127,3 +132,19 @@ PLAYLIST_CHUNK: Final = 25
 # Ceiling on reseed rounds, so an artist whose neighbours all come back
 # empty cannot spin forever chasing a length it will never reach.
 PLAYLIST_MAX_ROUNDS: Final = 25
+
+# --- Drift rails -------------------------------------------------------------
+
+CONF_DEGREES: Final = "degrees"
+
+# Degrees of separation from the artist that started the session, in the
+# Six Degrees of Kevin Bacon sense. Observed drift on a real build ran
+# Taylor Swift, Maisie Peters, Lorde, Katy Perry, Ke$ha, Selena Gomez,
+# Anitta. Three stops it at Katy Perry, which is still a station that
+# plays Taylor Swift. Six is Brazilian funk.
+DEFAULT_DEGREES: Final = 3
+
+# A session is the run of listening since a manual pick. After this long
+# without a batch, the next one starts fresh rather than staying anchored
+# to whatever was playing yesterday.
+SESSION_EXPIRY_HOURS: Final = 6

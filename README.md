@@ -76,7 +76,8 @@ button. Defaults in brackets.
 |---|---|
 | Similar artists per batch [3] | How many Last.fm-similar artists join the seed artist. Zero keeps every batch to the seed artist alone. |
 | Tracks per artist [3] | How many tracks to take from each artist. The seed may get more, depending on station style. |
-| Station style [format] | **Artist radio** leans hard on whoever you picked, the way artist radio on a streaming service does. **Format radio** treats them as one act among several, like a station that happens to play them. **Balanced** sits between. |
+| Station style [balanced] | **Artist radio** always builds from the artist you picked and never wanders. **Balanced** wanders but stays inside the degree fence below. **Discovery** wanders without limit, which is the point of it. |
+| Degrees of separation [3] | How far a session may travel from the artist that started it. Ignored by Artist radio and Discovery. |
 | Most in a row from one artist [2] | How many tracks by the same artist may play back to back. Two lets an artist station feel like an artist station without anyone monopolising the hour. |
 | Skipped song stays away for [30 days] | Skip a song and it will not be queued again for this long. |
 | Skips in a row before muting an artist [3] | Skip this many of one artist's tracks consecutively and they stop being suggested. |
@@ -148,6 +149,39 @@ Two honest limits:
 Playback is untouched throughout. Nothing is enqueued, nothing is
 reseeded, and the rolling repeat history is deliberately not written to, so
 a long playlist build cannot starve the live queue.
+
+## How far it is allowed to wander
+
+Reseeding off whatever is playing is what makes an evening feel alive
+rather than being one batch on repeat. Unbounded, it compounds. A real
+24-track build went:
+
+```
+Taylor Swift → Maisie Peters → Lorde → Katy Perry → Ke$ha → Selena Gomez → Anitta
+```
+
+Every hop is defensible and the destination is not. Worse, the drift has a
+direction: each step is toward something more mainstream, because
+similarity plus popularity has gravity. Left alone, anything eventually
+converges on the same few global pop stars regardless of where it started.
+
+The fence is degrees of separation from the artist that began the session,
+in the Six Degrees of Kevin Bacon sense. That artist is zero, their similar
+artists are one, their similars are two. Past the limit an artist is only
+eligible if a shorter path already put it inside. On the path above, a
+limit of three stops at Katy Perry, which is still recognisably a station
+that plays Taylor Swift.
+
+The interesting part is the behaviour at the edge. When the current artist
+sits at the limit, every newcomer would be one step too far, so the
+eligible set collapses to exactly those artists similar to what is playing
+that are *also* still within the limit of the origin. An intersection that
+falls out of the rule rather than being imposed on top of it. If even that
+is empty, it reseeds back toward the origin and sets off again in another
+direction, which is what a station does.
+
+A session starts on a manual pick and expires after six hours idle, so
+tonight is never still anchored to yesterday morning.
 
 ## What it learns from skips
 
