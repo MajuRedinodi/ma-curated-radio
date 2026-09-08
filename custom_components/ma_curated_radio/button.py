@@ -1,4 +1,4 @@
-"""One-shot actions: build a batch now, or lift every artist mute."""
+"""One-shot actions: build a batch, lift a mute, write out a playlist."""
 
 from __future__ import annotations
 
@@ -7,10 +7,17 @@ from typing import TYPE_CHECKING
 from homeassistant.components.button import ButtonEntity
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import MODE_REPLACE, signal_update
+from .const import (
+    DEFAULT_PLAYLIST_LENGTH,
+    DEFAULT_PLAYLIST_NAME,
+    DOMAIN,
+    MODE_REPLACE,
+    signal_update,
+)
 from .entity import CuratedRadioEntity
 
 if TYPE_CHECKING:
@@ -29,6 +36,7 @@ async def async_setup_entry(
             UnmuteAllButton(entry),
             UnmuteSelectedButton(entry),
             AllowSelectedTrackButton(entry),
+            BuildPlaylistButton(entry),
         ]
     )
 
@@ -112,3 +120,51 @@ class AllowSelectedTrackButton(CuratedRadioEntity, ButtonEntity):
         await self.runtime.skips.async_allow_track(chosen)
         self.runtime.picked.track = ""
         async_dispatcher_send(self.hass, signal_update(self._entry.entry_id))
+
+
+class BuildPlaylistButton(CuratedRadioEntity, ButtonEntity):
+    """Write the current station out to a provider playlist.
+
+    Exists as an entity rather than only as an action so a dashboard can
+    reach it the same way it reaches everything else. It takes no
+    arguments: the name is fixed so the link to it never changes, the
+    length is the default, and the provider is the one the queue is
+    already restricted to.
+
+    The action remains the way to build anything else, a second playlist
+    under another name or one seeded from an artist that is not playing.
+    """
+
+    _attr_translation_key = "build_playlist"
+    _attr_icon = "mdi:playlist-music"
+
+    def __init__(self, entry: MaCuratedRadioConfigEntry) -> None:
+        """Bind to the engine."""
+        super().__init__(entry, "build_playlist")
+
+    async def async_press(self) -> None:
+        """Refresh the playlist, leaving playback alone.
+
+        Takes minutes rather than seconds, so it deliberately does not
+        block: the result is reported by raising, which Home Assistant
+        surfaces as a toast on the dashboard that pressed it.
+        """
+        result = await self.runtime.engine.async_build_playlist(
+            name=DEFAULT_PLAYLIST_NAME,
+            length=DEFAULT_PLAYLIST_LENGTH,
+            provider=self.runtime.settings.provider_filter,
+        )
+        if result.error == "already_running":
+            raise HomeAssistantError(
+                translation_domain=DOMAIN, translation_key="playlist_running"
+            )
+        if result.error == "playlists_unsupported":
+            raise HomeAssistantError(
+                translation_domain=DOMAIN, translation_key="playlists_unsupported"
+            )
+        if result.error:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="playlist_empty",
+                translation_placeholders={"name": result.name},
+            )

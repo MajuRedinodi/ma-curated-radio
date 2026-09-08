@@ -167,6 +167,9 @@
       },
       "allow_selected_track": {
         "name": "Allow selected song"
+      },
+      "build_playlist": {
+        "name": "Build a playlist"
       }
     }
   },
@@ -271,6 +274,9 @@
     },
     "not_suppressed": {
       "message": "{track} is not currently being held back."
+    },
+    "playlist_running": {
+      "message": "A playlist build is already running. It takes a few minutes."
     },
     "playlists_unsupported": {
       "message": "This Music Assistant version does not expose playlist management to Home Assistant, so playlists cannot be built. Everything else is unaffected."

@@ -135,6 +135,12 @@ views:
     max_columns: 3
     badges:
       - type: entity
+        entity: switch.family_room_stereo_curated_radio
+        name: Curated radio
+        show_name: true
+        show_state: true
+        tap_action: {action: toggle}
+      - type: entity
         entity: sensor.family_room_stereo_version
         show_name: true
         show_state: true
@@ -142,40 +148,73 @@ views:
         entity: sensor.family_room_stereo_last_manual_pick
         show_name: true
         show_state: true
-        state_content:
-          - state
+        state_content: [state]
+
     sections:
       - type: grid
+        background: {color: purple, opacity: 8}
         cards:
           - type: heading
             heading: Now playing
             icon: mdi:speaker
           - type: media-control
             entity: media_player.family_room_stereo_2
-            grid_options: {columns: full}
+            grid_options: {columns: full, rows: 6}
           - type: tile
-            entity: switch.family_room_stereo_curated_radio
-            name: Curated radio
-            icon: mdi:radio
-            grid_options: {columns: 6}
-          - type: tile
-            entity: button.family_room_stereo_build_a_batch_now
-            name: Build a batch
-            grid_options: {columns: 6}
-          - type: tile
-            entity: sensor.family_room_stereo_last_batch_seed
-            name: Last batch seed
-            state_content: [state, last_changed]
+            entity: media_player.family_room_stereo_2
+            name: Volume
+            icon: mdi:volume-high
+            color: purple
+            hide_state: true
+            features_position: inline
+            features:
+              - type: media-player-volume-slider
+                show_mute_button: true
             grid_options: {columns: full}
 
       - type: grid
+        background: {color: blue, opacity: 8}
         cards:
           - type: heading
             heading: Station
             icon: mdi:tune-variant
           - type: tile
+            entity: button.family_room_stereo_build_a_batch_now
+            name: Build a batch
+            color: purple
+            hide_state: true
+            grid_options: {columns: 6}
+          - type: tile
+            entity: button.family_room_stereo_build_a_playlist
+            name: Build a playlist
+            color: purple
+            hide_state: true
+            grid_options: {columns: 6}
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target:
+                entity_id: button.family_room_stereo_build_a_playlist
+              confirmation:
+                text: >-
+                  Rebuild the Curated Radio playlist, seeded from what is
+                  playing now? It takes a few minutes and replaces the
+                  playlist's current contents. Playback is untouched.
+          - type: tile
+            entity: sensor.family_room_stereo_last_batch_seed
+            name: Last batch seed
+            color: purple
+            state_content: [state, last_changed]
+            grid_options: {columns: full}
+
+          - type: heading
+            heading: Tuning
+            heading_style: subtitle
+          - type: tile
             entity: select.family_room_stereo_station_style
             name: Station style
+            color: blue
+            hide_state: true
             features:
               - type: select-options
             grid_options: {columns: full}
@@ -183,6 +222,7 @@ views:
             entity: number.family_room_stereo_degrees_of_separation
             name: Degrees of separation
             icon: mdi:vector-polyline
+            color: blue
             features:
               - type: numeric-input
                 style: buttons
@@ -197,76 +237,62 @@ views:
             features:
               - type: numeric-input
                 style: buttons
-            grid_options: {columns: full}
+            grid_options: {columns: 6}
           - type: tile
             entity: number.family_room_stereo_tracks_per_artist
             name: Tracks per artist
             features:
               - type: numeric-input
                 style: buttons
-            grid_options: {columns: full}
+            grid_options: {columns: 6}
           - type: tile
             entity: number.family_room_stereo_most_in_a_row_from_one_artist
             name: Most in a row
             features:
               - type: numeric-input
                 style: buttons
-            grid_options: {columns: full}
+            grid_options: {columns: 6}
           - type: tile
             entity: number.family_room_stereo_refill_threshold
             name: Refill threshold
             features:
               - type: numeric-input
                 style: buttons
-            grid_options: {columns: full}
+            grid_options: {columns: 6}
+
           - type: heading
             heading: Filters
             heading_style: subtitle
           - type: tile
             entity: switch.family_room_stereo_skip_live_recordings
             name: Skip live
+            color: blue
             grid_options: {columns: 6}
           - type: tile
             entity: switch.family_room_stereo_skip_holiday_tracks
             name: Skip holiday
+            color: blue
             grid_options: {columns: 6}
 
       - type: grid
+        background: {color: amber, opacity: 8}
         cards:
           - type: heading
             heading: What it has learned
             icon: mdi:school
-          - type: markdown
-            entity_id:
-              - sensor.family_room_stereo_muted_artists
-            grid_options: {columns: full}
-            content: |-
-              {% set s = 'sensor.family_room_stereo_muted_artists' %}
-              {% set muted = state_attr(s, 'muted_until') or {} %}
-              {% set tracks = state_attr(s, 'tracks_until') or {} %}
-              **Muted artists**
+            badges:
+              - type: entity
+                entity: sensor.family_room_stereo_muted_artists
+                icon: mdi:account-cancel
+                show_state: true
+                show_name: false
+              - type: entity
+                entity: sensor.family_room_stereo_muted_artists
+                icon: mdi:music-note-off
+                show_state: true
+                show_name: false
+                state_content: [suppressed_tracks]
 
-              {% if muted %}
-              {% for name, until in muted.items() %}
-              - {{ name }} &middot; back {{ (until | as_datetime | as_local).strftime('%b %-d') }}
-              {% endfor %}
-              {% else %}
-              None right now. Skip {{ states('number.family_room_stereo_skips_before_muting_an_artist') | int }} in a row by the same artist and they land here.
-              {% endif %}
-
-              **Songs held back** ({{ tracks | count }})
-
-              {% if tracks %}
-              {% set shown = (tracks.items() | list)[-10:] %}
-              {% if tracks | count > 10 %}
-              _Showing the {{ shown | count }} most recent._
-              {% endif %}
-              {% for name, until in shown %}
-              - {{ name }} &middot; back {{ (until | as_datetime | as_local).strftime('%b %-d') }}
-              {% endfor %}
-              {% else %}
-              Nothing. A skipped song is held back for a while so it does not come straight round again.
-              {% endif %}
           - type: heading
             heading: Let one back in
             heading_style: subtitle
@@ -281,7 +307,9 @@ views:
                     state_not: Nothing to release
           - type: tile
             entity: select.family_room_stereo_muted_artist_to_release
-            name: Artist
+            name: Muted artists
+            color: amber
+            hide_state: true
             features:
               - type: select-options
             grid_options: {columns: full}
@@ -292,6 +320,8 @@ views:
           - type: tile
             entity: button.family_room_stereo_unmute_selected_artist
             name: Unmute this artist
+            color: amber
+            hide_state: true
             grid_options: {columns: full}
             visibility:
               - condition: state
@@ -299,7 +329,9 @@ views:
                 state_not: Nothing to release
           - type: tile
             entity: select.family_room_stereo_song_to_release
-            name: Song
+            name: Songs held back
+            color: amber
+            hide_state: true
             features:
               - type: select-options
             grid_options: {columns: full}
@@ -310,17 +342,21 @@ views:
           - type: tile
             entity: button.family_room_stereo_allow_selected_song
             name: Allow this song again
+            color: amber
+            hide_state: true
             grid_options: {columns: full}
             visibility:
               - condition: state
                 entity: select.family_room_stereo_song_to_release
                 state_not: Nothing to release
+
           - type: heading
             heading: Settings
             heading_style: subtitle
           - type: tile
             entity: number.family_room_stereo_skips_before_muting_an_artist
             name: Skips before muting
+            color: amber
             features:
               - type: numeric-input
                 style: buttons
@@ -328,45 +364,13 @@ views:
           - type: tile
             entity: button.family_room_stereo_unmute_all_artists
             name: Unmute all artists
+            color: amber
+            hide_state: true
             grid_options: {columns: full}
             visibility:
               - condition: state
                 entity: select.family_room_stereo_muted_artist_to_release
                 state_not: Nothing to release
-
-      - type: grid
-        cards:
-          - type: heading
-            heading: For the car
-            icon: mdi:car-outline
-          - type: markdown
-            text_only: true
-            grid_options: {columns: full}
-            content: |-
-              Writes a Tidal playlist called **Curated Radio** using the same
-              artists and filters as the queue, seeded from whatever is
-              playing. Open it in the Tidal app, which has Android Auto.
-
-              Playback here is untouched. It takes a few minutes, and
-              refreshes the same playlist each time so the link in your car
-              never changes.
-          - type: button
-            name: Build car playlist
-            icon: mdi:playlist-music
-            show_state: false
-            grid_options: {columns: full, rows: 2}
-            tap_action:
-              action: perform-action
-              perform_action: ma_curated_radio.build_playlist
-              data:
-                name: Curated Radio
-                length: 60
-                provider: tidal
-              confirmation:
-                text: >-
-                  Rebuild the Curated Radio playlist, seeded from what is
-                  playing now? Takes a few minutes and replaces its current
-                  contents.
 ```
 
 </details>
