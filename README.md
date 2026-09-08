@@ -32,10 +32,24 @@ set up. No helpers, no `rest_command`, no YAML.
 
 ## Requirements
 
-- Music Assistant, with at least one streaming provider.
-- A free [Last.fm API key](https://www.last.fm/api/account/create). Only the
-  API key is needed, not the shared secret; every lookup is anonymous and
-  read-only.
+- **Music Assistant, set up as a Home Assistant integration.** The add-on
+  alone is not enough: this uses Music Assistant's config entry, its
+  actions, and its client.
+- **A streaming provider with a large catalogue.** This is a real
+  prerequisite rather than a nicety. Every batch works by searching a
+  catalogue of millions and taking the best-known results, so a Music
+  Assistant running over a local file library will disappoint: Last.fm
+  suggests artists you do not own, searches return only what is on your
+  disk, and "that artist's biggest songs" becomes "whichever of their
+  albums I happened to rip". Developed and tested against Tidal.
+- **A free [Last.fm API key](https://www.last.fm/api/account/create).** Only
+  the API key is needed, not the shared secret; every lookup is anonymous
+  and read-only. Without one there are no similar artists at all and every
+  batch is the seed artist alone.
+
+Nothing else. No MCP server, no external service beyond Last.fm, and
+`requirements` in the manifest is empty: every import is either the
+standard library or Home Assistant itself.
 
 ## Installation
 
@@ -234,6 +248,17 @@ evaporates is not feedback.
   length, not its contents. Where the client is reachable, already-queued
   tracks are excluded too; where it is not, the repeat-memory window does
   the work on its own.
+- **Only Tidal has been tested.** `explicit`, `popularity` and `release_date`
+  are optional fields that providers populate inconsistently, and the
+  provider filter assumes URI schemes. On another provider the explicit
+  filter and the new-release promotion may be more or less reliable than
+  they are here. None of that is load-bearing: each one degrades to doing
+  nothing rather than doing something wrong.
+- **Playlist building reaches into Music Assistant's internals**, because
+  playlist management has no equivalent on the Home Assistant action
+  surface. It is the one feature that could break when the Music Assistant
+  integration refactors, and the one that raises an error rather than
+  degrading quietly.
 - **There is no era filtering, and it is not an oversight.** Mixing an
   artist's 2006 material with their 2022 material is a real weakness, and
   the data to fix it is not there. Track search returns no year at all.
