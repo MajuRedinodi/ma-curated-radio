@@ -10,10 +10,13 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .const import (
+    CONF_EXPLICIT,
     CONF_FAMILIARITY,
     CONF_SEED_LEAN,
+    DEFAULT_EXPLICIT,
     DEFAULT_FAMILIARITY,
     DEFAULT_SEED_LEAN,
+    EXPLICIT_MODES,
     FAMILIARITIES,
     SEED_LEANS,
 )
@@ -29,7 +32,36 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up the selects."""
-    async_add_entities([StationStyleSelect(entry), FamiliaritySelect(entry)])
+    async_add_entities(
+        [StationStyleSelect(entry), FamiliaritySelect(entry), ExplicitSelect(entry)]
+    )
+
+
+class ExplicitSelect(CuratedRadioEntity, SelectEntity):
+    """Whether to allow, avoid or prefer explicit versions.
+
+    Worth having on a dashboard rather than buried in options: which one
+    you want depends on who is in the room, and that changes.
+    """
+
+    _attr_translation_key = "explicit"
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_icon = "mdi:account-child-outline"
+    _attr_options = EXPLICIT_MODES
+
+    def __init__(self, entry: MaCuratedRadioConfigEntry) -> None:
+        """Bind to the explicit-content option."""
+        super().__init__(entry, "explicit")
+
+    @property
+    def current_option(self) -> str:
+        """Configured explicit-content handling."""
+        value = str(self._option(CONF_EXPLICIT, DEFAULT_EXPLICIT))
+        return value if value in EXPLICIT_MODES else DEFAULT_EXPLICIT
+
+    async def async_select_option(self, option: str) -> None:
+        """Change how explicit versions are treated."""
+        self._write_option(CONF_EXPLICIT, option)
 
 
 class FamiliaritySelect(CuratedRadioEntity, SelectEntity):

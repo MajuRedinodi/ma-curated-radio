@@ -88,6 +88,7 @@ button. Defaults in brackets.
 | Cooldown script or automation | If another routine also rebuilds this player's queue on a schedule (a morning genre-radio automation, say), point this at it so its rebuild is never mistaken for a manual pick. |
 | Cooldown window [120 s] | How long after that routine runs to skip detection entirely. |
 | Provider filter | Comma-separated provider prefixes to restrict tracks to, e.g. `tidal`. Empty allows every provider. |
+| Explicit content [no preference] | **Clean only** drops anything flagged explicit, for when younger ears are in the room. **Prefer explicit** puts the original ahead of the radio edit. |
 | Skip live recordings [on] | Live versions rank high in popularity searches and rarely suit background listening. |
 | Skip holiday tracks [on] | A popularity ranking will surface an artist's Christmas album in September. |
 | Use catalogue order instead of search [off] | Leave it off. Music Assistant returns an artist's track catalogue rather than a popularity ranking, so turning this on fills batches with album tracks and misses the hits. |

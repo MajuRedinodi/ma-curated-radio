@@ -67,6 +67,18 @@ def _popularity(item: Any) -> int:
         return 0
 
 
+def _explicit(item: Any) -> bool:
+    """Whether a track is flagged explicit.
+
+    Top level on the service surface, on the metadata via the native
+    client, so check both.
+    """
+    value = field_of(item, "explicit")
+    if value is None:
+        value = field_of(field_of(item, "metadata"), "explicit")
+    return bool(value)
+
+
 def _released(item: Any) -> datetime | None:
     """Release date, or None when the provider did not say."""
     value = field_of(field_of(item, "metadata"), "release_date")
@@ -87,6 +99,7 @@ class TrackInfo:
     version: str
     album: str
     duration: int = 0
+    explicit: bool = False
     artists: list[str] = field(default_factory=list)
     popularity: int = 0
     released: datetime | None = None
@@ -100,6 +113,7 @@ class TrackInfo:
             version=text_of(item, "version"),
             album=text_of(field_of(item, "album"), "name"),
             duration=int(field_of(item, "duration", 0) or 0),
+            explicit=_explicit(item),
             artists=_artist_names(item),
             popularity=_popularity(item),
             released=_released(item),

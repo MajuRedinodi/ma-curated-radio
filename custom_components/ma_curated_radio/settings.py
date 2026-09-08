@@ -13,6 +13,7 @@ from .const import (
     CONF_COOLDOWN_SECONDS,
     CONF_DEGREES,
     CONF_ENABLED,
+    CONF_EXPLICIT,
     CONF_FAMILIARITY,
     CONF_FILTER_HOLIDAY,
     CONF_FILTER_LIVE,
@@ -36,6 +37,7 @@ from .const import (
     DEFAULT_COOLDOWN_SECONDS,
     DEFAULT_DEGREES,
     DEFAULT_ENABLED,
+    DEFAULT_EXPLICIT,
     DEFAULT_FAMILIARITY,
     DEFAULT_FILTER_HOLIDAY,
     DEFAULT_FILTER_LIVE,
@@ -51,6 +53,7 @@ from .const import (
     DEFAULT_TRACK_SUPPRESS_DAYS,
     DEFAULT_TRACKS_PER_ARTIST,
     DEFAULT_USE_NATIVE_TOP_TRACKS,
+    EXPLICIT_MODES,
     FAMILIARITIES,
     LEGACY_SEED_LEANS,
     SEED_LEANS,
@@ -78,6 +81,7 @@ class Settings:
     use_native_top_tracks: bool
     seed_lean: str
     familiarity: str
+    explicit: str
     degrees: int
     min_duration: int
     fresh_days: int
@@ -122,6 +126,7 @@ class Settings:
             ),
             seed_lean=_seed_lean(merged.get(CONF_SEED_LEAN, DEFAULT_SEED_LEAN)),
             familiarity=_familiarity(merged.get(CONF_FAMILIARITY, DEFAULT_FAMILIARITY)),
+            explicit=_explicit_mode(merged.get(CONF_EXPLICIT, DEFAULT_EXPLICIT)),
             degrees=int(merged.get(CONF_DEGREES, DEFAULT_DEGREES)),
             min_duration=int(merged.get(CONF_MIN_DURATION, DEFAULT_MIN_DURATION)),
             fresh_days=int(merged.get(CONF_FRESH_DAYS, DEFAULT_FRESH_DAYS)),
@@ -151,3 +156,9 @@ def _familiarity(value: object) -> str:
     """Normalise the familiarity setting."""
     name = str(value or "")
     return name if name in FAMILIARITIES else DEFAULT_FAMILIARITY
+
+
+def _explicit_mode(value: object) -> str:
+    """Normalise the explicit-content setting."""
+    name = str(value or "")
+    return name if name in EXPLICIT_MODES else DEFAULT_EXPLICIT

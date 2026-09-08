@@ -205,3 +205,19 @@ CONF_FRESH_DAYS: Final = "fresh_days"
 # it is, so a hot new single surfaces while a new flop does not. Zero
 # disables the promotion entirely.
 DEFAULT_FRESH_DAYS: Final = 120
+
+# --- Explicit content --------------------------------------------------------
+
+CONF_EXPLICIT: Final = "explicit"
+
+# The two directions are not symmetrical. A clean edit is usually a
+# separately titled release ("Forget You" for "Fuck You"), so nothing links
+# it to the original as a version. Excluding explicit tracks therefore
+# works as a hard filter, but preferring them can only be a sort: put the
+# explicit ones first and the clean edit falls outside the per-artist cut.
+EXPLICIT_ANY: Final = "any"
+EXPLICIT_CLEAN: Final = "clean"
+EXPLICIT_PREFER: Final = "prefer"
+EXPLICIT_MODES: Final = [EXPLICIT_ANY, EXPLICIT_CLEAN, EXPLICIT_PREFER]
+
+DEFAULT_EXPLICIT: Final = EXPLICIT_ANY

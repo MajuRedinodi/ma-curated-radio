@@ -19,6 +19,8 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     DEFAULT_PLAYLIST_LENGTH,
+    EXPLICIT_CLEAN,
+    EXPLICIT_PREFER,
     FAMILIARITY_EXPONENT,
     LASTFM_POOL_SIZE,
     MODE_REFILL,
@@ -292,6 +294,19 @@ class CuratedRadioEngine:
             cache[artist] = tracks
         return tracks
 
+    def _ordered_for_selection(self, tracks: list[TrackInfo]) -> list[TrackInfo]:
+        """Apply every ordering preference before the batch is cut.
+
+        Explicit preference is a sort rather than a filter because a clean
+        edit is usually a separate release with its own title, so nothing
+        marks it as a version of the original. Putting the explicit tracks
+        first pushes the edit outside the per-artist cut instead.
+        """
+        ordered = self._by_hotness(tracks)
+        if self._settings.explicit == EXPLICIT_PREFER:
+            ordered = sorted(ordered, key=lambda track: not track.explicit)
+        return ordered
+
     def _by_hotness(self, tracks: list[TrackInfo]) -> list[TrackInfo]:
         """Reorder an artist's tracks so a hot new release can get in.
 
@@ -329,7 +344,7 @@ class CuratedRadioEngine:
         settings = self._settings
         uris: list[str] = []
         titles: list[str] = []
-        for track in self._by_hotness(tracks):
+        for track in self._ordered_for_selection(tracks):
             if len(uris) >= limit:
                 break
             if not track.uri or track.uri == current_uri or track.uri in excluded_uris:
@@ -339,6 +354,8 @@ class CuratedRadioEngine:
             # Commentary, interludes and skits chart alongside the songs,
             # so a genuine top-tracks ranking hands them straight over.
             if is_too_short(track.duration, settings.min_duration):
+                continue
+            if settings.explicit == EXPLICIT_CLEAN and track.explicit:
                 continue
             if is_non_song(track.name, track.version):
                 continue
