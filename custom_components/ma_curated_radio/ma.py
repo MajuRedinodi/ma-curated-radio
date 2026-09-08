@@ -25,6 +25,7 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 
 from .const import MA_DOMAIN
+from .filters import credits_artist
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -86,6 +87,7 @@ class TrackInfo:
     version: str
     album: str
     duration: int = 0
+    artists: list[str] = field(default_factory=list)
     popularity: int = 0
     released: datetime | None = None
 
@@ -98,6 +100,7 @@ class TrackInfo:
             version=text_of(item, "version"),
             album=text_of(field_of(item, "album"), "name"),
             duration=int(field_of(item, "duration", 0) or 0),
+            artists=_artist_names(item),
             popularity=_popularity(item),
             released=_released(item),
         )
@@ -194,8 +197,10 @@ async def async_search_tracks(
         _LOGGER.debug("Track search failed for %s: %s", artist, err)
         return []
 
-    tracks = field_of(response, "tracks", []) or []
-    return [TrackInfo.from_item(item) for item in tracks]
+    tracks = [TrackInfo.from_item(item) for item in field_of(response, "tracks", []) or []]
+    # Search matches loosely enough to return the right words on the wrong
+    # record, so drop anything the artist is not actually credited on.
+    return [track for track in tracks if credits_artist(track.artists, artist)]
 
 
 async def async_play_media(

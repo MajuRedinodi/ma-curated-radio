@@ -90,7 +90,7 @@ button. Defaults in brackets.
 | Provider filter | Comma-separated provider prefixes to restrict tracks to, e.g. `tidal`. Empty allows every provider. |
 | Skip live recordings [on] | Live versions rank high in popularity searches and rarely suit background listening. |
 | Skip holiday tracks [on] | A popularity ranking will surface an artist's Christmas album in September. |
-| Prefer real top tracks [on] | Ask Music Assistant for genuine top tracks where its client exposes them, falling back to relevance-ranked search otherwise. |
+| Use catalogue order instead of search [off] | Leave it off. Music Assistant returns an artist's track catalogue rather than a popularity ranking, so turning this on fills batches with album tracks and misses the hits. |
 
 ## Action
 
@@ -221,6 +221,12 @@ evaporates is not feedback.
   yourself. `media_type: artist` plays the entire catalogue in album order.
   This integration searches `media_type: track` filtered by artist instead,
   which returns the provider's relevance ranking.
+- **Music Assistant's `get_artist_tracks` is not a top-tracks call**, whatever
+  the name suggests. It returns an artist's catalogue, so selecting from the
+  front of it gives album tracks and commentary rather than hits. Relevance-ranked
+  search is the better source, and is what this uses by default.
+- **Search matches loosely**, so asking for Madonna can return "Madonna Madonna"
+  by someone else entirely. Results are checked against the credited artists.
 - **Refill only knows what is literally queued when the Music Assistant
   client exposes queue contents.** The service surface reports a queue
   length, not its contents. Where the client is reachable, already-queued

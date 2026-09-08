@@ -11,6 +11,7 @@ import pytest
 from filters import (
     base_title,
     clean_similar_artists,
+    credits_artist,
     freshness,
     hotness,
     is_holiday,
@@ -272,3 +273,19 @@ def test_hotness_needs_both_signals():
     assert hotness(None, 100, 120, NOW) == 0.0
     assert hotness(NOW, 0, 120, NOW) == 0.0
     assert hotness(NOW, 100, 120, NOW) == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize(
+    ("credited", "wanted", "expected"),
+    [
+        (["Lady Gaga", "Colby O'Donis"], "Lady Gaga", True),
+        (["Lady Gaga"], "lady gaga", True),
+        # The real failure: right words, wrong record.
+        (["Rosanna Rocci"], "Madonna", False),
+        (["Bob Seger & The Silver Bullet Band"], "Bob Seger", False),
+        ([], "Madonna", False),
+        (["Anyone"], "", True),
+    ],
+)
+def test_credits_artist(credited, wanted, expected):
+    assert credits_artist(credited, wanted) is expected

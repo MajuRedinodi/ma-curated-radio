@@ -239,3 +239,18 @@ def hotness(
     if popularity <= 0:
         return 0.0
     return freshness(released, window_days, now) * min(popularity, 100) / 100
+
+
+def credits_artist(credited: list[str], wanted: str) -> bool:
+    """Return True if ``wanted`` is actually one of a track's artists.
+
+    Music Assistant's search matches loosely, so asking for Madonna can
+    return "Madonna Madonna" by Rosanna Rocci: the right words, the wrong
+    record. Collaborations are fine and common ("Lady Gaga/Colby O'Donis"),
+    so this asks whether the artist appears among the credits at all,
+    not whether they are the only name on it.
+    """
+    target = wanted.strip().lower()
+    if not target:
+        return True
+    return any(name.strip().lower() == target for name in credited)

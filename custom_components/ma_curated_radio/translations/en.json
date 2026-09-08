@@ -46,7 +46,7 @@
           "provider_filter": "Provider filter",
           "filter_live": "Skip live recordings",
           "filter_holiday": "Skip holiday tracks",
-          "use_native_top_tracks": "Prefer real top tracks"
+          "use_native_top_tracks": "Use catalogue order instead of search"
         },
         "data_description": {
           "max_artists": "How many Last.fm-similar artists to pull in alongside the artist that seeded the batch. Zero keeps every batch to the seed artist alone.",
@@ -68,7 +68,7 @@
           "provider_filter": "Comma-separated provider prefixes to restrict tracks to, for example tidal. Leave empty to allow every provider.",
           "filter_live": "Drop live versions, which rank high in popularity searches but rarely suit background listening.",
           "filter_holiday": "Drop Christmas and other holiday content, which a popularity ranking will surface year round.",
-          "use_native_top_tracks": "Ask Music Assistant for genuine top tracks where its client supports it, falling back to relevance-ranked search otherwise."
+          "use_native_top_tracks": "Off by default, and worth leaving off. Music Assistant returns an artist's track catalogue rather than a popularity ranking, so this fills batches with album tracks and misses the hits. Relevance-ranked search picks the well-known songs."
         }
       }
     }

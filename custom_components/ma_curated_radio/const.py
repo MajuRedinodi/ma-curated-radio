@@ -38,7 +38,13 @@ DEFAULT_COOLDOWN_SECONDS: Final = 120
 DEFAULT_PROVIDER_FILTER: Final = ""
 DEFAULT_FILTER_LIVE: Final = True
 DEFAULT_FILTER_HOLIDAY: Final = True
-DEFAULT_USE_NATIVE_TOP_TRACKS: Final = True
+# Off by default, and the name is a trap. Music Assistant's
+# get_artist_tracks returns an artist's track CATALOGUE, not a popularity
+# ranking, so enabling this fills batches with album tracks: Bob Seger
+# without Night Moves, Jimmy Buffett without Margaritaville, and the
+# commentary tracks off a deluxe edition. Relevance-ranked search is a
+# worse-sounding idea and a better-sounding result.
+DEFAULT_USE_NATIVE_TOP_TRACKS: Final = False
 
 # How many similar artists to ask Last.fm for, regardless of how many end
 # up in a batch. Last.fm ranks by match score, and the goal is a station
