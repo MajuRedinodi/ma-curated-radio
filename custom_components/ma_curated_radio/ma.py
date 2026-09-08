@@ -126,6 +126,7 @@ class QueueSnapshot:
 
     queue_id: str = ""
     current_uri: str = ""
+    current_title: str = ""
     next_uri: str = ""
     seed_artist: str = ""
     items: int = 0
@@ -177,6 +178,7 @@ async def async_get_queue(hass: HomeAssistant, player: str) -> QueueSnapshot | N
     return QueueSnapshot(
         queue_id=str(queue_id),
         current_uri=text_of(current, "uri"),
+        current_title=text_of(current, "name"),
         next_uri=text_of(_media_item(field_of(queue, "next_item")), "uri"),
         seed_artist=artists[0] if artists else "",
         items=int(field_of(queue, "items", 0) or 0),

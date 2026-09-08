@@ -181,11 +181,25 @@ class CuratedRadioEngine:
         # must not redefine it.
         if mode != MODE_REFILL:
             await self._async_resolve_alias(seed, queue.artists)
+            # Put the picked song into repeat memory. Nothing else does:
+            # the history records what this integration queues, and a pick
+            # is not ours, so the one song guaranteed to have just played
+            # was the only one with no protection at all. Matching on the
+            # URI is not enough, because a provider carries several copies
+            # of a hit and a remaster is a different URI for the same
+            # song. Replaying it later is fine and radio-like; replaying
+            # it three tracks later is not, and until now which one you
+            # got was luck.
+            if queue.current_title:
+                self._history.add([base_title(queue.current_title)])
         # A manual pick is a new station, so it re-anchors the session; a
         # refill continues the one already running.
         self._anchor(seed, restart=mode != MODE_REFILL)
+        # The artist the batch is actually built around, which in artist
+        # radio is the one you picked rather than whoever is playing now.
+        lead = self._lead_artist(seed)
         artists = [
-            self._lead_artist(seed),
+            lead,
             *await self._async_similar_artists(self._pool_seed(seed)),
         ]
 
@@ -217,9 +231,9 @@ class CuratedRadioEngine:
                 title_by_uri.update(zip(uris, titles, strict=True))
 
         if not per_artist:
-            _LOGGER.debug("No usable tracks for %s or any similar artist", seed)
+            _LOGGER.debug("No usable tracks for %s or any similar artist", lead)
             return BatchResult(
-                mode=mode, seed_artist=seed, artists=artists, skipped_reason="no_tracks"
+                mode=mode, seed_artist=lead, artists=artists, skipped_reason="no_tracks"
             )
 
         ordered = sequence(per_artist, self._settings.max_consecutive)
@@ -231,11 +245,11 @@ class CuratedRadioEngine:
             "Queued %s track(s) in %s mode, seeded from %s via %s",
             len(enqueued),
             mode,
-            seed,
+            lead,
             ", ".join(artists),
         )
         return BatchResult(
-            mode=mode, seed_artist=seed, artists=artists, queued=len(enqueued)
+            mode=mode, seed_artist=lead, artists=artists, queued=len(enqueued)
         )
 
     async def _async_similar_artists(
