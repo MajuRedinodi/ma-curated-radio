@@ -177,8 +177,19 @@ class CuratedRadioEngine:
         seed = queue.seed_artist
         # Remember the full credit before it is reduced to one name, so a
         # duo the provider split can be asked about as a duo.
-        if len(queue.artists) == SPLIT_DUO_CREDITS:
-            self._credits[seed.lower()] = list(queue.artists)
+        #
+        # Only on a pick, and always overwriting, because the pick is what
+        # defines the station. A duet that merely comes up later must not
+        # redefine it: "Die With A Smile" is credited to Lady Gaga and
+        # Bruno Mars, and Last.fm knows that pair as its own act whose
+        # neighbours are other duets rather than Lady Gaga's, so letting
+        # it through would quietly turn a Lady Gaga station into a
+        # collaborations station on the first refill.
+        if mode != MODE_REFILL:
+            if len(queue.artists) == SPLIT_DUO_CREDITS:
+                self._credits[seed.lower()] = list(queue.artists)
+            else:
+                self._credits.pop(seed.lower(), None)
         # A manual pick is a new station, so it re-anchors the session; a
         # refill continues the one already running.
         self._anchor(seed, restart=mode != MODE_REFILL)
