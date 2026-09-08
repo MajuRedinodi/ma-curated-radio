@@ -108,6 +108,279 @@ button. Defaults in brackets.
 | Skip holiday tracks [on] | A popularity ranking will surface an artist's Christmas album in September. |
 | Use catalogue order instead of search [off] | Leave it off. Music Assistant returns an artist's track catalogue rather than a popularity ranking, so turning this on fills batches with album tracks and misses the hits. |
 
+## A dashboard to paste in
+
+Every setting above is reachable from any dashboard, but building one by
+hand is a chore. This is the one actually in use, kept in step with the
+integration.
+
+Entities are named after the config entry title, so a player set up as
+"Family Room Stereo" gets `switch.family_room_stereo_curated_radio` and so
+on. **Find and replace `family_room_stereo` with your own slug**, and point
+the `media_player` entity near the top at your player.
+
+To use it: **Settings → Dashboards → Add dashboard → New dashboard from
+scratch**, open it, then the pencil → three-dot menu → **Raw configuration
+editor**, and paste over what is there.
+
+<details>
+<summary>Dashboard YAML</summary>
+
+```yaml
+views:
+  - title: Curated Radio
+    path: station
+    type: sections
+    icon: mdi:radio
+    max_columns: 3
+    badges:
+      - type: entity
+        entity: sensor.family_room_stereo_version
+        show_name: true
+        show_state: true
+      - type: entity
+        entity: sensor.family_room_stereo_last_manual_pick
+        show_name: true
+        show_state: true
+        state_content:
+          - state
+    sections:
+      - type: grid
+        cards:
+          - type: heading
+            heading: Now playing
+            icon: mdi:speaker
+          - type: tile
+            entity: media_player.family_room_stereo_2
+            features:
+              - type: media-player-playback
+                controls: [previous, play_pause, next]
+              - type: media-player-volume-slider
+            grid_options: {columns: full}
+          - type: tile
+            entity: switch.family_room_stereo_curated_radio
+            name: Curated radio
+            icon: mdi:radio
+            grid_options: {columns: 6}
+          - type: tile
+            entity: button.family_room_stereo_build_a_batch_now
+            name: Build a batch
+            grid_options: {columns: 6}
+          - type: tile
+            entity: sensor.family_room_stereo_last_batch_seed
+            name: Last batch seed
+            state_content: [state, last_changed]
+            grid_options: {columns: full}
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Station
+            icon: mdi:tune-variant
+          - type: tile
+            entity: select.family_room_stereo_station_style
+            name: Station style
+            features:
+              - type: select-options
+            grid_options: {columns: full}
+          - type: tile
+            entity: number.family_room_stereo_degrees_of_separation
+            name: Degrees of separation
+            icon: mdi:vector-polyline
+            features:
+              - type: numeric-input
+                style: buttons
+            grid_options: {columns: full}
+            visibility:
+              - condition: state
+                entity: select.family_room_stereo_station_style
+                state: balanced
+          - type: tile
+            entity: number.family_room_stereo_similar_artists_per_batch
+            name: Similar artists
+            features:
+              - type: numeric-input
+                style: buttons
+            grid_options: {columns: full}
+          - type: tile
+            entity: number.family_room_stereo_tracks_per_artist
+            name: Tracks per artist
+            features:
+              - type: numeric-input
+                style: buttons
+            grid_options: {columns: full}
+          - type: tile
+            entity: number.family_room_stereo_most_in_a_row_from_one_artist
+            name: Most in a row
+            features:
+              - type: numeric-input
+                style: buttons
+            grid_options: {columns: full}
+          - type: tile
+            entity: number.family_room_stereo_refill_threshold
+            name: Refill threshold
+            features:
+              - type: numeric-input
+                style: buttons
+            grid_options: {columns: full}
+          - type: heading
+            heading: Filters
+            heading_style: subtitle
+          - type: tile
+            entity: switch.family_room_stereo_skip_live_recordings
+            name: Skip live
+            grid_options: {columns: 6}
+          - type: tile
+            entity: switch.family_room_stereo_skip_holiday_tracks
+            name: Skip holiday
+            grid_options: {columns: 6}
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: What it has learned
+            icon: mdi:school
+          - type: markdown
+            entity_id:
+              - sensor.family_room_stereo_muted_artists
+            grid_options: {columns: full}
+            content: |-
+              {% set s = 'sensor.family_room_stereo_muted_artists' %}
+              {% set muted = state_attr(s, 'muted_until') or {} %}
+              {% set tracks = state_attr(s, 'tracks_until') or {} %}
+              **Muted artists**
+
+              {% if muted %}
+              {% for name, until in muted.items() %}
+              - {{ name }} &middot; back {{ (until | as_datetime | as_local).strftime('%b %-d') }}
+              {% endfor %}
+              {% else %}
+              None right now. Skip {{ states('number.family_room_stereo_skips_before_muting_an_artist') | int }} in a row by the same artist and they land here.
+              {% endif %}
+
+              **Songs held back** ({{ tracks | count }})
+
+              {% if tracks %}
+              {% set shown = (tracks.items() | list)[-10:] %}
+              {% if tracks | count > 10 %}
+              _Showing the {{ shown | count }} most recent._
+              {% endif %}
+              {% for name, until in shown %}
+              - {{ name }} &middot; back {{ (until | as_datetime | as_local).strftime('%b %-d') }}
+              {% endfor %}
+              {% else %}
+              Nothing. A skipped song is held back for a while so it does not come straight round again.
+              {% endif %}
+          - type: heading
+            heading: Let one back in
+            heading_style: subtitle
+            visibility:
+              - condition: or
+                conditions:
+                  - condition: state
+                    entity: select.family_room_stereo_muted_artist_to_release
+                    state_not: Nothing to release
+                  - condition: state
+                    entity: select.family_room_stereo_song_to_release
+                    state_not: Nothing to release
+          - type: tile
+            entity: select.family_room_stereo_muted_artist_to_release
+            name: Artist
+            features:
+              - type: select-options
+            grid_options: {columns: full}
+            visibility:
+              - condition: state
+                entity: select.family_room_stereo_muted_artist_to_release
+                state_not: Nothing to release
+          - type: tile
+            entity: button.family_room_stereo_unmute_selected_artist
+            name: Unmute this artist
+            grid_options: {columns: full}
+            visibility:
+              - condition: state
+                entity: select.family_room_stereo_muted_artist_to_release
+                state_not: Nothing to release
+          - type: tile
+            entity: select.family_room_stereo_song_to_release
+            name: Song
+            features:
+              - type: select-options
+            grid_options: {columns: full}
+            visibility:
+              - condition: state
+                entity: select.family_room_stereo_song_to_release
+                state_not: Nothing to release
+          - type: tile
+            entity: button.family_room_stereo_allow_selected_song
+            name: Allow this song again
+            grid_options: {columns: full}
+            visibility:
+              - condition: state
+                entity: select.family_room_stereo_song_to_release
+                state_not: Nothing to release
+          - type: heading
+            heading: Settings
+            heading_style: subtitle
+          - type: tile
+            entity: number.family_room_stereo_skips_before_muting_an_artist
+            name: Skips before muting
+            features:
+              - type: numeric-input
+                style: buttons
+            grid_options: {columns: full}
+          - type: tile
+            entity: button.family_room_stereo_unmute_all_artists
+            name: Unmute all artists
+            grid_options: {columns: full}
+            visibility:
+              - condition: state
+                entity: select.family_room_stereo_muted_artist_to_release
+                state_not: Nothing to release
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: For the car
+            icon: mdi:car-outline
+          - type: markdown
+            text_only: true
+            grid_options: {columns: full}
+            content: |-
+              Writes a Tidal playlist called **Curated Radio** using the same
+              artists and filters as the queue, seeded from whatever is
+              playing. Open it in the Tidal app, which has Android Auto.
+
+              Playback here is untouched. It takes a few minutes, and
+              refreshes the same playlist each time so the link in your car
+              never changes.
+          - type: button
+            name: Build car playlist
+            icon: mdi:playlist-music
+            show_state: false
+            grid_options: {columns: full, rows: 2}
+            tap_action:
+              action: perform-action
+              perform_action: ma_curated_radio.build_playlist
+              data:
+                name: Curated Radio
+                length: 60
+                provider: tidal
+              confirmation:
+                text: >-
+                  Rebuild the Curated Radio playlist, seeded from what is
+                  playing now? Takes a few minutes and replaces its current
+                  contents.
+```
+
+</details>
+
+The release dropdowns and the unmute buttons hide themselves when there is
+nothing to release, so a fresh install shows a shorter third section than
+the one above until it has learned something. Degrees of separation hides
+unless station style is Balanced, since nothing else uses it. The car
+section assumes Tidal, so change `provider` or drop the section.
+
 ## Action
 
 `ma_curated_radio.run_batch` builds a batch immediately, seeded from
@@ -122,8 +395,10 @@ data:
 
 `config_entry_id` is optional when only one player is configured.
 
-`ma_curated_radio.unmute_artist` lets one muted artist back in immediately,
-and `ma_curated_radio.forget_feedback` wipes every remembered skip and mute.
+`ma_curated_radio.unmute_artist` lets one muted artist back in immediately
+and `ma_curated_radio.allow_track` releases one held-back song, either by
+the name shown on the dashboard or by its stored key.
+`ma_curated_radio.forget_feedback` wipes every remembered skip and mute.
 
 ## Taking it with you
 
@@ -227,7 +502,7 @@ evaporates is not feedback.
 
 - **The seed artist leads each batch.** That is the intent rather than an
   accident: picking a song should get you a station built around it. Set
-  station style to format radio if you want it evened out.
+  station style to Discovery if you want it evened out.
 - **Rapid Previous-Previous can read as a manual pick.** Rare, and the
   result is still on-genre.
 - **Similar-artist results occasionally include collaboration credits**
