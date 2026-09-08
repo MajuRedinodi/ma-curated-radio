@@ -1,4 +1,4 @@
-"""Station style, as a dropdown you can put on a dashboard."""
+"""Station style and familiarity, as dropdowns you can put on a dashboard."""
 
 from __future__ import annotations
 
@@ -9,7 +9,14 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import CONF_SEED_LEAN, DEFAULT_SEED_LEAN, SEED_LEANS
+from .const import (
+    CONF_FAMILIARITY,
+    CONF_SEED_LEAN,
+    DEFAULT_FAMILIARITY,
+    DEFAULT_SEED_LEAN,
+    FAMILIARITIES,
+    SEED_LEANS,
+)
 from .entity import CuratedRadioEntity
 
 if TYPE_CHECKING:
@@ -21,8 +28,31 @@ async def async_setup_entry(
     entry: MaCuratedRadioConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up the station-style select."""
-    async_add_entities([StationStyleSelect(entry)])
+    """Set up the selects."""
+    async_add_entities([StationStyleSelect(entry), FamiliaritySelect(entry)])
+
+
+class FamiliaritySelect(CuratedRadioEntity, SelectEntity):
+    """How strongly artist choice leans toward the well known."""
+
+    _attr_translation_key = "familiarity"
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_icon = "mdi:account-star"
+    _attr_options = FAMILIARITIES
+
+    def __init__(self, entry: MaCuratedRadioConfigEntry) -> None:
+        """Bind to the familiarity option."""
+        super().__init__(entry, "familiarity")
+
+    @property
+    def current_option(self) -> str:
+        """Configured familiarity."""
+        value = str(self._option(CONF_FAMILIARITY, DEFAULT_FAMILIARITY))
+        return value if value in FAMILIARITIES else DEFAULT_FAMILIARITY
+
+    async def async_select_option(self, option: str) -> None:
+        """Change how adventurous artist choice is."""
+        self._write_option(CONF_FAMILIARITY, option)
 
 
 class StationStyleSelect(CuratedRadioEntity, SelectEntity):

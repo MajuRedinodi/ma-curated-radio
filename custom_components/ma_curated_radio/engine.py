@@ -18,6 +18,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 
 from .const import (
     DEFAULT_PLAYLIST_LENGTH,
+    FAMILIARITY_EXPONENT,
     LASTFM_POOL_SIZE,
     MODE_REFILL,
     PLAYLIST_CHUNK,
@@ -38,6 +39,7 @@ from .filters import (
     is_too_short,
     matches_provider,
     sequence,
+    weighted_sample,
 )
 from .history import TitleHistory
 from .lastfm import async_get_similar_artists
@@ -208,15 +210,16 @@ class CuratedRadioEngine:
     async def _async_similar_artists(
         self,
         seed: str,
-        cache: dict[str, list[str]] | None = None,
+        cache: dict[str, list[tuple[str, float]]] | None = None,
         session: ListeningSession | None = None,
     ) -> list[str]:
-        """Pick a shuffled, capped set of Last.fm-similar artists.
+        """Pick a capped set of Last.fm-similar artists.
 
-        The pool is deliberately much larger than the cap. The goal is what
-        a station playing the seed artist would also play, not the seed
-        artist's nearest neighbours, so the shuffle draws from the whole
-        adjacent field rather than the top few.
+        The pool is deliberately much larger than the cap, because the goal
+        is what a station playing the seed artist would also play rather
+        than that artist's three nearest neighbours. Selection from it is
+        weighted by match score, not flat: a deep pool sampled uniformly is
+        how batches ended up full of defensible artists nobody knew.
         """
         settings = self._settings
         if settings.max_artists <= 0 or not settings.lastfm_api_key:
@@ -231,19 +234,24 @@ class CuratedRadioEngine:
                 cache[seed] = names
         candidates = clean_similar_artists(names, seed)
         muted = self._skips.muted_artists
-        candidates = [name for name in candidates if name.lower() not in muted]
+        candidates = [pair for pair in candidates if pair[0].lower() not in muted]
 
         active = session or self._listening
         cap = self._degree_cap
-        allowed = active.eligible(seed, candidates, cap)
+        allowed = set(active.eligible(seed, [name for name, _ in candidates], cap))
         if not allowed and active.origin and seed != active.origin:
             # At the edge of the fence with nothing eligible nearby. Pull
             # back toward the origin rather than stalling out there.
             _LOGGER.debug("Nothing within %s degrees of %s; falling back", cap, seed)
             return await self._async_similar_artists(active.origin, cache, active)
 
-        random.shuffle(allowed)
-        return allowed[: settings.max_artists]
+        # Weighted by Last.fm's match score rather than shuffled flat, so a
+        # batch is mostly artists a listener would actually recognise.
+        return weighted_sample(
+            [pair for pair in candidates if pair[0] in allowed],
+            settings.max_artists,
+            FAMILIARITY_EXPONENT.get(settings.familiarity, 1.0),
+        )
 
     def _track_cap(self, *, is_seed: bool) -> int:
         """How many tracks this artist contributes to the batch.
@@ -416,7 +424,7 @@ class CuratedRadioEngine:
 
         # Scoped to this build. The same artists recur every round, and
         # re-fetching them was most of the time a long build took.
-        similar_cache: dict[str, list[str]] = {}
+        similar_cache: dict[str, list[tuple[str, float]]] = {}
         track_cache: dict[str, list[TrackInfo]] = {}
 
         for _ in range(PLAYLIST_MAX_ROUNDS):

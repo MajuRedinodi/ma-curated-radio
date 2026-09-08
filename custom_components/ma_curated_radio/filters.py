@@ -8,6 +8,7 @@ exception documented on :func:`is_live`.
 
 from __future__ import annotations
 
+import random
 import re
 from typing import Final
 
@@ -77,11 +78,17 @@ def is_holiday(name: str, version: str, album: str) -> bool:
     return any(token in haystack for token in HOLIDAY_TOKENS)
 
 
-def clean_similar_artists(names: list[str], seed_artist: str) -> list[str]:
-    """Drop empties, the seed artist itself, and collaboration credits."""
+def clean_similar_artists(
+    candidates: list[tuple[str, float]], seed_artist: str
+) -> list[tuple[str, float]]:
+    """Drop empties, the seed artist itself, and collaboration credits.
+
+    Takes and returns (name, match) pairs so the ranking survives to the
+    point where artists are actually chosen.
+    """
     seen: set[str] = set()
-    cleaned: list[str] = []
-    for name in names:
+    cleaned: list[tuple[str, float]] = []
+    for name, match in candidates:
         candidate = (name or "").strip()
         if not candidate or candidate == seed_artist:
             continue
@@ -91,7 +98,7 @@ def clean_similar_artists(names: list[str], seed_artist: str) -> list[str]:
         if key in seen:
             continue
         seen.add(key)
-        cleaned.append(candidate)
+        cleaned.append((candidate, match))
     return cleaned
 
 
@@ -165,3 +172,36 @@ def is_non_song(name: str, version: str) -> bool:
     """
     haystack = f"{name} {version}".lower()
     return any(marker in haystack for marker in NON_SONG_MARKERS)
+
+
+def weighted_sample(
+    candidates: list[tuple[str, float]], count: int, exponent: float
+) -> list[str]:
+    """Choose ``count`` artists, biased toward the best-matching ones.
+
+    Last.fm ranks similar artists by a match score, and that ranking is a
+    decent proxy for how well known an artist is. Sampling uniformly from
+    a deep pool, which is what this used to do, is why batches filled up
+    with defensible neighbours nobody had heard of.
+
+    ``exponent`` sets the bias: 0 is a flat shuffle, higher values crowd
+    selection toward the top of the list. Keep it low. Match scores fall
+    away steeply, so an exponent much above 2 stops the tail appearing at
+    all rather than merely making it rare, which would defeat the point of
+    drawing from a deep pool. Uses the Efraimidis-Spirakis one-pass
+    method, so a whole batch is drawn in a single sort without
+    replacement.
+    """
+    if count <= 0 or not candidates:
+        return []
+
+    keyed: list[tuple[float, str]] = []
+    for name, match in candidates:
+        weight = max(match, 0.0) ** exponent if exponent else 1.0
+        # A zero weight would divide by zero and can never be picked;
+        # a tiny one keeps it last in line rather than absent.
+        weight = max(weight, 1e-9)
+        keyed.append((random.random() ** (1.0 / weight), name))
+
+    keyed.sort(key=lambda pair: pair[0], reverse=True)
+    return [name for _, name in keyed[:count]]

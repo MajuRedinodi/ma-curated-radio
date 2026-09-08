@@ -23,8 +23,13 @@ async def async_get_similar_artists(
     api_key: str,
     artist: str,
     limit: int,
-) -> list[str]:
-    """Return names of artists Last.fm considers similar to ``artist``.
+) -> list[tuple[str, float]]:
+    """Return artists Last.fm considers similar, with their match scores.
+
+    The match score (0 to 1) is the whole point of returning pairs. It
+    ranks by similarity, which correlates strongly with how well known an
+    artist is, and discarding it was what made batches drift into names
+    nobody recognises.
 
     Never raises: a Last.fm outage should cost variety, not the whole batch.
     """
@@ -66,7 +71,19 @@ async def async_get_similar_artists(
     if isinstance(entries, dict):
         # A single result is returned unwrapped rather than as a list.
         entries = [entries]
-    return [str(entry.get("name") or "") for entry in entries if isinstance(entry, dict)]
+    results: list[tuple[str, float]] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        name = str(entry.get("name") or "")
+        if not name:
+            continue
+        try:
+            match = float(entry.get("match") or 0.0)
+        except (TypeError, ValueError):
+            match = 0.0
+        results.append((name, match))
+    return results
 
 
 async def async_validate_api_key(

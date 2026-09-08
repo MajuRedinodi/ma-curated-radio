@@ -158,3 +158,33 @@ CONF_MIN_DURATION: Final = "min_duration"
 # surface those; relevance-ranked search did not, which is why this only
 # became necessary once the native lookup started working.
 DEFAULT_MIN_DURATION: Final = 90
+
+# --- Familiarity -------------------------------------------------------------
+
+CONF_FAMILIARITY: Final = "familiarity"
+
+# Last.fm ranks similar artists by match score, which tracks how well known
+# they are. Sampling that list uniformly, which is what a flat shuffle
+# does, fills a batch with defensible neighbours nobody recognises. The
+# exponent biases selection toward the top without making the tail
+# unreachable.
+FAMILIARITY_FAMILIAR: Final = "familiar"
+FAMILIARITY_BALANCED: Final = "balanced"
+FAMILIARITY_ADVENTUROUS: Final = "adventurous"
+FAMILIARITIES: Final = [
+    FAMILIARITY_FAMILIAR,
+    FAMILIARITY_BALANCED,
+    FAMILIARITY_ADVENTUROUS,
+]
+# Exponents are gentler than they look. Last.fm match scores fall away
+# fast, so squaring already gives the closest artist roughly a hundred to
+# one over the far tail. Going higher makes the tail unreachable, which
+# would make the deep pool pointless.
+FAMILIARITY_EXPONENT: Final = {
+    FAMILIARITY_FAMILIAR: 2.0,
+    FAMILIARITY_BALANCED: 1.0,
+    FAMILIARITY_ADVENTUROUS: 0.0,
+}
+
+# The premise is recognisable songs, so this leans that way by default.
+DEFAULT_FAMILIARITY: Final = FAMILIARITY_FAMILIAR

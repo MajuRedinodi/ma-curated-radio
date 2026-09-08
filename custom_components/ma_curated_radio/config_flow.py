@@ -21,6 +21,7 @@ from .const import (
     CONF_COOLDOWN_ENTITY,
     CONF_COOLDOWN_SECONDS,
     CONF_DEGREES,
+    CONF_FAMILIARITY,
     CONF_FILTER_HOLIDAY,
     CONF_FILTER_LIVE,
     CONF_HISTORY_MINUTES,
@@ -41,6 +42,7 @@ from .const import (
     DEFAULT_ARTIST_STRIKE_LIMIT,
     DEFAULT_COOLDOWN_SECONDS,
     DEFAULT_DEGREES,
+    DEFAULT_FAMILIARITY,
     DEFAULT_FILTER_HOLIDAY,
     DEFAULT_FILTER_LIVE,
     DEFAULT_HISTORY_MINUTES,
@@ -55,6 +57,7 @@ from .const import (
     DEFAULT_TRACKS_PER_ARTIST,
     DEFAULT_USE_NATIVE_TOP_TRACKS,
     DOMAIN,
+    FAMILIARITIES,
     LASTFM_SIGNUP_URL,
     MA_DOMAIN,
     SEED_LEANS,
@@ -105,6 +108,16 @@ def _options_schema(current: dict[str, Any]) -> vol.Schema:
                 selector.SelectSelectorConfig(
                     options=SEED_LEANS,
                     translation_key="seed_lean",
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Required(
+                CONF_FAMILIARITY,
+                default=value(CONF_FAMILIARITY, DEFAULT_FAMILIARITY),
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=FAMILIARITIES,
+                    translation_key="familiarity",
                     mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             ),

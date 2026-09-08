@@ -4,6 +4,8 @@ These mirror the Jinja expressions in the blueprint this integration
 replaces, so a behaviour change here is a deliberate one.
 """
 
+import random
+
 import pytest
 from filters import (
     base_title,
@@ -14,6 +16,7 @@ from filters import (
     is_too_short,
     matches_provider,
     sequence,
+    weighted_sample,
 )
 
 
@@ -67,14 +70,16 @@ def test_is_holiday_ignores_season(name, version, album, expected):
 
 def test_clean_similar_artists_drops_collabs_and_seed():
     names = [
-        "Lady Gaga",
-        "Bruno Mars",
-        "Lady Gaga, Bruno Mars",
-        "Simon & Garfunkel",
-        "",
-        "Bruno Mars",
+        ("Lady Gaga", 0.9),
+        ("Bruno Mars", 0.8),
+        ("Lady Gaga, Bruno Mars", 0.7),
+        ("Simon & Garfunkel", 0.6),
+        ("", 0.5),
+        ("Bruno Mars", 0.4),
     ]
-    assert clean_similar_artists(names, "Lady Gaga") == ["Bruno Mars"]
+    assert [name for name, _ in clean_similar_artists(names, "Lady Gaga")] == [
+        "Bruno Mars"
+    ]
 
 
 @pytest.mark.parametrize(
@@ -166,3 +171,62 @@ def test_is_too_short(duration, minimum, expected):
 )
 def test_is_non_song(name, version, expected):
     assert is_non_song(name, version) is expected
+
+
+def test_weighted_sample_favours_the_best_match():
+    """The whole point: a deep pool must not be sampled flat.
+
+    Sampling uniformly from Last.fm's tail is what filled batches with
+    defensible artists nobody recognised.
+    """
+    pool = [("Close", 1.0), ("Middling", 0.4), ("Distant", 0.05)]
+    counts = {"Close": 0, "Middling": 0, "Distant": 0}
+    random.seed(11)
+    for _ in range(600):
+        counts[weighted_sample(pool, 1, 2.0)[0]] += 1
+    assert counts["Close"] > counts["Middling"] > counts["Distant"]
+    assert counts["Close"] > 400
+
+
+def test_weighted_sample_still_reaches_the_tail():
+    """Biased, not deterministic. The far end has to stay possible.
+
+    This is why the exponent is kept low. A steeper curve makes the tail
+    unreachable rather than rare, which would make the deep pool pointless.
+    """
+    pool = [("Close", 1.0), ("Distant", 0.3)]
+    random.seed(3)
+    picks = {weighted_sample(pool, 1, 2.0)[0] for _ in range(400)}
+    assert picks == {"Close", "Distant"}
+
+
+def test_zero_exponent_is_a_flat_shuffle():
+    pool = [("A", 1.0), ("B", 0.01)]
+    random.seed(5)
+    counts = {"A": 0, "B": 0}
+    for _ in range(400):
+        counts[weighted_sample(pool, 1, 0.0)[0]] += 1
+    assert 150 < counts["A"] < 250
+
+
+def test_weighted_sample_returns_distinct_artists():
+    pool = [("A", 1.0), ("B", 0.9), ("C", 0.8), ("D", 0.7)]
+    random.seed(7)
+    picked = weighted_sample(pool, 3, 2.0)
+    assert len(picked) == 3
+    assert len(set(picked)) == 3
+
+
+def test_weighted_sample_handles_empty_and_zero():
+    assert weighted_sample([], 3, 2.0) == []
+    assert weighted_sample([("A", 1.0)], 0, 2.0) == []
+    # A zero match must not divide by zero.
+    assert weighted_sample([("A", 0.0)], 1, 2.0) == ["A"]
+
+
+def test_clean_similar_artists_keeps_match_scores():
+    cleaned = clean_similar_artists(
+        [("Bruno Mars", 0.8), ("Lady Gaga, Bruno Mars", 0.7), ("Lady Gaga", 0.9)],
+        "Lady Gaga",
+    )
+    assert cleaned == [("Bruno Mars", 0.8)]

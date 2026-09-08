@@ -13,6 +13,7 @@ from .const import (
     CONF_COOLDOWN_SECONDS,
     CONF_DEGREES,
     CONF_ENABLED,
+    CONF_FAMILIARITY,
     CONF_FILTER_HOLIDAY,
     CONF_FILTER_LIVE,
     CONF_HISTORY_MINUTES,
@@ -34,6 +35,7 @@ from .const import (
     DEFAULT_COOLDOWN_SECONDS,
     DEFAULT_DEGREES,
     DEFAULT_ENABLED,
+    DEFAULT_FAMILIARITY,
     DEFAULT_FILTER_HOLIDAY,
     DEFAULT_FILTER_LIVE,
     DEFAULT_HISTORY_MINUTES,
@@ -47,6 +49,7 @@ from .const import (
     DEFAULT_TRACK_SUPPRESS_DAYS,
     DEFAULT_TRACKS_PER_ARTIST,
     DEFAULT_USE_NATIVE_TOP_TRACKS,
+    FAMILIARITIES,
     LEGACY_SEED_LEANS,
     SEED_LEANS,
 )
@@ -72,6 +75,7 @@ class Settings:
     filter_holiday: bool
     use_native_top_tracks: bool
     seed_lean: str
+    familiarity: str
     degrees: int
     min_duration: int
     max_consecutive: int
@@ -114,6 +118,7 @@ class Settings:
                 merged.get(CONF_USE_NATIVE_TOP_TRACKS, DEFAULT_USE_NATIVE_TOP_TRACKS)
             ),
             seed_lean=_seed_lean(merged.get(CONF_SEED_LEAN, DEFAULT_SEED_LEAN)),
+            familiarity=_familiarity(merged.get(CONF_FAMILIARITY, DEFAULT_FAMILIARITY)),
             degrees=int(merged.get(CONF_DEGREES, DEFAULT_DEGREES)),
             min_duration=int(merged.get(CONF_MIN_DURATION, DEFAULT_MIN_DURATION)),
             max_consecutive=int(
@@ -136,3 +141,9 @@ def _seed_lean(value: object) -> str:
     name = str(value or "")
     name = LEGACY_SEED_LEANS.get(name, name)
     return name if name in SEED_LEANS else DEFAULT_SEED_LEAN
+
+
+def _familiarity(value: object) -> str:
+    """Normalise the familiarity setting."""
+    name = str(value or "")
+    return name if name in FAMILIARITIES else DEFAULT_FAMILIARITY
