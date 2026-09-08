@@ -27,7 +27,7 @@ from .const import MODE_REFILL, MODE_REPLACE, SKIP_GRACE_SECONDS
 from .engine import CuratedRadioEngine
 from .feedback import PlaybackSnapshot, SkipMemory
 from .filters import base_title
-from .ma import async_get_queue
+from .ma import QueueSnapshot, async_get_queue
 from .settings import Settings
 
 _LOGGER = logging.getLogger(__name__)
@@ -74,7 +74,6 @@ class CuratedRadioDetector:
         self._skips = skips
         self._expected_next = ""
         self._last_manual_pick: datetime | None = None
-        self._queue_items: int | None = None
         self._task: asyncio.Task[None] | None = None
 
     def apply_settings(self, settings: Settings) -> None:
@@ -162,7 +161,7 @@ class CuratedRadioDetector:
                 bool(self._expected_next)
                 and queue.current_uri != self._expected_next
                 and not ours
-                and not self._is_bulk_load(queue.items)
+                and not self._is_bulk_load(queue)
             )
 
             if not self._in_cooldown():
@@ -186,8 +185,6 @@ class CuratedRadioDetector:
             # than trusting the snapshot taken above.
             post = await async_get_queue(self._hass, self._settings.player)
             self._expected_next = post.next_uri if post else ""
-            if post is not None:
-                self._queue_items = post.items
         except asyncio.CancelledError:
             raise
         except Exception:  # noqa: BLE001 - the listener has to survive anything
@@ -218,27 +215,32 @@ class CuratedRadioDetector:
                 self._settings.artist_strike_limit,
             )
 
-    def _is_bulk_load(self, items: int) -> bool:
-        """True if the queue just grew by more than one track's worth.
+    def _is_bulk_load(self, queue: QueueSnapshot) -> bool:
+        """True if the whole queue came from somewhere else.
 
-        A manual pick is a single track. A playlist or album load is many
-        at once, and choosing to play a playlist is a decision to hear that
-        playlist rather than an invitation to replace it.
+        A manual pick is one track. A playlist or album load is many, and
+        choosing to play a playlist is a decision to hear that playlist
+        rather than an invitation to replace it.
 
-        Better than a timed cooldown on a named script: it needs no
-        configuration, covers albums and any other bulk load, and never
-        blinds detection for a window during which a genuine pick would be
-        missed.
+        Judged on the queue's size rather than how much it grew, because
+        loading a playlist usually REPLACES the queue: swapping a
+        170-track queue for a 40-track playlist is a change of minus 130,
+        and a growth test sails straight past it.
+
+        The second half matters just as much. A single track dropped into
+        our station leaves our music queued behind it, so if what plays
+        next is ours, one foreign track is exactly what it looks like.
+        Only when nothing that follows is ours did the queue really come
+        from elsewhere.
         """
         threshold = self._settings.bulk_tracks
-        if threshold <= 0 or self._queue_items is None:
+        if threshold <= 0 or queue.items < threshold:
             return False
-        if items - self._queue_items < threshold:
+        if self._engine.was_queued(queue.next_uri):
             return False
         _LOGGER.debug(
-            "Queue grew from %s to %s tracks; treating as a bulk load, not a pick",
-            self._queue_items,
-            items,
+            "Queue holds %s tracks we did not choose; a bulk load, not a pick",
+            queue.items,
         )
         return True
 

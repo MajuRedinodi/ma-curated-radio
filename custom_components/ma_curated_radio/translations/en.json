@@ -65,7 +65,7 @@
           "artist_mute_days": "How long a muted artist stays out of the similar-artist pool. The artist you pick yourself is never muted.",
           "refill_threshold": "Top the queue up once this many tracks or fewer remain after the one playing.",
           "history_minutes": "How long a track title stays excluded from new batches. Zero disables repeat memory.",
-          "bulk_tracks": "A manual pick is one track; a playlist or album load is several at once. If something outside this integration adds at least this many tracks to the queue, it is treated as a deliberate choice to hear that playlist and left alone. Three is deliberately low: tracks this integration queued are already excluded, so the only distinction left is one track against several, and short playlists deserve the same protection as long ones. Zero disables the check.",
+          "bulk_tracks": "A manual pick is one track; a playlist or album is many. If the queue holds at least this many tracks that this integration did not choose, and nothing queued after them is ours either, it is treated as a deliberate choice to hear that playlist and left alone. Three is deliberately low, so a five-track playlist is protected as well as a five-hundred-track one. Zero disables the check.",
           "settle_seconds": "How long to wait after a manual pick before rewriting the queue, so the player has time to settle.",
           "cooldown_entity": "If another routine also rebuilds this player's queue on a schedule, point this at it so its rebuild is never mistaken for a manual pick. Leave empty if nothing else touches the queue.",
           "cooldown_seconds": "How long after that routine runs to skip detection entirely.",
