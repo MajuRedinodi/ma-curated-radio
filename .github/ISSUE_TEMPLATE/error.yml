@@ -1,0 +1,39 @@
+name: An error, or it will not set up
+description: A traceback in the log, or the integration failing to load.
+labels: ["bug"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The **Version** sensor on the device, or the HACS listing if it never got far enough to create one.
+      placeholder: "1.0.0"
+    validations:
+      required: true
+
+  - type: input
+    id: ha_version
+    attributes:
+      label: Home Assistant version
+      placeholder: "2026.9.0"
+    validations:
+      required: true
+
+  - type: textarea
+    id: traceback
+    attributes:
+      label: The error
+      description: The whole traceback, from the log rather than from a notification, which truncates.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: What was happening
+      description: |
+        Setting it up, a batch being built, a playlist being written, a
+        restart? If it followed an update, say which version worked.
+    validations:
+      required: true

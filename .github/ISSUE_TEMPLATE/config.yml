@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: A track slipped through a filter
+    url: https://github.com/MajuRedinodi/ma-curated-radio/issues/new?template=bug_report.yml
+    about: Live versions, karaoke, commentary, holiday music and duplicates all have filters. Name the track and the batch it appeared in.
+  - name: The station wandered somewhere odd
+    url: https://github.com/MajuRedinodi/ma-curated-radio/issues/new?template=bug_report.yml
+    about: Include the artist chain from the log, since the batch that went wrong is usually not the batch you noticed.

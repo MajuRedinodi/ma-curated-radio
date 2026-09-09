@@ -564,6 +564,48 @@ most likely to be the dud.
 rotation had enough of each to work with; a lopsided split means the pool
 could not supply one of them and the pattern gave way, which is by design.
 
+## Reporting a problem
+
+Most problems here are about *what got played* rather than about an
+error, so there is usually nothing to paste from a crash. The debug log
+line for a batch carries almost everything needed instead: the artists it
+drew from, how well known they are, and what it decided the track change
+meant.
+
+Turn debug logging on from **Settings → Devices & Services → Music
+Assistant Curated Radio → ⋮ → Enable debug logging**, reproduce, then
+download the log from the same menu. The setting is deliberately not kept
+across a restart, since Home Assistant treats it as a debugging session
+rather than a preference.
+
+Search the log for `ma_curated_radio` and include the whole run, not only
+the last line:
+
+```
+Manual pick: tidal--xxxx://track/123456
+Antonio Vivaldi & The Czech Philharmonic is a collaboration (6 listeners
+against 2028979 for Antonio Vivaldi alone); asking Last.fm about Antonio Vivaldi
+Queue session anchored to Antonio Vivaldi
+Too small for this pool, dropped: Christine McVie (78,730)
+Batch follows Antonio Vivaldi; primed Antonio Vivaldi
+Queued 19 track(s) in replace mode, seeded from Antonio Vivaldi via ...;
+median reach 1,048,914, weakest 186,916, tiers {'P': 7, 'D': 6, 'S': 6}
+```
+
+Two things that are easy to get wrong and cost a round trip:
+
+- **Give the version from the Version sensor, not from HACS.** An update
+  only takes effect after a restart, so the two disagree exactly when it
+  matters.
+- **Give the settings for the station style that was selected**, since
+  the three that shape a batch are held per style and the dashboard shows
+  whichever is current.
+
+Worth knowing before reporting a batch that felt too obscure: how deep a
+batch reaches safely is a property of the pool rather than of the
+settings, and the reported reach tells the two apart. See
+[Reading a batch](#reading-a-batch).
+
 ## Notes and limitations
 
 - **The seed artist leads each batch.** That is the intent rather than an

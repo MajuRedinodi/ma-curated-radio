@@ -1,0 +1,92 @@
+name: Something played that should not have
+description: A batch went wrong, or the integration did not react as expected.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Most problems here are about *what got played* rather than about
+        an error, so there is usually no traceback to paste. The debug log
+        line for a batch carries nearly everything needed instead.
+
+        **Turn on debug logging first**: Settings → Devices & Services →
+        Music Assistant Curated Radio → ⋮ → Enable debug logging. Then
+        reproduce, and download the log from the same menu.
+
+        Note that the setting does not survive a restart, by design: Home
+        Assistant treats it as a debugging session rather than a
+        preference.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The **Version** sensor on the device, not the HACS listing, since an update only takes effect after a restart.
+      placeholder: "1.0.0"
+    validations:
+      required: true
+
+  - type: input
+    id: provider
+    attributes:
+      label: Streaming provider
+      description: Only Tidal has been tested. Providers differ in what metadata they report, which is often the cause.
+      placeholder: Tidal
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected, and what happened
+      description: For a track that should not have played, name it and say why.
+      placeholder: |
+        Picked Fleetwood Mac. The batch played three Christine McVie solo
+        tracks nobody has heard of.
+    validations:
+      required: true
+
+  - type: textarea
+    id: batch
+    attributes:
+      label: The batch log line
+      description: |
+        Search the log for `ma_curated_radio.engine`. The useful line
+        starts `Queued N track(s)` and carries the artists, the median
+        reach and the tier split. Include the lines around it too: the
+        pick, the anchor, the seam and any dropped artists.
+      render: text
+      placeholder: |
+        Manual pick: tidal--xxxx://track/123456
+        Queue session anchored to Fleetwood Mac
+        Too small for this pool, dropped: Christine McVie (78,730)
+        Batch follows Fleetwood Mac; primed Fleetwood Mac
+        Queued 19 track(s) in replace mode, seeded from Fleetwood Mac via
+        ...; median reach 580,807, weakest 106,212, tiers {'P': 7, ...}
+    validations:
+      required: true
+
+  - type: textarea
+    id: settings
+    attributes:
+      label: Settings
+      description: |
+        Station style, and the three that shape a batch. They are held per
+        station style, so please give the values for the style that was
+        selected at the time.
+      placeholder: |
+        Station style: Balanced
+        Similar artists: 8
+        Tracks per artist: 3
+        Tracks per batch: 19
+        Drop artists below: 10%
+    validations:
+      required: true
+
+  - type: textarea
+    id: anything_else
+    attributes:
+      label: Anything else
+      description: Whatever else seems relevant.
+    validations:
+      required: false
