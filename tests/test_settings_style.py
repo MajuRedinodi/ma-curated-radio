@@ -19,7 +19,7 @@ def test_each_style_has_its_own_default():
     assert style_value({}, SEED_LEAN_ARTIST, CONF_MAX_ARTISTS) == 3
     assert style_value({}, SEED_LEAN_BALANCED, CONF_MAX_ARTISTS) == 8
     assert style_value({}, SEED_LEAN_ARTIST, CONF_TRACKS_PER_ARTIST) == 3
-    assert style_value({}, SEED_LEAN_BALANCED, CONF_TRACKS_PER_ARTIST) == 2
+    assert style_value({}, SEED_LEAN_BALANCED, CONF_TRACKS_PER_ARTIST) == 3
 
 
 def test_a_value_from_before_styles_applies_to_every_style():

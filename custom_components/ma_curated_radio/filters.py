@@ -226,8 +226,10 @@ def sequence_tiered(
     lists: list[list[str]],
     tiers: dict[str, str],
     pattern: list[str],
+    *,
     max_consecutive: int = 2,
     leading: int | None = None,
+    length: int = 0,
 ) -> list[str]:
     """Order tracks to a tier pattern rather than by plain round-robin.
 
@@ -235,37 +237,58 @@ def sequence_tiered(
     second, so an hour front-loads its hits and decays. Measured on a
     real nine artist batch the last third averaged 105k listeners against
     768k for the first, with six successively weaker tracks in a row.
-    Rotating Power, Deep, Secondary instead halved the worst run and
-    nearly doubled the closing third.
+    Rotating tiers instead halved the worst run and nearly doubled the
+    closing third.
+
+    ``length`` stops early, which is what separates how deep a batch may
+    reach from how long it plays. Drawing three tracks an artist and
+    playing all of them is a two hour batch that reseeds half as often;
+    drawing three and playing nineteen is the same hour as before, with
+    the third tracks landing in the slots that want something deeper.
+    Zero plays everything drawn.
 
     The pattern is a preference. When no artist can supply the tier a
-    slot wants, the fullest eligible pool plays anyway: an hour with a
-    slightly wrong texture beats an hour with a hole in it.
+    slot wants, the best available plays anyway: an hour with a slightly
+    wrong texture beats an hour with a hole in it.
     """
     pools = [list(items) for items in lists if items]
     if not pools:
         return []
 
+    capped = 0 < length < sum(len(pool) for pool in pools)
+    wanted = length if capped else sum(len(pool) for pool in pools)
+
     ordered: list[str] = []
+    played: dict[int, int] = {}
     last: int | None = leading
     run = 1 if leading is not None else 0
 
-    while any(pools):
+    while len(ordered) < wanted and any(pools):
         want = pattern[len(ordered) % len(pattern)]
         pick = None
-        best: tuple[int, int] | None = None
+        best: tuple[int, ...] | None = None
         for index, pool in enumerate(pools):
             if not pool or (index == last and run >= max_consecutive):
                 continue
-            # Prefer the wanted tier, then the fullest pool, which is what
-            # keeps a long pool from stranding tracks at the end.
-            key = (0 if tiers.get(pool[0]) == want else 1, -len(pool))
+            fit = 0 if tiers.get(pool[0]) == want else 1
+            # Uncapped, every pool has to be emptied, so take from the
+            # fullest to avoid stranding one artist's tracks at the end.
+            # Capped, there is no such obligation, and preferring the
+            # fullest would simply hand the extra slots to whichever
+            # artist drew most, which is the seed. Spread by who has
+            # played least instead.
+            key = (
+                (fit, played.get(index, 0), -len(pool))
+                if capped
+                else (fit, -len(pool))
+            )
             if best is None or key < best:
                 best, pick = key, index
         if pick is None:
             pick = next(i for i, pool in enumerate(pools) if pool)
 
         ordered.append(pools[pick].pop(0))
+        played[pick] = played.get(pick, 0) + 1
         run = run + 1 if pick == last else 1
         last = pick
 

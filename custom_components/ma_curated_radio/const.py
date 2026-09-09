@@ -159,10 +159,37 @@ DEFAULT_SEED_LEAN: Final = SEED_LEAN_BALANCED
 # A value set on the dashboard is written against the style that is
 # selected at the time, so tuning one style cannot quietly wreck another.
 CONF_STYLE_SETTINGS: Final = "style_settings"
+
+# How many tracks a batch actually plays, as opposed to how many it drew
+# to choose from. Zero plays everything drawn, which is what the
+# integration did before this existed.
+#
+# Nineteen is about ninety minutes, which is a comfortable chunk before
+# the station reseeds and moves on.
+#
+# Separating the two is what lets depth be tuned without lengthening the
+# hour. Tracks per artist used to do both jobs at once, so reaching an
+# artist's third track also took a batch from 19 tracks to 29, and a
+# longer batch reseeds less often. Drawing three each and playing 19
+# gives the same hour with the deeper tracks landing in the slots that
+# want them.
+CONF_BATCH_LENGTH: Final = "batch_length"
 STYLE_DEFAULTS: Final = {
-    SEED_LEAN_ARTIST: {CONF_MAX_ARTISTS: 3, CONF_TRACKS_PER_ARTIST: 3},
-    SEED_LEAN_BALANCED: {CONF_MAX_ARTISTS: 8, CONF_TRACKS_PER_ARTIST: 2},
-    SEED_LEAN_DISCOVERY: {CONF_MAX_ARTISTS: 8, CONF_TRACKS_PER_ARTIST: 2},
+    SEED_LEAN_ARTIST: {
+        CONF_MAX_ARTISTS: 3,
+        CONF_TRACKS_PER_ARTIST: 3,
+        CONF_BATCH_LENGTH: 0,
+    },
+    SEED_LEAN_BALANCED: {
+        CONF_MAX_ARTISTS: 8,
+        CONF_TRACKS_PER_ARTIST: 3,
+        CONF_BATCH_LENGTH: 19,
+    },
+    SEED_LEAN_DISCOVERY: {
+        CONF_MAX_ARTISTS: 8,
+        CONF_TRACKS_PER_ARTIST: 3,
+        CONF_BATCH_LENGTH: 19,
+    },
 }
 DEFAULT_MAX_CONSECUTIVE: Final = 2
 DEFAULT_TRACK_SUPPRESS_DAYS: Final = 30

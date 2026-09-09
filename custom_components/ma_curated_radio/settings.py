@@ -9,6 +9,7 @@ from homeassistant.config_entries import ConfigEntry
 from .const import (
     CONF_ARTIST_MUTE_DAYS,
     CONF_ARTIST_STRIKE_LIMIT,
+    CONF_BATCH_LENGTH,
     CONF_BULK_TRACKS,
     CONF_COOLDOWN_ENTITY,
     CONF_COOLDOWN_SECONDS,
@@ -72,6 +73,7 @@ class Settings:
     enabled: bool
     lastfm_api_key: str
     max_artists: int
+    batch_length: int
     popularity_floor: int
     tracks_per_artist: int
     refill_threshold: int
@@ -108,6 +110,7 @@ class Settings:
             ma_config_entry_id=str(merged.get(CONF_MA_CONFIG_ENTRY_ID, "")),
             lastfm_api_key=str(merged.get(CONF_LASTFM_API_KEY, "")),
             max_artists=style_value(merged, style, CONF_MAX_ARTISTS),
+            batch_length=style_value(merged, style, CONF_BATCH_LENGTH),
             popularity_floor=int(
                 merged.get(CONF_POPULARITY_FLOOR, DEFAULT_POPULARITY_FLOOR)
             ),

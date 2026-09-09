@@ -399,7 +399,7 @@ def test_tiered_order_spreads_the_big_tracks_across_the_hour():
 def test_tiered_order_still_honours_the_seam_and_the_run_cap():
     lists = [["a1", "a2", "a3"], ["b1"], ["c1"]]
     tiers = dict.fromkeys(("a1", "a2", "a3", "b1", "c1"), "P")
-    out = sequence_tiered(lists, tiers, ["P"], 2, leading=0)
+    out = sequence_tiered(lists, tiers, ["P"], max_consecutive=2, leading=0)
     assert out[1] not in ("a1", "a2", "a3")
 
 
@@ -428,3 +428,38 @@ def test_tiering_survives_a_pool_with_no_sizes_at_all():
     tiers = tier_of(pool, 0.7)
     assert len(tiers) == 4
     assert set(tiers.values()) <= {"P", "S", "D"}
+
+
+def test_length_cap_separates_depth_from_how_long_the_hour_is():
+    """Drawing deeper must not lengthen the batch.
+
+    Tracks per artist used to do both jobs, so reaching an artist's third
+    track also took a batch from 19 tracks to 29, and a longer batch
+    reseeds less often.
+    """
+    lists = [["a1", "a2", "a3"], ["b1", "b2", "b3"], ["c1", "c2", "c3"]]
+    tiers = {
+        "a1": "P", "b1": "P", "c1": "P",
+        "a2": "S", "b2": "S", "c2": "S",
+        "a3": "D", "b3": "D", "c3": "D",
+    }
+    assert len(sequence_tiered(lists, tiers, ["P", "D", "S"], length=6)) == 6
+    assert len(sequence_tiered(lists, tiers, ["P", "D", "S"])) == 9
+    # A cap longer than the pool is not padding.
+    assert len(sequence_tiered(lists, tiers, ["P", "D", "S"], length=99)) == 9
+
+
+def test_a_capped_batch_spreads_across_artists_not_onto_the_biggest_pool():
+    """The seed draws most, so favouring the fullest pool would feed it.
+
+    Uncapped the fullest-pool rule stops tracks being stranded. Capped it
+    only decides who gets the spare slots, and handing them to whoever
+    drew most concentrates a batch on the seed.
+    """
+    lists = [["s1", "s2", "s3", "s4", "s5"], ["b1", "b2"], ["c1", "c2"]]
+    tiers = dict.fromkeys(
+        ("s1", "s2", "s3", "s4", "s5", "b1", "b2", "c1", "c2"), "P"
+    )
+    out = sequence_tiered(lists, tiers, ["P"], length=6)
+    seed_share = sum(1 for uri in out if uri.startswith("s"))
+    assert seed_share <= 3

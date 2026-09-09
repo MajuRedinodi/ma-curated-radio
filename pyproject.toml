@@ -19,6 +19,7 @@ ignore = [
 "custom_components/ma_curated_radio/ma.py" = ["BLE001"]
 "custom_components/ma_curated_radio/engine.py" = ["BLE001", "PLR0913"]
 "custom_components/ma_curated_radio/coordinator.py" = ["BLE001"]
+"custom_components/ma_curated_radio/filters.py" = ["PLR0913"]
 
 [tool.ruff.lint.isort]
 known-third-party = ["homeassistant", "voluptuous", "aiohttp"]

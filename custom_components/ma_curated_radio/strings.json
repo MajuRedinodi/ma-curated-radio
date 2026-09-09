@@ -131,6 +131,9 @@
       "tracks_per_artist": {
         "name": "Tracks per artist"
       },
+      "batch_length": {
+        "name": "Tracks per batch"
+      },
       "degrees": {
         "name": "Degrees of separation"
       },

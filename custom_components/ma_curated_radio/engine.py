@@ -292,8 +292,9 @@ class CuratedRadioEngine:
             per_artist,
             tiers,
             TIER_PATTERN,
-            self._settings.max_consecutive,
-            leading,
+            max_consecutive=self._settings.max_consecutive,
+            leading=leading,
+            length=self._settings.batch_length,
         )
         enqueued = await self._async_enqueue(ordered, mode)
         if enqueued:
