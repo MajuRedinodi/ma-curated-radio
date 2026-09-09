@@ -530,3 +530,21 @@ def test_a_song_that_merely_sounds_live_is_not_filtered():
     assert not is_live("Alive", "")
     assert not is_live("Living on a Prayer", "")
     assert not is_live("Concrete and Clay", "")
+
+
+def test_a_classical_piece_is_the_same_piece_with_a_tempo_marking():
+    """Brahms' Hungarian Dance No 5 reached one queue twice.
+
+    Classical releases append a movement or tempo to the title with a
+    comma, and abbreviate "No." inconsistently.
+    """
+    assert base_title("Hungarian Dance No 5") == base_title(
+        "Hungarian Dance No. 5, Allegro molto"
+    )
+    assert base_title("Symphony No. 7") == base_title("Symphony No 7, Allegretto")
+
+
+def test_a_comma_in_a_pop_title_is_left_alone():
+    """Splitting on the comma would collapse these onto each other."""
+    assert base_title("Hello, Goodbye") != base_title("Hello")
+    assert base_title("Rock Me, Baby") != base_title("Rock Me")

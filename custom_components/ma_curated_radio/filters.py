@@ -89,13 +89,44 @@ NON_SONG_MARKERS: Final = (
 )
 
 
+# Tempo and movement markings, which classical releases append to a
+# title with a comma. Deliberately a closed list rather than "split on
+# the comma", because that would collapse "Hello, Goodbye" onto "Hello".
+TEMPO_MARKINGS: Final = (
+    "adagio",
+    "allegretto",
+    "allegro",
+    "andante",
+    "grave",
+    "largo",
+    "larghetto",
+    "lento",
+    "moderato",
+    "presto",
+    "vivace",
+)
+
+# Punctuation that carries no meaning in a title, so "No. 5" and "No 5"
+# are the same piece.
+_PUNCTUATION = re.compile(r"[.,;:'\"]")
+
+
 def base_title(name: str) -> str:
     """Normalise a track title for duplicate detection.
 
-    Lowercased and truncated at the first ``" - "`` or ``"("`` so that
-    "Song - Remastered 2011" and "Song (Radio Edit)" collapse onto "song".
+    Truncated at the first ``" - "`` or ``"("`` so that "Song -
+    Remastered 2011" and "Song (Radio Edit)" collapse onto "song", then
+    stripped of a trailing tempo marking and of punctuation.
+
+    The last two are for classical, where the same piece arrives as
+    "Hungarian Dance No 5" and "Hungarian Dance No. 5, Allegro molto".
+    Both reached one queue together.
     """
-    return name.split(" - ", maxsplit=1)[0].split("(", maxsplit=1)[0].strip().lower()
+    title = name.split(" - ", maxsplit=1)[0].split("(", maxsplit=1)[0]
+    head, sep, tail = title.rpartition(",")
+    if sep and tail.strip().lower().startswith(TEMPO_MARKINGS):
+        title = head
+    return _PUNCTUATION.sub("", title).strip().lower()
 
 
 def is_live(name: str, version: str) -> bool:
