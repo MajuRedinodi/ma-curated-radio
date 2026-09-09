@@ -289,3 +289,29 @@ def test_hotness_needs_both_signals():
 )
 def test_credits_artist(credited, wanted, expected):
     assert credits_artist(credited, wanted) is expected
+
+
+def test_sequence_counts_the_track_it_follows():
+    """A pick and the two after it must not be three by one artist.
+
+    Observed: picking ELO's "Mr. Blue Sky" opened the batch with two more
+    ELO tracks. Every step was legal on its own, because the batch could
+    not see what it was being played after.
+    """
+    elo = {"elo1", "elo2", "elo3"}
+    pools = [["elo1", "elo2", "elo3"], ["other1"], ["other2"]]
+
+    # The pick counts as one, so exactly one more may follow it.
+    seamed = sequence(pools, 2, leading=0)
+    assert seamed[0] in elo
+    assert seamed[1] not in elo
+
+    # Standing alone, the same pool may open with two of its own.
+    plain = sequence(pools, 2)
+    assert plain[0] in elo
+    assert plain[1] in elo
+
+
+def test_sequence_leading_still_returns_everything():
+    pools = [["a1", "a2", "a3"], ["b1"], ["c1"]]
+    assert sorted(sequence(pools, 2, leading=0)) == ["a1", "a2", "a3", "b1", "c1"]

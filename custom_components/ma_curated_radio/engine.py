@@ -217,6 +217,10 @@ class CuratedRadioEngine:
 
         per_artist: list[list[str]] = []
         title_by_uri: dict[str, str] = {}
+        # Artists already given a pool. Anything crediting one of them is
+        # theirs, so a later pool cannot smuggle the same act back in.
+        covered: set[str] = set()
+        pool_artists: list[str] = []
         for index, artist in enumerate(artists):
             tracks = await self._async_tracks_for(artist)
             uris, titles = self._select(
@@ -224,9 +228,12 @@ class CuratedRadioEngine:
                 current_uri=queue.current_uri,
                 excluded_titles=recent_titles | set(title_by_uri.values()),
                 excluded_uris=already_queued,
+                excluded_artists=covered,
                 limit=self._track_cap(is_seed=index == 0),
             )
+            covered.add(artist.strip().lower())
             if uris:
+                pool_artists.append(artist)
                 per_artist.append(uris)
                 title_by_uri.update(zip(uris, titles, strict=True))
 
@@ -236,7 +243,16 @@ class CuratedRadioEngine:
                 mode=mode, seed_artist=lead, artists=artists, skipped_reason="no_tracks"
             )
 
-        ordered = sequence(per_artist, self._settings.max_consecutive)
+        # A replace is played immediately after the current track, so the
+        # artist of that track has effectively already had a turn. A refill
+        # lands at the end of a populated queue instead, where the current
+        # track is nowhere near the join.
+        leading = None
+        if mode != MODE_REFILL:
+            for position, name in enumerate(pool_artists):
+                if name.strip().lower() == seed.strip().lower():
+                    leading = position
+        ordered = sequence(per_artist, self._settings.max_consecutive, leading)
         enqueued = await self._async_enqueue(ordered, mode)
         if enqueued:
             self._history.add([title_by_uri[uri] for uri in enqueued])
@@ -454,11 +470,17 @@ class CuratedRadioEngine:
         current_uri: str,
         excluded_titles: set[str],
         excluded_uris: set[str],
+        excluded_artists: set[str],
         limit: int,
     ) -> tuple[list[str], list[str]]:
         """Filter one artist's tracks down to this batch's picks.
 
         Returns the chosen URIs and their normalised titles, in order.
+
+        ``excluded_artists`` are artists that already have a pool of their
+        own in this batch. A track crediting one of them belongs to that
+        pool, not this one, and letting it through here is how the same act
+        got into a batch twice under two names.
         """
         settings = self._settings
         uris: list[str] = []
@@ -467,6 +489,13 @@ class CuratedRadioEngine:
             if len(uris) >= limit:
                 break
             if not track.uri or track.uri == current_uri or track.uri in excluded_uris:
+                continue
+            # A collaboration credited to an artist already covered is
+            # that artist's record, however it is filed. Jeff Lynne and
+            # Electric Light Orchestra are the same act, so a track
+            # credited to both is not a second artist for sequencing to
+            # space out, and treating it as one put three of them in a row.
+            if any(name.strip().lower() in excluded_artists for name in track.artists):
                 continue
             if not matches_provider(track.uri, settings.provider_filter):
                 continue
@@ -600,6 +629,7 @@ class CuratedRadioEngine:
                 ),
             ]
             per_artist: list[list[str]] = []
+            covered: set[str] = set()
             for index, artist in enumerate(round_artists):
                 tracks = await self._async_tracks_for(artist, track_cache)
                 uris, titles = self._select(
@@ -607,8 +637,10 @@ class CuratedRadioEngine:
                     current_uri="",
                     excluded_titles=seen_titles,
                     excluded_uris=set(ordered),
+                    excluded_artists=covered,
                     limit=self._track_cap(is_seed=index == 0),
                 )
+                covered.add(artist.strip().lower())
                 if provider:
                     uris = [u for u in uris if matches_provider(u, provider)]
                     titles = titles[: len(uris)]

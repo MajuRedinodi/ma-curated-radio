@@ -17,7 +17,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["PLR2004"]
 "custom_components/ma_curated_radio/ma.py" = ["BLE001"]
-"custom_components/ma_curated_radio/engine.py" = ["BLE001"]
+"custom_components/ma_curated_radio/engine.py" = ["BLE001", "PLR0913"]
 "custom_components/ma_curated_radio/coordinator.py" = ["BLE001"]
 
 [tool.ruff.lint.isort]
