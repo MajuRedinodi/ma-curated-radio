@@ -29,6 +29,8 @@ from .const import (
     DEFAULT_POPULARITY_FLOOR,
     DEFAULT_REFILL_THRESHOLD,
     DEFAULT_TRACKS_PER_ARTIST,
+    style_value,
+    with_style_value,
 )
 from .entity import CuratedRadioEntity
 
@@ -42,6 +44,9 @@ class CuratedRadioNumberDescription(NumberEntityDescription):
 
     option_key: str
     default: int
+    # Batch shape differs per station style; everything else is one value
+    # for the player however it is tuned.
+    per_style: bool = False
 
 
 NUMBERS: tuple[CuratedRadioNumberDescription, ...] = (
@@ -54,6 +59,7 @@ NUMBERS: tuple[CuratedRadioNumberDescription, ...] = (
         mode=NumberMode.BOX,
         option_key=CONF_MAX_ARTISTS,
         default=DEFAULT_MAX_ARTISTS,
+        per_style=True,
     ),
     CuratedRadioNumberDescription(
         key="popularity_floor",
@@ -75,6 +81,7 @@ NUMBERS: tuple[CuratedRadioNumberDescription, ...] = (
         mode=NumberMode.BOX,
         option_key=CONF_TRACKS_PER_ARTIST,
         default=DEFAULT_TRACKS_PER_ARTIST,
+        per_style=True,
     ),
     CuratedRadioNumberDescription(
         key="degrees",
@@ -146,8 +153,26 @@ class CuratedRadioNumber(CuratedRadioEntity, NumberEntity):
         self.entity_description = description
 
     @property
+    def _style(self) -> str:
+        """Station style currently selected, for the per-style settings."""
+        return self.runtime.settings.seed_lean
+
+    @property
     def native_value(self) -> float:
-        """Current value of the option."""
+        """Current value of the option.
+
+        A per-style number reads whichever style is selected, so changing
+        Station style swaps the numbers under these controls rather than
+        needing a second set of them on the dashboard.
+        """
+        if self.entity_description.per_style:
+            return float(
+                style_value(
+                    {**self._entry.data, **self._entry.options},
+                    self._style,
+                    self.entity_description.option_key,
+                )
+            )
         return float(
             self._option(
                 self.entity_description.option_key, self.entity_description.default
@@ -156,4 +181,15 @@ class CuratedRadioNumber(CuratedRadioEntity, NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         """Store the new value as a whole number."""
+        if self.entity_description.per_style:
+            self.hass.config_entries.async_update_entry(
+                self._entry,
+                options=with_style_value(
+                    self._entry.options,
+                    self._style,
+                    self.entity_description.option_key,
+                    int(value),
+                ),
+            )
+            return
         self._write_option(self.entity_description.option_key, int(value))

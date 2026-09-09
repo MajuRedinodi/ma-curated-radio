@@ -46,7 +46,6 @@ from .const import (
     DEFAULT_FILTER_LIVE,
     DEFAULT_FRESH_DAYS,
     DEFAULT_HISTORY_MINUTES,
-    DEFAULT_MAX_ARTISTS,
     DEFAULT_MAX_CONSECUTIVE,
     DEFAULT_MIN_DURATION,
     DEFAULT_POPULARITY_FLOOR,
@@ -55,12 +54,12 @@ from .const import (
     DEFAULT_SEED_LEAN,
     DEFAULT_SETTLE_SECONDS,
     DEFAULT_TRACK_SUPPRESS_DAYS,
-    DEFAULT_TRACKS_PER_ARTIST,
     DEFAULT_USE_NATIVE_TOP_TRACKS,
     EXPLICIT_MODES,
     FAMILIARITIES,
     LEGACY_SEED_LEANS,
     SEED_LEANS,
+    style_value,
 )
 
 
@@ -100,18 +99,19 @@ class Settings:
     def from_entry(cls, entry: ConfigEntry) -> Settings:
         """Read the entry, letting options override the original setup data."""
         merged = {**entry.data, **entry.options}
+        # Batch shape is per style, so the style has to be resolved before
+        # anything that depends on it is read.
+        style = _seed_lean(merged.get(CONF_SEED_LEAN, DEFAULT_SEED_LEAN))
         return cls(
             player=str(merged.get(CONF_PLAYER, "")),
             enabled=bool(merged.get(CONF_ENABLED, DEFAULT_ENABLED)),
             ma_config_entry_id=str(merged.get(CONF_MA_CONFIG_ENTRY_ID, "")),
             lastfm_api_key=str(merged.get(CONF_LASTFM_API_KEY, "")),
-            max_artists=int(merged.get(CONF_MAX_ARTISTS, DEFAULT_MAX_ARTISTS)),
+            max_artists=style_value(merged, style, CONF_MAX_ARTISTS),
             popularity_floor=int(
                 merged.get(CONF_POPULARITY_FLOOR, DEFAULT_POPULARITY_FLOOR)
             ),
-            tracks_per_artist=int(
-                merged.get(CONF_TRACKS_PER_ARTIST, DEFAULT_TRACKS_PER_ARTIST)
-            ),
+            tracks_per_artist=style_value(merged, style, CONF_TRACKS_PER_ARTIST),
             refill_threshold=int(
                 merged.get(CONF_REFILL_THRESHOLD, DEFAULT_REFILL_THRESHOLD)
             ),
@@ -134,7 +134,7 @@ class Settings:
             use_native_top_tracks=bool(
                 merged.get(CONF_USE_NATIVE_TOP_TRACKS, DEFAULT_USE_NATIVE_TOP_TRACKS)
             ),
-            seed_lean=_seed_lean(merged.get(CONF_SEED_LEAN, DEFAULT_SEED_LEAN)),
+            seed_lean=style,
             familiarity=_familiarity(merged.get(CONF_FAMILIARITY, DEFAULT_FAMILIARITY)),
             explicit=_explicit_mode(merged.get(CONF_EXPLICIT, DEFAULT_EXPLICIT)),
             degrees=int(merged.get(CONF_DEGREES, DEFAULT_DEGREES)),

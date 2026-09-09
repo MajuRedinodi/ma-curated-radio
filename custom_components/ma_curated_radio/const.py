@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Final
+from collections.abc import Mapping
+from typing import Any, Final
 
 DOMAIN: Final = "ma_curated_radio"
 MA_DOMAIN: Final = "music_assistant"
@@ -146,6 +147,23 @@ SEED_LEAN_MULTIPLIER: Final = {
 LEGACY_SEED_LEANS: Final = {"format": SEED_LEAN_DISCOVERY}
 
 DEFAULT_SEED_LEAN: Final = SEED_LEAN_BALANCED
+
+# Batch shape, per station style, because the two want opposite things.
+# Artist radio is a showcase: few neighbours, several tracks each, and a
+# seed lean that doubles the seed's share on top. Balanced is a station:
+# many neighbours, two tracks each, so no single act dominates and one
+# weak neighbour is diluted rather than becoming a run of duds. Measured
+# in use, moving Balanced from 3/3 to 8/2 dropped the seed from 36% of an
+# hour to 18% and was the single biggest improvement to how it sounds.
+#
+# A value set on the dashboard is written against the style that is
+# selected at the time, so tuning one style cannot quietly wreck another.
+CONF_STYLE_SETTINGS: Final = "style_settings"
+STYLE_DEFAULTS: Final = {
+    SEED_LEAN_ARTIST: {CONF_MAX_ARTISTS: 3, CONF_TRACKS_PER_ARTIST: 3},
+    SEED_LEAN_BALANCED: {CONF_MAX_ARTISTS: 8, CONF_TRACKS_PER_ARTIST: 2},
+    SEED_LEAN_DISCOVERY: {CONF_MAX_ARTISTS: 8, CONF_TRACKS_PER_ARTIST: 2},
+}
 DEFAULT_MAX_CONSECUTIVE: Final = 2
 DEFAULT_TRACK_SUPPRESS_DAYS: Final = 30
 DEFAULT_ARTIST_MUTE_DAYS: Final = 30
@@ -295,3 +313,35 @@ CONF_BULK_TRACKS: Final = "bulk_tracks"
 # short playlist, which matters: not every playlist runs to hundreds.
 # Zero disables the check.
 DEFAULT_BULK_TRACKS: Final = 3
+
+
+def style_value(options: Mapping[str, Any], style: str, key: str) -> int:
+    """Read one batch-shape setting for a station style.
+
+    Three places to look, in order: a value saved against this style, a
+    value from before styles had their own (which applies to all of them,
+    so an existing install keeps behaving as it did), then this style's
+    default.
+    """
+    per_style = options.get(CONF_STYLE_SETTINGS) or {}
+    saved = (per_style.get(style) or {}).get(key)
+    if saved is not None:
+        return int(saved)
+    legacy = options.get(key)
+    if legacy is not None:
+        return int(legacy)
+    return int(STYLE_DEFAULTS[style][key])
+
+
+def with_style_value(
+    options: Mapping[str, Any], style: str, key: str, value: int
+) -> dict[str, Any]:
+    """Return options with one setting saved against one style.
+
+    The pre-style value is deliberately left in place. It is the fallback
+    for every style that has not been set yet, so removing it here would
+    silently move the others onto defaults.
+    """
+    per_style = {name: dict(values) for name, values in (options.get(CONF_STYLE_SETTINGS) or {}).items()}
+    per_style.setdefault(style, {})[key] = int(value)
+    return {**options, CONF_STYLE_SETTINGS: per_style}
