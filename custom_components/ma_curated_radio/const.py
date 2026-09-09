@@ -83,6 +83,21 @@ SPLIT_DUO_CREDITS: Final = 2
 # three orders of magnitude wide, not a tuned figure.
 PAIR_LISTENER_RATIO: Final = 1.0
 
+# --- Programming the hour ------------------------------------------------
+
+# How much of an artist's size a track keeps per position down that
+# artist's own ordering. Between 0.6 and 0.8 the tier estimate barely
+# changes, so this is not a tuned constant; it only has to fall.
+TIER_DECAY: Final = 0.7
+
+# Drop a neighbour whose audience is below this share of the pool's own
+# median. Christine McVie arrived at 2% of her pool's median and gave a
+# Fleetwood Mac station three tracks nobody knew; across four observed
+# pools the next lowest artist was 12%, so this sits in open space.
+# Zero disables the floor entirely.
+DEFAULT_POPULARITY_FLOOR: Final = 10
+CONF_POPULARITY_FLOOR: Final = "popularity_floor"
+
 # Placeholder option for the release dropdowns. A select entity with an
 # empty option list cannot render, and "nothing to release" is a state
 # worth showing rather than an empty control that looks broken.

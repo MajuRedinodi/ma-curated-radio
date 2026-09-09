@@ -26,6 +26,7 @@ from .const import (
     CONF_MAX_CONSECUTIVE,
     CONF_MIN_DURATION,
     CONF_PLAYER,
+    CONF_POPULARITY_FLOOR,
     CONF_PROVIDER_FILTER,
     CONF_REFILL_THRESHOLD,
     CONF_SEED_LEAN,
@@ -48,6 +49,7 @@ from .const import (
     DEFAULT_MAX_ARTISTS,
     DEFAULT_MAX_CONSECUTIVE,
     DEFAULT_MIN_DURATION,
+    DEFAULT_POPULARITY_FLOOR,
     DEFAULT_PROVIDER_FILTER,
     DEFAULT_REFILL_THRESHOLD,
     DEFAULT_SEED_LEAN,
@@ -71,6 +73,7 @@ class Settings:
     enabled: bool
     lastfm_api_key: str
     max_artists: int
+    popularity_floor: int
     tracks_per_artist: int
     refill_threshold: int
     bulk_tracks: int
@@ -103,6 +106,9 @@ class Settings:
             ma_config_entry_id=str(merged.get(CONF_MA_CONFIG_ENTRY_ID, "")),
             lastfm_api_key=str(merged.get(CONF_LASTFM_API_KEY, "")),
             max_artists=int(merged.get(CONF_MAX_ARTISTS, DEFAULT_MAX_ARTISTS)),
+            popularity_floor=int(
+                merged.get(CONF_POPULARITY_FLOOR, DEFAULT_POPULARITY_FLOOR)
+            ),
             tracks_per_artist=int(
                 merged.get(CONF_TRACKS_PER_ARTIST, DEFAULT_TRACKS_PER_ARTIST)
             ),

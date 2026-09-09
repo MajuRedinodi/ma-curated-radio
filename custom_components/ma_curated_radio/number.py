@@ -10,7 +10,7 @@ from homeassistant.components.number import (
     NumberEntityDescription,
     NumberMode,
 )
-from homeassistant.const import EntityCategory
+from homeassistant.const import PERCENTAGE, EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
@@ -19,12 +19,14 @@ from .const import (
     CONF_DEGREES,
     CONF_MAX_ARTISTS,
     CONF_MAX_CONSECUTIVE,
+    CONF_POPULARITY_FLOOR,
     CONF_REFILL_THRESHOLD,
     CONF_TRACKS_PER_ARTIST,
     DEFAULT_ARTIST_STRIKE_LIMIT,
     DEFAULT_DEGREES,
     DEFAULT_MAX_ARTISTS,
     DEFAULT_MAX_CONSECUTIVE,
+    DEFAULT_POPULARITY_FLOOR,
     DEFAULT_REFILL_THRESHOLD,
     DEFAULT_TRACKS_PER_ARTIST,
 )
@@ -52,6 +54,17 @@ NUMBERS: tuple[CuratedRadioNumberDescription, ...] = (
         mode=NumberMode.BOX,
         option_key=CONF_MAX_ARTISTS,
         default=DEFAULT_MAX_ARTISTS,
+    ),
+    CuratedRadioNumberDescription(
+        key="popularity_floor",
+        translation_key="popularity_floor",
+        native_min_value=0,
+        native_max_value=50,
+        native_step=5,
+        native_unit_of_measurement=PERCENTAGE,
+        mode=NumberMode.BOX,
+        option_key=CONF_POPULARITY_FLOOR,
+        default=DEFAULT_POPULARITY_FLOOR,
     ),
     CuratedRadioNumberDescription(
         key="tracks_per_artist",

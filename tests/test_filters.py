@@ -12,6 +12,7 @@ from filters import (
     base_title,
     clean_similar_artists,
     credits_artist,
+    drop_outliers,
     freshness,
     hotness,
     is_holiday,
@@ -20,6 +21,8 @@ from filters import (
     is_too_short,
     matches_provider,
     sequence,
+    sequence_tiered,
+    tier_of,
     weighted_sample,
 )
 
@@ -315,3 +318,86 @@ def test_sequence_counts_the_track_it_follows():
 def test_sequence_leading_still_returns_everything():
     pools = [["a1", "a2", "a3"], ["b1"], ["c1"]]
     assert sorted(sequence(pools, 2, leading=0)) == ["a1", "a2", "a3", "b1", "c1"]
+
+
+def test_floor_drops_an_artist_far_below_its_own_pool():
+    """Christine McVie, the one real defect across four observed pools.
+
+    Her biggest track is 2% of that pool's median. The next lowest
+    artist in any observed pool was 12%, so 10% sits in open space.
+    """
+    pool = [
+        ("Fleetwood Mac", 2103659),
+        ("America", 1608474),
+        ("Stevie Nicks", 715395),
+        ("Christine McVie", 28061),
+    ]
+    keep, dropped = drop_outliers(pool, 10)
+    assert keep == ["Fleetwood Mac", "America", "Stevie Nicks"]
+    assert dropped == [("Christine McVie", 28061)]
+
+
+def test_floor_keeps_a_small_artist_in_a_small_genre():
+    """Hank Williams Jr. is tiny globally and normal for his pool.
+
+    Last.fm undercounts country by about ten times, so an absolute floor
+    would erase the genre. Measured against the pool's own median he sits
+    at 28%, comfortably above a floor that drops Christine McVie at 2%.
+    """
+    pool = [
+        ("The Highwaymen", 380679),
+        ("David Allan Coe", 136180),
+        ("Johnny Paycheck", 128366),
+        ("Hank Williams Jr.", 38490),
+    ]
+    keep, dropped = drop_outliers(pool, 10)
+    assert dropped == []
+    assert len(keep) == 4
+
+
+def test_floor_leaves_a_small_pool_alone():
+    tiny = [("A", 100000), ("B", 500)]
+    assert drop_outliers(tiny, 10) == (["A", "B"], [])
+
+
+def test_floor_never_drops_an_artist_of_unknown_size():
+    """A Last.fm miss should cost variety, not silently narrow the pool."""
+    pool = [("A", 100000), ("B", 90000), ("C", 80000), ("Unknown", 0)]
+    keep, dropped = drop_outliers(pool, 10)
+    assert "Unknown" in keep
+    assert dropped == []
+
+
+def test_tiers_are_relative_so_a_small_genre_still_gets_power_tracks():
+    """An all-country pool must not come out entirely Deep."""
+    pool = [
+        ("The Highwaymen", ["hw1", "hw2"], 380679),
+        ("David Allan Coe", ["dac1", "dac2"], 136180),
+        ("Johnny Paycheck", ["jp1", "jp2"], 128366),
+        ("Hank Williams Jr.", ["hank1", "hank2"], 38490),
+    ]
+    tiers = tier_of(pool, 0.7)
+    assert "P" in tiers.values()
+    assert "D" in tiers.values()
+    assert tiers["hw1"] == "P"
+
+
+def test_tiered_order_spreads_the_big_tracks_across_the_hour():
+    """Round-robin front-loads; the pattern should not."""
+    lists = [["a1", "a2"], ["b1", "b2"], ["c1", "c2"], ["d1", "d2"]]
+    tiers = {
+        "a1": "P", "b1": "P", "c1": "S", "d1": "S",
+        "a2": "S", "b2": "D", "c2": "D", "d2": "D",
+    }
+    out = sequence_tiered(lists, tiers, ["P", "D", "S"])
+    assert len(out) == 8
+    assert sorted(out) == sorted(sum(lists, []))
+    # A Power track should not be stranded in the final third.
+    assert tiers[out[0]] == "P"
+
+
+def test_tiered_order_still_honours_the_seam_and_the_run_cap():
+    lists = [["a1", "a2", "a3"], ["b1"], ["c1"]]
+    tiers = dict.fromkeys(("a1", "a2", "a3", "b1", "c1"), "P")
+    out = sequence_tiered(lists, tiers, ["P"], 2, leading=0)
+    assert out[1] not in ("a1", "a2", "a3")

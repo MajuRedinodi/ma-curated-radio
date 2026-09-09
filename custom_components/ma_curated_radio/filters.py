@@ -32,6 +32,25 @@ HOLIDAY_TOKENS: Final = (
 # versions of the one collab song rather than real additional variety.
 COLLAB_MARKERS: Final = (",", " & ")
 
+# Below this many artists a pool has no meaningful median, and dropping
+# one of three neighbours costs more than the outlier does.
+MIN_POOL_FOR_FLOOR: Final = 4
+
+# Tier labels. Defined here rather than in const.py because this module
+# deliberately imports nothing from Home Assistant or from the rest of
+# the integration, so its logic can be tested without either.
+TIER_POWER: Final = "P"
+TIER_SECONDARY: Final = "S"
+TIER_DEEP: Final = "D"
+
+# The rotation an hour is built to. Terciles supply each tier equally, so
+# a pattern asking for more Power than that spends them early and leaves
+# the closing third with nothing: measured on a real batch, a Power-heavy
+# pattern left its last six tracks entirely Secondary and Deep. Power
+# first so an hour opens strongly, then Deep while that opening is still
+# in the ear, then Secondary to recover.
+TIER_PATTERN: Final = [TIER_POWER, TIER_DEEP, TIER_SECONDARY]
+
 # Spoken-word and filler entries that a genuine top-tracks ranking will
 # surface because they are recent and getting plays, but which nobody
 # wants queued. Duration catches most of it; these catch the long ones.
@@ -163,6 +182,87 @@ def sequence(
     return ordered
 
 
+def tier_of(
+    sized: list[tuple[str, list[str], int]], decay: float
+) -> dict[str, str]:
+    """Label each track Power, Secondary or Deep, relative to this pool.
+
+    Scores a track as its artist's size decayed by its position in that
+    artist's own ordering, so no per-track lookup is needed: the provider
+    already ranks an artist's tracks by relevance, and one listener count
+    per artist is enough. Checked against real per-track counts on a nine
+    artist pool it agreed 66% of the time against 33% for chance, and
+    confused Power with Deep exactly once in 66 tracks. Adjacent
+    misreadings are cheap; inversions would not be.
+
+    Terciles of the pool in front of it, never absolute numbers. A fixed
+    threshold tuned on rock would mark an entire country station as deep
+    cuts, because Last.fm undercounts the genre by about ten times.
+    """
+    scored: list[tuple[str, float]] = []
+    for _, uris, size in sized:
+        for position, uri in enumerate(uris):
+            scored.append((uri, (size or 1) * (decay**position)))
+    scored.sort(key=lambda pair: pair[1], reverse=True)
+    third = len(scored) // 3
+    tiers: dict[str, str] = {}
+    for index, (uri, _) in enumerate(scored):
+        tiers[uri] = TIER_POWER if index < third else (
+            TIER_SECONDARY if index < third * 2 else TIER_DEEP
+        )
+    return tiers
+
+
+def sequence_tiered(
+    lists: list[list[str]],
+    tiers: dict[str, str],
+    pattern: list[str],
+    max_consecutive: int = 2,
+    leading: int | None = None,
+) -> list[str]:
+    """Order tracks to a tier pattern rather than by plain round-robin.
+
+    Round-robin plays every artist's biggest track, then every artist's
+    second, so an hour front-loads its hits and decays. Measured on a
+    real nine artist batch the last third averaged 105k listeners against
+    768k for the first, with six successively weaker tracks in a row.
+    Rotating Power, Deep, Secondary instead halved the worst run and
+    nearly doubled the closing third.
+
+    The pattern is a preference. When no artist can supply the tier a
+    slot wants, the fullest eligible pool plays anyway: an hour with a
+    slightly wrong texture beats an hour with a hole in it.
+    """
+    pools = [list(items) for items in lists if items]
+    if not pools:
+        return []
+
+    ordered: list[str] = []
+    last: int | None = leading
+    run = 1 if leading is not None else 0
+
+    while any(pools):
+        want = pattern[len(ordered) % len(pattern)]
+        pick = None
+        best: tuple[int, int] | None = None
+        for index, pool in enumerate(pools):
+            if not pool or (index == last and run >= max_consecutive):
+                continue
+            # Prefer the wanted tier, then the fullest pool, which is what
+            # keeps a long pool from stranding tracks at the end.
+            key = (0 if tiers.get(pool[0]) == want else 1, -len(pool))
+            if best is None or key < best:
+                best, pick = key, index
+        if pick is None:
+            pick = next(i for i, pool in enumerate(pools) if pool)
+
+        ordered.append(pools[pick].pop(0))
+        run = run + 1 if pick == last else 1
+        last = pick
+
+    return ordered
+
+
 def is_too_short(duration: int, minimum: int) -> bool:
     """Return True for anything too brief to be a song.
 
@@ -182,6 +282,47 @@ def is_non_song(name: str, version: str) -> bool:
     """
     haystack = f"{name} {version}".lower()
     return any(marker in haystack for marker in NON_SONG_MARKERS)
+
+
+def drop_outliers(
+    sized: list[tuple[str, int]], floor_pct: int
+) -> tuple[list[str], list[tuple[str, int]]]:
+    """Drop artists far smaller than the rest of their own pool.
+
+    Returns the artists to keep and the ones dropped with their sizes.
+
+    Measured against the pool's own median, never against the seed and
+    never against a fixed number. Both alternatives were tried against
+    four observed pools and both fail:
+
+    * A fixed threshold cannot work across genres. Last.fm undercounts
+      country by roughly an order of magnitude, so Hank Williams Jr.'s
+      "Family Tradition" has fewer listeners than an obscure 1973 duo's
+      best track. Any absolute floor tuned on rock erases country.
+    * The seed is a poor reference too. Hank Jr. was the smallest artist
+      in his own pool at 10% of the biggest, and that hour was good.
+
+    What actually marks a bad neighbour is sitting far below its own
+    neighbourhood. Christine McVie at 2% of her pool's median was the one
+    real defect across four pools; the next lowest anywhere was 12%, so
+    the default sits in open space rather than on a cliff edge.
+    """
+    if floor_pct <= 0 or len(sized) < MIN_POOL_FOR_FLOOR:
+        return [name for name, _ in sized], []
+    known = sorted(size for _, size in sized if size > 0)
+    if not known:
+        return [name for name, _ in sized], []
+    median = known[len(known) // 2]
+    threshold = median * floor_pct / 100
+    keep, dropped = [], []
+    for name, size in sized:
+        # An unknown size is never grounds for dropping an artist: a
+        # Last.fm miss should cost variety, not silently narrow the pool.
+        if size > 0 and size < threshold:
+            dropped.append((name, size))
+        else:
+            keep.append(name)
+    return keep, dropped
 
 
 def weighted_sample(

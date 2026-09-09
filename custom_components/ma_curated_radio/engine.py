@@ -35,12 +35,15 @@ from .const import (
     SEED_LEAN_MULTIPLIER,
     SESSION_EXPIRY_HOURS,
     SPLIT_DUO_CREDITS,
+    TIER_DECAY,
     signal_update,
 )
 from .feedback import SkipMemory
 from .filters import (
+    TIER_PATTERN,
     base_title,
     clean_similar_artists,
+    drop_outliers,
     hotness,
     is_holiday,
     is_live,
@@ -48,6 +51,8 @@ from .filters import (
     is_too_short,
     matches_provider,
     sequence,
+    sequence_tiered,
+    tier_of,
     weighted_sample,
 )
 from .history import TitleHistory
@@ -130,6 +135,10 @@ class CuratedRadioEngine:
         # it costs two lookups and the answer cannot change while the
         # same song is the reason the station exists.
         self._alias: dict[str, str] = {}
+        # Artist audience sizes, kept for the life of the entry. Neighbours
+        # recur heavily between batches, so this usually saves the lookups
+        # entirely rather than merely spreading them out.
+        self._sizes: dict[str, int] = {}
 
     @property
     def history(self) -> TitleHistory:
@@ -266,7 +275,26 @@ class CuratedRadioEngine:
             if leading is not None
             else "no pool primed",
         )
-        ordered = sequence(per_artist, self._settings.max_consecutive, leading)
+        # Round-robin plays every artist's biggest track, then every
+        # artist's second, so an hour front-loads its hits and decays. A
+        # measured batch closed on a third averaging 105k listeners
+        # against 768k for its first third. Rotating tiers instead spends
+        # the big records across the whole hour.
+        sizes = await self._async_sizes(pool_artists)
+        tiers = tier_of(
+            [
+                (artist, uris, sizes.get(artist, 0))
+                for artist, uris in zip(pool_artists, per_artist, strict=True)
+            ],
+            TIER_DECAY,
+        )
+        ordered = sequence_tiered(
+            per_artist,
+            tiers,
+            TIER_PATTERN,
+            self._settings.max_consecutive,
+            leading,
+        )
         enqueued = await self._async_enqueue(ordered, mode)
         if enqueued:
             self._history.add([title_by_uri[uri] for uri in enqueued])
@@ -320,11 +348,55 @@ class CuratedRadioEngine:
 
         # Weighted by Last.fm's match score rather than shuffled flat, so a
         # batch is mostly artists a listener would actually recognise.
-        return weighted_sample(
+        chosen = weighted_sample(
             [pair for pair in candidates if pair[0] in allowed],
             settings.max_artists,
             FAMILIARITY_EXPONENT.get(settings.familiarity, 1.0),
         )
+
+        # Match score says how similar, not how known. Christine McVie
+        # matches Fleetwood Mac almost perfectly and has 2% of that pool's
+        # audience, which is how a Fleetwood Mac station ended up playing
+        # three tracks nobody recognised.
+        sizes = await self._async_sizes(chosen)
+        keep, dropped = drop_outliers(
+            [(name, sizes.get(name, 0)) for name in chosen],
+            settings.popularity_floor,
+        )
+        if dropped:
+            _LOGGER.debug(
+                "Too small for this pool, dropped: %s",
+                ", ".join(f"{name} ({size:,})" for name, size in dropped),
+            )
+        return keep
+
+    async def _async_sizes(self, artists: list[str]) -> dict[str, int]:
+        """Audience size per artist, cached for the life of the session.
+
+        Used for two things that both need to know how big an artist is
+        rather than how similar: dropping a neighbour far below its own
+        pool, and tiering its tracks. Neighbours recur heavily between
+        batches, so the cache means a refill usually costs no lookups at
+        all.
+
+        A failed lookup caches nothing and returns zero, which every
+        caller reads as "unknown" rather than "tiny".
+        """
+        key = self._settings.lastfm_api_key
+        if not key:
+            return {}
+        wanted = [a for a in artists if a.lower() not in self._sizes]
+        if wanted:
+            found = await asyncio.gather(
+                *(
+                    async_get_artist_listeners(self._session, key, artist)
+                    for artist in wanted
+                )
+            )
+            for artist, size in zip(wanted, found, strict=True):
+                if size:
+                    self._sizes[artist.lower()] = size
+        return {a: self._sizes.get(a.lower(), 0) for a in artists}
 
     async def _async_resolve_alias(self, seed: str, credited: list[str]) -> None:
         """Decide whether a two-name credit is a duo or a collaboration.
