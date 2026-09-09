@@ -21,11 +21,22 @@ set up. No helpers, no `rest_command`, no YAML.
 2. The integration notices the newly playing track is not the one the queue
    predicted, which means playback was jumped by hand. It **replaces** the
    stale queue tail, starting fresh from the new pick.
-3. It reads the artist off that track, asks Last.fm for a few similar
-   artists, and pulls each artist's best-known tracks. Live versions,
-   holiday content and anything played recently are filtered out. The
-   artists are interleaved round-robin so nobody plays twice in a row.
-4. As the batch plays down to its last couple of tracks, it **refills**
+3. It reads the artist off that track and asks Last.fm for similar artists,
+   weighted so the batch is mostly names you would recognise. Anyone whose
+   audience is far below the rest of that pool is dropped, because a
+   neighbour whose whole catalogue is obscure gives a station nothing but
+   tracks nobody knows.
+4. Each artist contributes its best-known tracks. Live versions, holiday
+   content, karaoke, commentary and anything played recently are filtered
+   out.
+5. Those candidates are then **programmed** rather than shuffled. Each is
+   scored by how large its artist is and how far down that artist's own
+   ordering it sits, and the batch is filled to a Power, Deep, Secondary
+   rotation. Plain round-robin plays everyone's biggest track and then
+   everyone's second, so an hour front-loads its hits and fades; rotating
+   spends the big records across the whole hour instead. No artist plays
+   more than twice in a row.
+6. As the batch plays down to its last couple of tracks, it **refills**
    without touching what is already queued, reseeding off whatever is
    playing at that moment. That is what lets an evening drift naturally
    instead of being locked to one batch decided at the start.
@@ -522,6 +533,37 @@ theirs you skip, because you asked for them.
 This is the one piece of state that survives a restart, since feedback that
 evaporates is not feedback.
 
+## Reading a batch
+
+Every batch reports its own shape, so a station can be judged before it
+plays rather than at track ten. It appears on the debug log line and as
+attributes on the **Last batch seed** sensor.
+
+```
+Queued 19 track(s) in replace mode, seeded from Jackson Browne via
+Jackson Browne, Little River Band, Dan Fogelberg, The Band, Van Morrison,
+Steve Winwood, Joe Walsh, Dave Mason; median reach 580,807,
+weakest 106,212, tiers {'P': 7, 'D': 6, 'S': 6}
+```
+
+**Median reach** is the useful one. Each track scores its artist's audience
+decayed by how far down that artist's own ordering it sits, and the median
+of those is an absolute number, so batches compare with each other. As a
+rough guide, from observed stations:
+
+| Median reach | What it means |
+|---|---|
+| under 400,000 | a pool of mid-sized artists; raising tracks per artist will find genuinely obscure material fast |
+| 400,000 to 800,000 | comfortable; three tracks an artist reaches interesting places without leaving the map |
+| over 800,000 | a pool of giants; a third or fourth track is still a hit, so depth is nearly free |
+
+**Weakest** is the lowest-scoring track that made it in, which is the one
+most likely to be the dud.
+
+**Tiers** is the split the hour was programmed to. Even thirds mean the
+rotation had enough of each to work with; a lopsided split means the pool
+could not supply one of them and the pattern gave way, which is by design.
+
 ## Notes and limitations
 
 - **The seed artist leads each batch.** That is the intent rather than an
@@ -558,6 +600,32 @@ evaporates is not feedback.
   surface. It is the one feature that could break when the Music Assistant
   integration refactors, and the one that raises an error rather than
   degrading quietly.
+- **Last.fm's audience is not evenly spread across genres**, and two
+  features lean on it. Country is undercounted by roughly ten times: Hank
+  Williams Jr's "Family Tradition" has fewer listeners than an obscure 1973
+  duo's best track. That is why the artist floor is measured against the
+  pool's own median rather than an absolute number, and why the tiering is
+  relative to the batch in front of it. Both work within a genre; neither
+  can compare across one.
+- **Reach measures how well known the artist is, not the song.** A Haydn
+  string quartet scores highly because Haydn is famous, and a country
+  station scores low while playing songs you know by heart. It is a good
+  guide to how deep a batch can safely reach and a poor guide to how
+  familiar it will feel.
+- **How deep a batch can reach depends on the pool, not on taste.** Four
+  tracks an artist costs nothing on a pool of giants, where a third track
+  is still Walk of Life or Magic Man, and goes well past comfortable on a
+  pool of mid-sized artists. The reach reported with each batch is there to
+  tell the two apart before it plays: roughly, above 800,000 depth is free
+  and below 400,000 it bites.
+- **Some live recordings carry no marker at all.** The filters read the
+  title, the version and the album, and a Hall of Fame induction recording
+  of "Master Of Puppets" announces itself in none of them. Only the running
+  time gives it away, and not reliably enough to filter on.
+- **Skip memory cannot tell two versions of a song apart.** It matches on
+  the normalised title, which is what stops a remaster and a radio edit
+  both landing in one batch, so skipping a live recording also suppresses
+  the studio one. Release it from the dashboard if that happens.
 - **There is no era filtering, and it is not an oversight.** Mixing an
   artist's 2006 material with their 2022 material is a real weakness, and
   the data to fix it is not there. Track search returns no year at all.
