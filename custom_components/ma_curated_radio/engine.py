@@ -50,6 +50,7 @@ from .filters import (
     is_non_song,
     is_too_short,
     matches_provider,
+    reach_of,
     sequence,
     sequence_tiered,
     tier_of,
@@ -92,6 +93,16 @@ class BatchResult:
     artists: list[str] = field(default_factory=list)
     queued: int = 0
     skipped_reason: str = ""
+    # How well known this batch is likely to be, so a shape can be judged
+    # before it plays rather than at track ten. Reach is an artist's
+    # audience decayed by how far down their own ordering a track sits,
+    # which is the same score the tiering uses. Absolute, so it compares
+    # across pools: an observed rock batch ran near 900,000 and a
+    # singer-songwriter batch at the same settings near 240,000, which is
+    # the difference between depth being free and depth being too much.
+    reach_median: int = 0
+    reach_low: int = 0
+    tiers: dict[str, int] = field(default_factory=dict)
 
     @property
     def ran(self) -> bool:
@@ -287,13 +298,11 @@ class CuratedRadioEngine:
         # against 768k for its first third. Rotating tiers instead spends
         # the big records across the whole hour.
         sizes = await self._async_sizes(pool_artists)
-        tiers = tier_of(
-            [
-                (artist, uris, sizes.get(artist, 0))
-                for artist, uris in zip(pool_artists, per_artist, strict=True)
-            ],
-            TIER_DECAY,
-        )
+        sized = [
+            (artist, uris, sizes.get(artist, 0))
+            for artist, uris in zip(pool_artists, per_artist, strict=True)
+        ]
+        tiers = tier_of(sized, TIER_DECAY)
         ordered = sequence_tiered(
             per_artist,
             tiers,
@@ -306,16 +315,52 @@ class CuratedRadioEngine:
         if enqueued:
             self._history.add([title_by_uri[uri] for uri in enqueued])
 
+        reach_median, reach_low, counts = self._summarise(enqueued, sized, tiers)
+
         _LOGGER.debug(
-            "Queued %s track(s) in %s mode, seeded from %s via %s",
+            "Queued %s track(s) in %s mode, seeded from %s via %s; "
+            "median reach %s, weakest %s, tiers %s",
             len(enqueued),
             mode,
             lead,
             ", ".join(artists),
+            f"{reach_median:,}",
+            f"{reach_low:,}",
+            counts or "none",
         )
         return BatchResult(
-            mode=mode, seed_artist=lead, artists=artists, queued=len(enqueued)
+            mode=mode,
+            seed_artist=lead,
+            artists=artists,
+            queued=len(enqueued),
+            reach_median=reach_median,
+            reach_low=reach_low,
+            tiers=counts,
         )
+
+    def _summarise(
+        self,
+        enqueued: list[str],
+        sized: list[tuple[str, list[str], int]],
+        tiers: dict[str, str],
+    ) -> tuple[int, int, dict[str, int]]:
+        """Median reach, weakest reach, and the tier split of a batch.
+
+        Judging a batch on the way out means its shape is visible before
+        it plays rather than at track ten. Reach is absolute so batches
+        compare across stations; the tier counts are relative to their
+        own pool and only describe the texture within one.
+        """
+        reach = reach_of(sized, TIER_DECAY)
+        played = sorted(reach.get(uri, 0) for uri in enqueued)
+        counts: dict[str, int] = {}
+        for uri in enqueued:
+            label = tiers.get(uri, "")
+            if label:
+                counts[label] = counts.get(label, 0) + 1
+        if not played:
+            return 0, 0, counts
+        return played[len(played) // 2], played[0], counts
 
     async def _async_similar_artists(
         self,

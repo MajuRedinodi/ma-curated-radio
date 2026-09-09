@@ -222,6 +222,31 @@ def tier_of(
     return tiers
 
 
+def reach_of(
+    sized: list[tuple[str, list[str], int]], decay: float
+) -> dict[str, int]:
+    """Estimated audience for each track, on an absolute scale.
+
+    An artist's own audience, decayed by how far down that artist's
+    ordering the track sits. The same score the tiering sorts on, kept
+    unnormalised so batches can be compared with each other: tiers are
+    relative to their own pool and say nothing across pools, while this
+    does.
+
+    Unknown artist sizes take the pool median, for the same reason they
+    do when tiering: a lookup miss is not evidence that an artist is
+    small.
+    """
+    known = sorted(size for _, _, size in sized if size > 0)
+    fallback = known[len(known) // 2] if known else 0
+    reach: dict[str, int] = {}
+    for _, uris, size in sized:
+        weight = size if size > 0 else fallback
+        for position, uri in enumerate(uris):
+            reach[uri] = int(weight * (decay**position))
+    return reach
+
+
 def sequence_tiered(
     lists: list[list[str]],
     tiers: dict[str, str],

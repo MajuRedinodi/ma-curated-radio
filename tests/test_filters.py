@@ -20,6 +20,7 @@ from filters import (
     is_non_song,
     is_too_short,
     matches_provider,
+    reach_of,
     sequence,
     sequence_tiered,
     tier_of,
@@ -463,3 +464,28 @@ def test_a_capped_batch_spreads_across_artists_not_onto_the_biggest_pool():
     out = sequence_tiered(lists, tiers, ["P"], length=6)
     seed_share = sum(1 for uri in out if uri.startswith("s"))
     assert seed_share <= 3
+
+
+def test_reach_is_absolute_so_batches_compare_across_pools():
+    """Tiers are relative to their own pool and say nothing across pools.
+
+    An observed rock batch ran near 900,000 and a singer-songwriter batch
+    at identical settings near 240,000, which is the difference between
+    depth being free and depth being too much.
+    """
+    big = [("Boston", ["b1", "b2"], 1800000)]
+    small = [("Shelby Lynne", ["s1", "s2"], 150000)]
+    assert reach_of(big, 0.7)["b1"] > reach_of(small, 0.7)["s1"]
+    # Position within an artist decays it.
+    assert reach_of(big, 0.7)["b2"] < reach_of(big, 0.7)["b1"]
+
+
+def test_reach_uses_the_pool_median_for_an_unknown_artist():
+    pool = [
+        ("A", ["a1"], 400000),
+        ("B", ["b1"], 500000),
+        ("C", ["c1"], 600000),
+        ("Unknown", ["u1"], 0),
+    ]
+    reach = reach_of(pool, 0.7)
+    assert reach["u1"] == 500000

@@ -104,6 +104,11 @@ class LastBatchSensor(CuratedRadioEntity, SensorEntity):
             "artists": result.artists,
             "tracks_queued": result.queued,
             "skipped_reason": result.skipped_reason or None,
+            # How well known the batch is likely to be. Absolute, so it
+            # compares across stations, which the tier counts do not.
+            "reach_median": result.reach_median,
+            "reach_low": result.reach_low,
+            "tiers": result.tiers,
         }
 
 
