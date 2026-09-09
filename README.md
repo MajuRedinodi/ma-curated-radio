@@ -553,9 +553,9 @@ rough guide, from observed stations:
 
 | Median reach | What it means |
 |---|---|
-| under 400,000 | a pool of mid-sized artists; raising tracks per artist will find genuinely obscure material fast |
-| 400,000 to 800,000 | comfortable; three tracks an artist reaches interesting places without leaving the map |
-| over 800,000 | a pool of giants; a third or fourth track is still a hit, so depth is nearly free |
+| under 400,000 | a pool of mid-sized or cult artists; reduce tracks per artist or it finds genuinely obscure material fast. Observed: a Pantera station at 211,000 reached Nailbomb and Exhorder and was called too deep at three tracks an artist. |
+| 400,000 to 800,000 | comfortable; three tracks an artist reaches interesting places without leaving the map. Observed: Jackson Browne at 581,000. |
+| over 800,000 | a pool of giants; a third or fourth track is still a hit, so depth is nearly free. Observed: Fleetwood Mac at 900,000 and Metallica at 1,900,000. |
 
 **Weakest** is the lowest-scoring track that made it in, which is the one
 most likely to be the dud.
