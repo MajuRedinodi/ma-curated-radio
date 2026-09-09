@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import random
 import re
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Final
+from typing import Any, Final
 
 # Word boundaries for the live-version check: anything that is not a letter
 # or a digit separates words, so parentheses and dashes do not glue a
@@ -380,6 +381,111 @@ def drop_outliers(
         else:
             keep.append(name)
     return keep, dropped
+
+
+@dataclass(frozen=True, slots=True)
+class SelectionRules:
+    """Everything about a batch that is a setting rather than a track.
+
+    Deliberately primitives rather than the integration's own option
+    constants, so this module keeps importing nothing and stays testable
+    on its own.
+    """
+
+    provider: str = ""
+    min_duration: int = 0
+    clean_only: bool = False
+    prefer_explicit: bool = False
+    skip_live: bool = True
+    skip_holiday: bool = True
+    fresh_days: int = 0
+
+
+def select_tracks(
+    tracks: list[Any],
+    rules: SelectionRules,
+    *,
+    current_uri: str = "",
+    excluded_titles: set[str] | None = None,
+    excluded_uris: set[str] | None = None,
+    excluded_artists: set[str] | None = None,
+    limit: int = 0,
+    now: datetime | None = None,
+) -> tuple[list[str], list[str]]:
+    """Filter one artist's tracks down to this batch's picks.
+
+    Returns the chosen URIs and their normalised titles, in order. Takes
+    anything with the attributes of a track rather than a declared type,
+    so nothing here has to know about Music Assistant.
+
+    ``excluded_artists`` are artists that already have a pool of their
+    own in this batch. A track crediting one of them belongs to that
+    pool, not this one, and letting it through here is how the same act
+    got into a batch twice under two names: Jeff Lynne and Electric Light
+    Orchestra between them played three in a row while the run cap saw
+    two different artists.
+    """
+    titles_out: set[str] = excluded_titles or set()
+    uris_out: set[str] = excluded_uris or set()
+    artists_out: set[str] = excluded_artists or set()
+
+    uris: list[str] = []
+    titles: list[str] = []
+    for track in _ordered_for_selection(tracks, rules, now):
+        if limit and len(uris) >= limit:
+            break
+        if not track.uri or track.uri == current_uri or track.uri in uris_out:
+            continue
+        # A collaboration credited to an artist already covered is that
+        # artist's record, however it is filed.
+        if any(name.strip().lower() in artists_out for name in track.artists):
+            continue
+        if not matches_provider(track.uri, rules.provider):
+            continue
+        # Commentary, interludes and skits chart alongside the songs, so
+        # a genuine top-tracks ranking hands them straight over.
+        if is_too_short(track.duration, rules.min_duration):
+            continue
+        if rules.clean_only and track.explicit:
+            continue
+        if is_non_song(track.name, track.version):
+            continue
+        if rules.skip_live and is_live(track.name, track.version):
+            continue
+        if rules.skip_holiday and is_holiday(track.name, track.version, track.album):
+            continue
+        title = base_title(track.name)
+        if not title or title in titles_out or title in titles:
+            continue
+        uris.append(track.uri)
+        titles.append(title)
+    return uris, titles
+
+
+def _ordered_for_selection(
+    tracks: list[Any], rules: SelectionRules, now: datetime | None
+) -> list[Any]:
+    """Apply every ordering preference before the batch is cut.
+
+    Explicit preference is a sort rather than a filter because a clean
+    edit is usually a separate release with its own title, so nothing
+    marks it as a version of the original. Putting the explicit tracks
+    first pushes the edit outside the per-artist cut instead.
+    """
+    ordered = tracks
+    if rules.fresh_days > 0 and now is not None:
+        # Providers rank by cumulative plays, which buries anything
+        # recent. Tracks scoring zero, meaning old, unpopular, or without
+        # the metadata to tell, keep the provider's ordering exactly: the
+        # sort is stable, so this is a no-op wherever the data is absent.
+        ordered = sorted(
+            ordered,
+            key=lambda t: hotness(t.released, t.popularity, rules.fresh_days, now),
+            reverse=True,
+        )
+    if rules.prefer_explicit:
+        ordered = sorted(ordered, key=lambda track: not track.explicit)
+    return ordered
 
 
 def weighted_sample(

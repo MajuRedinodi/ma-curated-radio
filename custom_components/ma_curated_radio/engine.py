@@ -41,16 +41,13 @@ from .const import (
 from .feedback import SkipMemory
 from .filters import (
     TIER_PATTERN,
+    SelectionRules,
     base_title,
     clean_similar_artists,
     drop_outliers,
-    hotness,
-    is_holiday,
-    is_live,
-    is_non_song,
-    is_too_short,
     matches_provider,
     reach_of,
+    select_tracks,
     sequence,
     sequence_tiered,
     tier_of,
@@ -567,39 +564,18 @@ class CuratedRadioEngine:
             cache[artist] = tracks
         return tracks
 
-    def _ordered_for_selection(self, tracks: list[TrackInfo]) -> list[TrackInfo]:
-        """Apply every ordering preference before the batch is cut.
-
-        Explicit preference is a sort rather than a filter because a clean
-        edit is usually a separate release with its own title, so nothing
-        marks it as a version of the original. Putting the explicit tracks
-        first pushes the edit outside the per-artist cut instead.
-        """
-        ordered = self._by_hotness(tracks)
-        if self._settings.explicit == EXPLICIT_PREFER:
-            ordered = sorted(ordered, key=lambda track: not track.explicit)
-        return ordered
-
-    def _by_hotness(self, tracks: list[TrackInfo]) -> list[TrackInfo]:
-        """Reorder an artist's tracks so a hot new release can get in.
-
-        Providers rank by cumulative plays, which buries anything recent.
-        Tracks scoring zero, meaning old, unpopular, or without the
-        metadata to tell, keep the provider's ordering exactly: the sort is
-        stable, so this is a no-op wherever the data is absent.
-        """
-        window = self._settings.fresh_days
-        if window <= 0:
-            return tracks
-        now = dt_util.utcnow()
-        scored = sorted(
-            tracks,
-            key=lambda t: hotness(t.released, t.popularity, window, now),
-            reverse=True,
+    def _rules(self) -> SelectionRules:
+        """This player's settings, as the selection understands them."""
+        settings = self._settings
+        return SelectionRules(
+            provider=settings.provider_filter,
+            min_duration=settings.min_duration,
+            clean_only=settings.explicit == EXPLICIT_CLEAN,
+            prefer_explicit=settings.explicit == EXPLICIT_PREFER,
+            skip_live=settings.filter_live,
+            skip_holiday=settings.filter_holiday,
+            fresh_days=settings.fresh_days,
         )
-        if scored and scored[0] is not tracks[0]:
-            _LOGGER.debug("Promoted %s as a hot new release", scored[0].name)
-        return scored
 
     def _select(
         self,
@@ -611,52 +587,17 @@ class CuratedRadioEngine:
         excluded_artists: set[str],
         limit: int,
     ) -> tuple[list[str], list[str]]:
-        """Filter one artist's tracks down to this batch's picks.
-
-        Returns the chosen URIs and their normalised titles, in order.
-
-        ``excluded_artists`` are artists that already have a pool of their
-        own in this batch. A track crediting one of them belongs to that
-        pool, not this one, and letting it through here is how the same act
-        got into a batch twice under two names.
-        """
-        settings = self._settings
-        uris: list[str] = []
-        titles: list[str] = []
-        for track in self._ordered_for_selection(tracks):
-            if len(uris) >= limit:
-                break
-            if not track.uri or track.uri == current_uri or track.uri in excluded_uris:
-                continue
-            # A collaboration credited to an artist already covered is
-            # that artist's record, however it is filed. Jeff Lynne and
-            # Electric Light Orchestra are the same act, so a track
-            # credited to both is not a second artist for sequencing to
-            # space out, and treating it as one put three of them in a row.
-            if any(name.strip().lower() in excluded_artists for name in track.artists):
-                continue
-            if not matches_provider(track.uri, settings.provider_filter):
-                continue
-            # Commentary, interludes and skits chart alongside the songs,
-            # so a genuine top-tracks ranking hands them straight over.
-            if is_too_short(track.duration, settings.min_duration):
-                continue
-            if settings.explicit == EXPLICIT_CLEAN and track.explicit:
-                continue
-            if is_non_song(track.name, track.version):
-                continue
-            if settings.filter_live and is_live(track.name, track.version):
-                continue
-            if settings.filter_holiday and is_holiday(
-                track.name, track.version, track.album
-            ):
-                continue
-            title = base_title(track.name)
-            if not title or title in excluded_titles or title in titles:
-                continue
-            uris.append(track.uri)
-            titles.append(title)
-        return uris, titles
+        """Filter one artist's tracks down to this batch's picks."""
+        return select_tracks(
+            tracks,
+            self._rules(),
+            current_uri=current_uri,
+            excluded_titles=excluded_titles,
+            excluded_uris=excluded_uris,
+            excluded_artists=excluded_artists,
+            limit=limit,
+            now=dt_util.utcnow(),
+        )
 
     async def _async_enqueue(self, uris: list[str], mode: str) -> list[str]:
         """Enqueue the ordered URIs, returning the ones that landed.
