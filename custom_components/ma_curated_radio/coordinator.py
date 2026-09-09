@@ -24,10 +24,11 @@ from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.util import dt as dt_util
 
 from .const import MODE_REFILL, MODE_REPLACE, SKIP_GRACE_SECONDS
+from .decide import Decision, QueueFacts, decide
 from .engine import CuratedRadioEngine
 from .feedback import PlaybackSnapshot, SkipMemory
 from .filters import base_title
-from .ma import QueueSnapshot, async_get_queue
+from .ma import async_get_queue
 from .settings import Settings
 
 _LOGGER = logging.getLogger(__name__)
@@ -144,43 +145,47 @@ class CuratedRadioDetector:
         self._task = self._hass.async_create_task(self._async_decide(outgoing))
 
     async def _async_decide(self, outgoing: PlaybackSnapshot | None) -> None:
-        """Read the queue, pick a branch, then record the new expectation."""
+        """Read the queue, act on the decision, record the new expectation."""
         try:
             queue = await async_get_queue(self._hass, self._settings.player)
             if queue is None:
                 return
 
-            # A track this integration queued is never a manual pick, even
-            # when it fails the expected-next comparison. That comparison
-            # goes wrong for plenty of innocent reasons (a rapid Previous,
-            # a track that would not play, a queue rewrite landing mid
-            # change), and every false positive used to re-anchor the drift
-            # fence to wherever the music had already got to, which is how
-            # a Lady Gaga session ended up playing UK house.
-            ours = self._engine.was_queued(queue.current_uri)
-            picked = (
-                bool(self._expected_next)
-                and queue.current_uri != self._expected_next
-                and not ours
-                and not self._is_bulk_load(queue)
+            cooling = self._in_cooldown()
+            verdict = decide(
+                QueueFacts(
+                    current_uri=queue.current_uri,
+                    next_uri=queue.next_uri,
+                    items=queue.items,
+                    remaining=queue.remaining,
+                ),
+                expected_uri=self._expected_next,
+                current_is_ours=self._engine.was_queued(queue.current_uri),
+                next_is_ours=self._engine.was_queued(queue.next_uri),
+                previous_items=self._queue_items,
+                bulk_threshold=self._settings.bulk_tracks,
+                refill_threshold=self._settings.refill_threshold,
+                in_cooldown=cooling,
             )
 
-            if not self._in_cooldown():
-                if picked:
-                    # Someone jumped playback. Let the player settle before
-                    # rewriting the queue underneath it.
-                    _LOGGER.debug("Manual pick: %s", queue.current_uri)
-                    self._last_manual_pick = dt_util.utcnow()
-                    await asyncio.sleep(self._settings.settle_seconds)
-                    await self._engine.async_run(MODE_REPLACE)
-                else:
-                    # Normal progression, so the outgoing track either ran
-                    # out or was skipped. A manual pick is deliberately not
-                    # counted as a skip: jumping somewhere else is a choice
-                    # about where to go, not a verdict on what was playing.
-                    await self._async_record_feedback(outgoing)
-                    if queue.remaining <= self._settings.refill_threshold:
-                        await self._engine.async_run(MODE_REFILL)
+            if verdict is Decision.PICKED:
+                # Someone jumped playback. Let the player settle before
+                # rewriting the queue underneath it.
+                _LOGGER.debug("Manual pick: %s", queue.current_uri)
+                self._last_manual_pick = dt_util.utcnow()
+                await asyncio.sleep(self._settings.settle_seconds)
+                await self._engine.async_run(MODE_REPLACE)
+            elif verdict is Decision.REFILL:
+                # Normal progression, so the outgoing track either ran out
+                # or was skipped. A manual pick is deliberately not counted
+                # as a skip: jumping somewhere else is a choice about where
+                # to go, not a verdict on what was playing.
+                await self._async_record_feedback(outgoing)
+                await self._engine.async_run(MODE_REFILL)
+            elif not cooling:
+                # Nothing to do about the queue, but the track that just
+                # ended was still either played through or skipped.
+                await self._async_record_feedback(outgoing)
 
             # The engine may have rewritten the queue, so re-read rather
             # than trusting the snapshot taken above.
@@ -218,50 +223,6 @@ class CuratedRadioDetector:
                 muted,
                 self._settings.artist_strike_limit,
             )
-
-    def _is_bulk_load(self, queue: QueueSnapshot) -> bool:
-        """True if the queue itself was replaced, rather than jumped within.
-
-        A manual pick is one track. A playlist or album is many, and
-        choosing to play a playlist is a decision to hear it rather than an
-        invitation to replace it.
-
-        Two measurements, because either alone gets a case wrong.
-
-        SIZE, because loading a playlist usually REPLACES the queue rather
-        than adding to it: swapping a 170-track queue for a 40-track
-        playlist is a change of minus 130, which a growth test sails past.
-
-        CHANGE, because size alone cannot see a pick made *during* a
-        playlist. Music Assistant inserts a picked track and jumps to it,
-        leaving the rest of the playlist queued behind, so the queue still
-        looks big and still looks foreign. What gives it away is that it
-        barely moved: inserting one track shifts the count by one, while
-        loading a playlist shifts it by hundreds.
-
-        Without a previous count, immediately after a restart, size has to
-        stand alone. Leaving a large unfamiliar queue alone is the safer
-        way to be wrong.
-        """
-        threshold = self._settings.bulk_tracks
-        if threshold <= 0 or queue.items < threshold:
-            return False
-        if self._engine.was_queued(queue.next_uri):
-            return False
-        moved = (
-            None
-            if self._queue_items is None
-            else abs(queue.items - self._queue_items)
-        )
-        if moved is not None and moved < threshold:
-            # Same queue, one track deep. Somebody jumped within it.
-            return False
-        _LOGGER.debug(
-            "Queue went from %s to %s tracks we did not choose; a bulk load, not a pick",
-            self._queue_items,
-            queue.items,
-        )
-        return True
 
     def _in_cooldown(self) -> bool:
         """True while a separate queue-rewriting routine is still settling.
