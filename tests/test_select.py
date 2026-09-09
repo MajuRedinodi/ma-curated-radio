@@ -142,3 +142,27 @@ def test_without_release_dates_the_provider_ordering_is_untouched():
     now = datetime(2026, 9, 9, tzinfo=UTC)
     tracks = [Track("t1", "First"), Track("t2", "Second")]
     assert uris(tracks, SelectionRules(fresh_days=120), now=now) == ["t1", "t2"]
+
+
+def test_karaoke_is_not_music():
+    """Tidal surfaces these. Searching for Tom Petty returned one."""
+    tracks = [
+        Track(
+            "t1",
+            "Mary Jane's Last Dance (Made Popular By Tom Petty)",
+            artists=["Party Tyme Karaoke"],
+        ),
+        Track("t2", "Mary Jane's Last Dance", artists=["Tom Petty"]),
+    ]
+    assert uris(tracks) == ["t2"]
+
+
+def test_a_karaoke_act_is_caught_by_its_own_name():
+    tracks = [Track("t1", "Free Fallin'", artists=["The Karaoke Channel"])]
+    assert uris(tracks) == []
+
+
+def test_a_real_cover_is_still_welcome():
+    """Shawn Colvin's Baker Street was the best thing in its batch."""
+    tracks = [Track("t1", "Baker Street", artists=["Shawn Colvin", "David Crosby"])]
+    assert uris(tracks) == ["t1"]

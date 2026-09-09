@@ -53,6 +53,7 @@ from .filters import (
     sequence_tiered,
     tier_of,
     weighted_sample,
+    without_backing_band,
 )
 from .history import TitleHistory
 from .lastfm import async_get_artist_listeners, async_get_similar_artists
@@ -403,6 +404,15 @@ class CuratedRadioEngine:
             )
         return keep
 
+    async def _async_search(self, artist: str) -> list[TrackInfo]:
+        """Search one artist's tracks, natively if the client allows it."""
+        found = await self._native.async_search_tracks(artist, SEARCH_LIMIT)
+        if found is None:
+            found = await async_search_tracks(
+                self._hass, self._settings.ma_config_entry_id, artist
+            )
+        return found
+
     async def _async_sizes(self, artists: list[str]) -> dict[str, int]:
         """Audience size per artist, cached for the life of the session.
 
@@ -538,11 +548,14 @@ class CuratedRadioEngine:
             # service action returns five tracks and no more, which is less
             # than one batch uses, so an artist reached on a refill had
             # nothing left that had not just played.
-            searched = await self._native.async_search_tracks(artist, SEARCH_LIMIT)
-            if searched is None:
-                searched = await async_search_tracks(
-                    self._hass, self._settings.ma_config_entry_id, artist
-                )
+            searched = await self._async_search(artist)
+            if not searched and (plain := without_backing_band(artist)):
+                # The name decides what comes back, not just what is
+                # accepted. Last.fm writes a backing band in where a
+                # provider often does not, and searching the long form
+                # returns other people's records or nothing at all.
+                _LOGGER.debug("Nothing for %s; trying %s", artist, plain)
+                searched = await self._async_search(plain)
             tracks = searched
         if cache is not None:
             cache[artist] = tracks

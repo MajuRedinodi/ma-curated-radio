@@ -66,6 +66,19 @@ TIER_PATTERN: Final = [TIER_POWER, TIER_DEEP, TIER_SECONDARY]
 # Spoken-word and filler entries that a genuine top-tracks ranking will
 # surface because they are recent and getting plays, but which nobody
 # wants queued. Duration catches most of it; these catch the long ones.
+# Imitations, not covers. A real cover is welcome and often the best
+# thing in a batch, so nothing here matches on "cover" or "version":
+# these phrases appear only on records made to sound like someone else.
+# Tidal surfaces them, and searching for Tom Petty returned one.
+IMITATION_MARKERS: Final = (
+    "karaoke",
+    "made popular by",
+    "in the style of",
+    "originally performed by",
+    "tribute to",
+    "backing track",
+)
+
 NON_SONG_MARKERS: Final = (
     "track by track",
     "commentary",
@@ -354,7 +367,9 @@ def is_non_song(name: str, version: str) -> bool:
     real top-tracks ranking puts them right at the top.
     """
     haystack = f"{name} {version}".lower()
-    return any(marker in haystack for marker in NON_SONG_MARKERS)
+    return any(
+        marker in haystack for marker in (*NON_SONG_MARKERS, *IMITATION_MARKERS)
+    )
 
 
 def drop_outliers(
@@ -454,6 +469,14 @@ def select_tracks(
         # A collaboration credited to an artist already covered is that
         # artist's record, however it is filed.
         if any(name.strip().lower() in artists_out for name in track.artists):
+            continue
+        # A karaoke or tribute act names itself, so the credits give it
+        # away even when the title does not.
+        if any(
+            marker in name.lower()
+            for name in track.artists
+            for marker in IMITATION_MARKERS
+        ):
             continue
         if not matches_provider(track.uri, rules.provider):
             continue
@@ -604,3 +627,19 @@ def credits_artist(credited: list[str], wanted: str) -> bool:
     if not target:
         return True
     return any(_same_artist(name, target) for name in credited)
+
+
+def without_backing_band(name: str) -> str:
+    """The artist's name without a trailing backing band, or "".
+
+    Returns empty when there is nothing to strip, so a caller can tell
+    whether a second attempt is worth making.
+
+    Worth making, because the name decides what a provider search
+    returns and not merely whether its results are accepted. Searching
+    Tidal for "Tom Petty and The Heartbreakers" yields four Stevie Nicks
+    collaborations and a karaoke record; searching for "Tom Petty" yields
+    Free Fallin', I Won't Back Down and Mary Jane's Last Dance.
+    """
+    stripped = _BACKING_BAND.sub("", name.strip())
+    return "" if stripped.lower() == name.strip().lower() else stripped
