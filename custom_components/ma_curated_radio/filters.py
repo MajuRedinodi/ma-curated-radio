@@ -19,6 +19,17 @@ from typing import Any, Final
 # keyword to its punctuation.
 _WORDS = re.compile(r"[^a-z0-9]+")
 
+# Words that mark a recording as live. "Live" alone missed The Band's
+# "Helpless (Concert Version)", from The Last Waltz, which reached a
+# queue with live filtering switched on. Checked as whole words in a
+# title so "Alive" and "Living on a Prayer" survive, and as substrings
+# in the version field, which is already terse and deliberate.
+LIVE_MARKERS: Final = (
+    "live",
+    "concert",
+    "unplugged",
+)
+
 HOLIDAY_TOKENS: Final = (
     "christmas",
     "xmas",
@@ -86,7 +97,11 @@ def is_live(name: str, version: str) -> bool:
     thing this filter exists to catch only got caught when the provider
     also populated the version field.
     """
-    return "live" in version.lower() or "live" in _WORDS.split(name.lower())
+    haystack = version.lower()
+    words = set(_WORDS.split(name.lower()))
+    return any(
+        marker in haystack or marker in words for marker in LIVE_MARKERS
+    )
 
 
 def is_holiday(name: str, version: str, album: str) -> bool:
@@ -554,6 +569,28 @@ def hotness(
     return freshness(released, window_days, now) * min(popularity, 100) / 100
 
 
+# A backing band written into an artist's name. Last.fm and a provider
+# frequently disagree about whether to include one: Last.fm returns "Tom
+# Petty and The Heartbreakers" where Tidal credits plain "Tom Petty",
+# and an exact comparison then rejects every track that artist has.
+_BACKING_BAND = re.compile(r"\s+(?:and|with|&|feat\.?|featuring)\s+the\s+.+$")
+
+
+def _same_artist(a: str, b: str) -> bool:
+    """Whether two artist names are the same act.
+
+    Deliberately narrow. Matching on a prefix would be the obvious
+    generalisation and is wrong: "The Band" is a prefix of "The Band
+    Perry" at a word boundary, and they share nothing. Only a trailing
+    backing band is stripped, which is the disagreement that actually
+    occurs.
+    """
+    first, second = a.strip().lower(), b.strip().lower()
+    if first == second:
+        return True
+    return _BACKING_BAND.sub("", first) == _BACKING_BAND.sub("", second)
+
+
 def credits_artist(credited: list[str], wanted: str) -> bool:
     """Return True if ``wanted`` is actually one of a track's artists.
 
@@ -566,4 +603,4 @@ def credits_artist(credited: list[str], wanted: str) -> bool:
     target = wanted.strip().lower()
     if not target:
         return True
-    return any(name.strip().lower() == target for name in credited)
+    return any(_same_artist(name, target) for name in credited)

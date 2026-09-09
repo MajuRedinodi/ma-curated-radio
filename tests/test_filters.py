@@ -286,7 +286,11 @@ def test_hotness_needs_both_signals():
         (["Lady Gaga"], "lady gaga", True),
         # The real failure: right words, wrong record.
         (["Rosanna Rocci"], "Madonna", False),
-        (["Bob Seger & The Silver Bullet Band"], "Bob Seger", False),
+        # A backing band is the same act. This asserted False until a live
+        # batch showed what that costs: Last.fm asked for "Tom Petty and
+        # The Heartbreakers", Tidal credits plain "Tom Petty", and the
+        # artist contributed nothing at all to the batch.
+        (["Bob Seger & The Silver Bullet Band"], "Bob Seger", True),
         ([], "Madonna", False),
         (["Anyone"], "", True),
     ],
@@ -489,3 +493,40 @@ def test_reach_uses_the_pool_median_for_an_unknown_artist():
     ]
     reach = reach_of(pool, 0.7)
     assert reach["u1"] == 500000
+
+
+def test_a_backing_band_may_be_present_or_absent():
+    """Last.fm and a provider disagree about writing the band in.
+
+    Observed live: Last.fm returned "Tom Petty and The Heartbreakers",
+    Tidal credits plain "Tom Petty", and the exact comparison rejected
+    every track so the artist contributed nothing at all to a batch.
+    """
+    assert credits_artist(["Tom Petty"], "Tom Petty and The Heartbreakers")
+    assert credits_artist(["Tom Petty and The Heartbreakers"], "Tom Petty")
+    assert credits_artist(["Stevie Nicks", "Tom Petty"], "Tom Petty & The Heartbreakers")
+
+
+def test_two_acts_sharing_a_prefix_are_still_different_acts():
+    """Prefix matching would be the obvious generalisation and is wrong."""
+    assert not credits_artist(["The Band Perry"], "The Band")
+    assert not credits_artist(["The Band"], "The Band Perry")
+
+
+def test_the_wrong_record_with_the_right_words_is_still_rejected():
+    """Searching Madonna returned "Madonna Madonna" by Rosanna Rocci."""
+    assert not credits_artist(["Rosanna Rocci"], "Madonna")
+
+
+def test_a_concert_recording_is_a_live_recording():
+    """The Band's "Helpless (Concert Version)", from The Last Waltz,
+    reached a queue with live filtering switched on."""
+    assert is_live("Helpless (Concert Version)", "")
+    assert is_live("Helpless", "Concert Version")
+    assert is_live("Layla", "Unplugged")
+
+
+def test_a_song_that_merely_sounds_live_is_not_filtered():
+    assert not is_live("Alive", "")
+    assert not is_live("Living on a Prayer", "")
+    assert not is_live("Concrete and Clay", "")
