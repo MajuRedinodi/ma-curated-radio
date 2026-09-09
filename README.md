@@ -84,12 +84,20 @@ Add the integration once per player you want this behaviour on.
 ## Options
 
 Everything below is tunable afterwards from the integration's **Configure**
-button. Defaults in brackets.
+button, and most of it is reachable from a dashboard as well. Defaults in
+brackets.
+
+The three that shape a batch are held **per station style**, because the
+styles want opposite things: Artist radio is a showcase built around one
+name, Balanced is a station. The same dashboard controls follow
+whichever style is selected, so tuning one cannot quietly retune another.
 
 | Option | What it does |
 |---|---|
-| Similar artists per batch [3] | How many Last.fm-similar artists join the seed artist. Zero keeps every batch to the seed artist alone. |
-| Tracks per artist [3] | How many tracks to take from each artist. The seed may get more, depending on station style. |
+| Similar artists per batch | How many Last.fm-similar artists join the seed artist. Zero keeps every batch to the seed artist alone. Per station style: 3 for Artist radio, 8 for the others. |
+| Tracks per artist | How many tracks to draw from each artist. The seed draws more, by the station style's multiplier. Per station style: 3 everywhere. |
+| Tracks per batch | How many of the drawn tracks actually play, which is what lets a batch reach deeper without getting longer. Zero plays everything drawn. Per station style: 19 for Balanced and Discovery, 0 for Artist radio. |
+| Drop artists below [10%] | Drop a similar artist whose audience is below this share of the pool's own median. Catches a neighbour whose whole catalogue is obscure without penalising a genre Last.fm undercounts. Zero disables it. |
 | Station style [balanced] | **Artist radio** always builds from the artist you picked and never wanders. **Balanced** wanders but stays inside the degree fence below. **Discovery** wanders without limit, which is the point of it. |
 | Degrees of separation [3] | How far a session may travel from the artist that started it. Ignored by Artist radio and Discovery. |
 | Most in a row from one artist [2] | How many tracks by the same artist may play back to back. Two lets an artist station feel like an artist station without anyone monopolising the hour. |
@@ -208,7 +216,7 @@ views:
             grid_options: {columns: full}
 
           - type: heading
-            heading: Tuning
+            heading: Tuning · per station style
             heading_style: subtitle
           - type: tile
             entity: select.family_room_stereo_station_style
@@ -241,6 +249,22 @@ views:
           - type: tile
             entity: number.family_room_stereo_tracks_per_artist
             name: Tracks per artist
+            features:
+              - type: numeric-input
+                style: buttons
+            grid_options: {columns: 6}
+          - type: tile
+            entity: number.family_room_stereo_tracks_per_batch
+            name: Tracks per batch
+            color: blue
+            features:
+              - type: numeric-input
+                style: buttons
+            grid_options: {columns: 6}
+          - type: tile
+            entity: number.family_room_stereo_drop_artists_below
+            name: Drop artists below
+            color: blue
             features:
               - type: numeric-input
                 style: buttons
