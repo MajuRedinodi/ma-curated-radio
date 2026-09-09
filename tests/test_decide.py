@@ -6,7 +6,13 @@ produced rather than to an abstraction of it.
 """
 
 import pytest
-from decide import Decision, QueueFacts, decide, is_bulk_load
+from decide import (
+    Decision,
+    QueueFacts,
+    decide,
+    is_bulk_load,
+    leading_pool,
+)
 
 # A pick lands on a track the integration did not queue, breaking the
 # expectation set by the previous reading.
@@ -120,3 +126,44 @@ def test_a_pick_wins_over_a_refill():
 def test_a_routine_that_owns_the_queue_suppresses_everything(queue):
     """A scheduled rebuild would otherwise look exactly like a pick."""
     assert call(queue, in_cooldown=True) is Decision.NOTHING
+
+
+# --- The seam between a batch and the track it follows -----------------
+
+POOLS = ["Electric Light Orchestra", "Boston", "Styx"]
+
+
+def test_the_artist_playing_now_is_counted_as_having_had_a_turn():
+    """Picking Mr. Blue Sky opened a batch with two more ELO tracks.
+
+    Every step was legal on its own, because a batch is sequenced in
+    isolation and cannot see the track it will be played after.
+    """
+    assert leading_pool(POOLS, ["Electric Light Orchestra"], lands_next=True) == 0
+
+
+def test_a_batch_landing_elsewhere_primes_nothing():
+    """A refill joins the end of a populated queue, far from the join."""
+    assert leading_pool(POOLS, ["Boston"], lands_next=False) is None
+
+
+def test_every_credit_is_matched_not_only_the_first():
+    """The first credit seeds a batch, but a pool can be led by any.
+
+    Observed live: a batch following "Shawn Colvin, David Crosby".
+    """
+    assert leading_pool(POOLS, ["Tom Petty", "Styx"], lands_next=True) == 2
+
+
+def test_an_artist_that_drew_no_tracks_primes_nothing():
+    """Its pool was dropped, so there is no run for it to continue."""
+    assert leading_pool(POOLS, ["Christine McVie"], lands_next=True) is None
+
+
+def test_nothing_playing_primes_nothing():
+    assert leading_pool(POOLS, [], lands_next=True) is None
+    assert leading_pool(POOLS, [""], lands_next=True) is None
+
+
+def test_matching_ignores_case_and_stray_spacing():
+    assert leading_pool(POOLS, ["  boston "], lands_next=True) == 1

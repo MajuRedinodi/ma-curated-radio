@@ -128,3 +128,40 @@ def decide(
     if queue.remaining <= refill_threshold:
         return Decision.REFILL
     return Decision.NOTHING
+
+
+def leading_pool(
+    pool_artists: list[str],
+    playing_artists: list[str],
+    *,
+    lands_next: bool,
+) -> int | None:
+    """Which pool, if any, has effectively played once already.
+
+    A batch is sequenced in isolation and cannot see the track it will be
+    played after, so without this a pick and the two tracks following it
+    are three in a row by one artist, each step of which looks legal.
+    Returns the index the sequencer should count as having just played,
+    or None when the batch does not join onto the current track.
+
+    ``lands_next`` is a statement about where the batch goes rather than
+    how it was triggered. A replace always lands immediately after the
+    current track. A refill usually does not, since it joins the end of a
+    populated queue, but it does when the queue has run dry, which is
+    both the natural end of a batch and what the first pick after a
+    restart looks like.
+
+    Matched against every name the current track credits, not just the
+    first. The first credit is what seeds a batch, but a pool can be led
+    by any of them, and this comparison failing silently costs the whole
+    guard rather than failing loudly.
+    """
+    if not lands_next:
+        return None
+    playing = {name.strip().lower() for name in playing_artists if name}
+    if not playing:
+        return None
+    for position, name in enumerate(pool_artists):
+        if name.strip().lower() in playing:
+            return position
+    return None

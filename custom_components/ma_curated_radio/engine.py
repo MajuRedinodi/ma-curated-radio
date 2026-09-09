@@ -38,6 +38,7 @@ from .const import (
     TIER_DECAY,
     signal_update,
 )
+from .decide import leading_pool
 from .feedback import SkipMemory
 from .filters import (
     TIER_PATTERN,
@@ -260,28 +261,11 @@ class CuratedRadioEngine:
                 mode=mode, seed_artist=lead, artists=artists, skipped_reason="no_tracks"
             )
 
-        # Whether this batch will be heard immediately after the track
-        # playing now, in which case that track's artist has effectively
-        # had a turn already and the batch must not open with two more.
-        #
-        # A replace always lands there. A refill usually does not, since
-        # it joins the end of a populated queue, but it does when the
-        # queue has run dry, which is both the natural end of a batch and
-        # what the first pick after a restart looks like: the coordinator
-        # has no expectation to compare against yet, so a pick reads as a
-        # refill onto an empty queue.
-        #
-        # Matched against every name the current track credits, not just
-        # the first. The first credit is what seeds the batch, but a pool
-        # can be led by any of them, and a near miss here silently costs
-        # the whole guard rather than failing loudly.
-        leading = None
-        if mode != MODE_REFILL or queue.remaining == 0:
-            playing = {name.strip().lower() for name in queue.artists if name}
-            for position, name in enumerate(pool_artists):
-                if name.strip().lower() in playing:
-                    leading = position
-                    break
+        leading = leading_pool(
+            pool_artists,
+            queue.artists,
+            lands_next=mode != MODE_REFILL or queue.remaining == 0,
+        )
         _LOGGER.debug(
             "Batch follows %s; %s",
             ", ".join(queue.artists) or "nothing",
