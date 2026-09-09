@@ -49,7 +49,6 @@ from .filters import (
     matches_provider,
     reach_of,
     select_tracks,
-    sequence,
     sequence_tiered,
     tier_of,
     weighted_sample,
@@ -705,6 +704,7 @@ class CuratedRadioEngine:
                 ),
             ]
             per_artist: list[list[str]] = []
+            round_pools: list[str] = []
             covered: set[str] = set()
             for index, artist in enumerate(round_artists):
                 tracks = await self._async_tracks_for(artist, track_cache)
@@ -721,13 +721,35 @@ class CuratedRadioEngine:
                     uris = [u for u in uris if matches_provider(u, provider)]
                     titles = titles[: len(uris)]
                 if uris:
+                    round_pools.append(artist)
                     per_artist.append(uris)
                     seen_titles.update(titles)
                     if artist not in artists_used:
                         artists_used.append(artist)
             if not per_artist:
                 break
-            ordered.extend(sequence(per_artist, settings.max_consecutive))
+            # Programmed the same way the live queue is. A round built by
+            # plain round-robin plays every artist's biggest track and then
+            # every artist's second, so a long playlist arrives as a
+            # sawtooth of strong and weak stretches rather than an even
+            # one.
+            sizes = await self._async_sizes(round_pools)
+            ordered.extend(
+                sequence_tiered(
+                    per_artist,
+                    tier_of(
+                        [
+                            (artist, uris, sizes.get(artist, 0))
+                            for artist, uris in zip(
+                                round_pools, per_artist, strict=True
+                            )
+                        ],
+                        TIER_DECAY,
+                    ),
+                    TIER_PATTERN,
+                    max_consecutive=settings.max_consecutive,
+                )
+            )
 
             # Reseed off a similar artist from this round, the same way a
             # refill reseeds off whatever happens to be playing.

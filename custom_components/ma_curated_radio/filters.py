@@ -195,53 +195,6 @@ def matches_provider(uri: str, provider_filter: str) -> bool:
     return any(scheme == p or scheme.startswith(p) for p in allowed)
 
 
-def sequence(
-    lists: list[list[str]],
-    max_consecutive: int = 2,
-    leading: int | None = None,
-) -> list[str]:
-    """Order tracks across artists, capping how many play back to back.
-
-    At each position it takes from whichever artist has the most left,
-    which produces plain round-robin when every artist contributes the same
-    number of tracks, and spreads the surplus when one contributes more (a
-    seed-heavy "artist radio" batch). An artist that has just played
-    ``max_consecutive`` times in a row is skipped over.
-
-    ``leading`` is the pool of the track this batch will be played after,
-    counted as one play already made. A batch knows nothing about what
-    precedes it, so without this a pick and the two tracks after it are
-    three in a row by the same artist, each step of which looked legal.
-
-    The cap is a preference, not a guarantee: when only the blocked
-    artist has tracks left, playing them beats dropping them.
-    """
-    pools = [list(items) for items in lists if items]
-    if not pools:
-        return []
-
-    ordered: list[str] = []
-    last: int | None = leading
-    run = 1 if leading is not None else 0
-
-    while any(pools):
-        pick = None
-        for index, pool in enumerate(pools):
-            if not pool or (index == last and run >= max_consecutive):
-                continue
-            if pick is None or len(pool) > len(pools[pick]):
-                pick = index
-        if pick is None:
-            # Everything else is exhausted; the tail is one artist's.
-            pick = next(i for i, pool in enumerate(pools) if pool)
-
-        ordered.append(pools[pick].pop(0))
-        run = run + 1 if pick == last else 1
-        last = pick
-
-    return ordered
-
-
 def tier_of(
     sized: list[tuple[str, list[str], int]], decay: float
 ) -> dict[str, str]:

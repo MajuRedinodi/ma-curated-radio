@@ -21,7 +21,6 @@ from filters import (
     is_too_short,
     matches_provider,
     reach_of,
-    sequence,
     sequence_tiered,
     tier_of,
     weighted_sample,
@@ -103,50 +102,6 @@ def test_clean_similar_artists_drops_collabs_and_seed():
 def test_matches_provider(uri, filt, expected):
     assert matches_provider(uri, filt) is expected
 
-
-def test_sequence_round_robins_when_artists_are_even():
-    assert sequence([["s1", "s2"], ["a1", "a2"], ["b1", "b2"]]) == [
-        "s1",
-        "a1",
-        "b1",
-        "s2",
-        "a2",
-        "b2",
-    ]
-
-
-def test_sequence_caps_consecutive_from_one_artist():
-    # A seed-heavy batch: the surplus is spread, never three in a row.
-    ordered = sequence([["s1", "s2", "s3", "s4"], ["a1", "a2"]], max_consecutive=2)
-    assert ordered == ["s1", "s2", "a1", "s3", "s4", "a2"]
-    assert _longest_run(ordered) == 2
-
-
-def test_sequence_plays_the_tail_rather_than_dropping_it():
-    # Only the blocked artist is left; playing them beats losing tracks.
-    ordered = sequence([["s1", "s2", "s3", "s4"], ["a1"]], max_consecutive=2)
-    assert sorted(ordered) == ["a1", "s1", "s2", "s3", "s4"]
-
-
-def test_sequence_honours_a_stricter_cap():
-    ordered = sequence([["s1", "s2", "s3"], ["a1", "a2", "a3"]], max_consecutive=1)
-    assert _longest_run(ordered) == 1
-
-
-def test_sequence_handles_nothing():
-    assert sequence([]) == []
-    assert sequence([[], []]) == []
-
-
-def _longest_run(ordered: list[str]) -> int:
-    """Longest run of items sharing a leading letter (their artist)."""
-    longest = run = 0
-    previous = None
-    for item in ordered:
-        run = run + 1 if item[0] == previous else 1
-        previous = item[0]
-        longest = max(longest, run)
-    return longest
 
 
 @pytest.mark.parametrize(
@@ -298,31 +253,6 @@ def test_hotness_needs_both_signals():
 def test_credits_artist(credited, wanted, expected):
     assert credits_artist(credited, wanted) is expected
 
-
-def test_sequence_counts_the_track_it_follows():
-    """A pick and the two after it must not be three by one artist.
-
-    Observed: picking ELO's "Mr. Blue Sky" opened the batch with two more
-    ELO tracks. Every step was legal on its own, because the batch could
-    not see what it was being played after.
-    """
-    elo = {"elo1", "elo2", "elo3"}
-    pools = [["elo1", "elo2", "elo3"], ["other1"], ["other2"]]
-
-    # The pick counts as one, so exactly one more may follow it.
-    seamed = sequence(pools, 2, leading=0)
-    assert seamed[0] in elo
-    assert seamed[1] not in elo
-
-    # Standing alone, the same pool may open with two of its own.
-    plain = sequence(pools, 2)
-    assert plain[0] in elo
-    assert plain[1] in elo
-
-
-def test_sequence_leading_still_returns_everything():
-    pools = [["a1", "a2", "a3"], ["b1"], ["c1"]]
-    assert sorted(sequence(pools, 2, leading=0)) == ["a1", "a2", "a3", "b1", "c1"]
 
 
 def test_floor_drops_an_artist_far_below_its_own_pool():
@@ -548,3 +478,29 @@ def test_a_comma_in_a_pop_title_is_left_alone():
     """Splitting on the comma would collapse these onto each other."""
     assert base_title("Hello, Goodbye") != base_title("Hello")
     assert base_title("Rock Me, Baby") != base_title("Rock Me")
+
+
+def test_the_run_cap_can_be_tightened_to_one():
+    """Ported from the round-robin sequencer this replaced."""
+    pools = [["s1", "s2", "s3"], ["a1", "a2", "a3"]]
+    tiers = dict.fromkeys(("s1", "s2", "s3", "a1", "a2", "a3"), "P")
+    ordered = sequence_tiered(pools, tiers, ["P"], max_consecutive=1)
+    assert all(ordered[i] != ordered[i + 1] for i in range(len(ordered) - 1))
+    assert sorted(ordered) == ["a1", "a2", "a3", "s1", "s2", "s3"]
+
+
+def test_the_cap_gives_way_rather_than_dropping_tracks():
+    """When only the blocked artist has anything left, it plays.
+
+    The cap is a preference, not a guarantee: playing three in a row
+    beats ending an hour early.
+    """
+    pools = [["s1", "s2", "s3", "s4"], ["a1"]]
+    tiers = dict.fromkeys(("s1", "s2", "s3", "s4", "a1"), "P")
+    ordered = sequence_tiered(pools, tiers, ["P"], max_consecutive=2)
+    assert len(ordered) == 5
+
+
+def test_an_empty_pool_orders_nothing():
+    assert sequence_tiered([], {}, ["P"]) == []
+    assert sequence_tiered([[], []], {}, ["P"]) == []
