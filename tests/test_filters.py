@@ -401,3 +401,30 @@ def test_tiered_order_still_honours_the_seam_and_the_run_cap():
     tiers = dict.fromkeys(("a1", "a2", "a3", "b1", "c1"), "P")
     out = sequence_tiered(lists, tiers, ["P"], 2, leading=0)
     assert out[1] not in ("a1", "a2", "a3")
+
+
+def test_unknown_artist_size_is_typical_not_worst():
+    """A missed lookup must not file an artist as the weakest in the pool.
+
+    The artist most likely to be missing is the one just picked, and the
+    original scoring put every track of an unknown artist in the Deep
+    tier, so the station would have treated what was asked for as its
+    weakest material.
+    """
+    pool = [
+        ("Big", ["big1", "big2"], 2000000),
+        ("Mid", ["mid1", "mid2"], 500000),
+        ("Small", ["small1", "small2"], 100000),
+        ("Unknown", ["unk1", "unk2"], 0),
+    ]
+    tiers = tier_of(pool, 0.7)
+    assert tiers["unk1"] != "D"
+    assert tiers["big1"] == "P"
+
+
+def test_tiering_survives_a_pool_with_no_sizes_at_all():
+    """No Last.fm key, or a total outage: fall back to track position."""
+    pool = [("A", ["a1", "a2"], 0), ("B", ["b1", "b2"], 0)]
+    tiers = tier_of(pool, 0.7)
+    assert len(tiers) == 4
+    assert set(tiers.values()) <= {"P", "S", "D"}

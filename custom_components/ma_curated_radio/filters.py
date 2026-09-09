@@ -199,10 +199,19 @@ def tier_of(
     threshold tuned on rock would mark an entire country station as deep
     cuts, because Last.fm undercounts the genre by about ten times.
     """
+    # An unknown size means the lookup missed, not that the artist is
+    # tiny. Scoring it as zero would put every one of its tracks in the
+    # Deep tier, and the artist most likely to be missing is the one just
+    # picked, so the station would file what you asked for as its weakest
+    # material. Treat unknown as typical instead.
+    known = sorted(size for _, _, size in sized if size > 0)
+    fallback = known[len(known) // 2] if known else 1
+
     scored: list[tuple[str, float]] = []
     for _, uris, size in sized:
+        weight = size if size > 0 else fallback
         for position, uri in enumerate(uris):
-            scored.append((uri, (size or 1) * (decay**position)))
+            scored.append((uri, weight * (decay**position)))
     scored.sort(key=lambda pair: pair[1], reverse=True)
     third = len(scored) // 3
     tiers: dict[str, str] = {}
