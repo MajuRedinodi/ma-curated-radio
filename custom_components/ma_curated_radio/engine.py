@@ -247,11 +247,25 @@ class CuratedRadioEngine:
         # artist of that track has effectively already had a turn. A refill
         # lands at the end of a populated queue instead, where the current
         # track is nowhere near the join.
+        #
+        # Matched against every name the current track credits, not just
+        # the first. The first credit is what seeds the batch, but a pool
+        # can be led by any of them, and a near miss here silently costs
+        # the whole guard rather than failing loudly.
         leading = None
         if mode != MODE_REFILL:
+            playing = {name.strip().lower() for name in queue.artists if name}
             for position, name in enumerate(pool_artists):
-                if name.strip().lower() == seed.strip().lower():
+                if name.strip().lower() in playing:
                     leading = position
+                    break
+        _LOGGER.debug(
+            "Batch follows %s; %s",
+            ", ".join(queue.artists) or "nothing",
+            f"primed {pool_artists[leading]}"
+            if leading is not None
+            else "no pool primed",
+        )
         ordered = sequence(per_artist, self._settings.max_consecutive, leading)
         enqueued = await self._async_enqueue(ordered, mode)
         if enqueued:
