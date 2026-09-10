@@ -22,8 +22,10 @@ from filters import (
     is_non_song,
     is_too_short,
     lead_among_credits,
+    lean_toward_strength,
     matches_provider,
     move_on,
+    neighbourhood_strength,
     reach_of,
     sequence_tiered,
     strong_artists,
@@ -705,3 +707,33 @@ def test_a_duo_known_by_its_first_name_keeps_it():
 
 def test_without_a_pair_audience_the_first_credit_stands():
     assert lead_among_credits("A", {"A": 10, "B": 1_000_000}, 0) == "A"
+
+
+# --- Leaning a reseed toward strong neighbourhoods -----------------------
+
+
+def test_a_neighbourhood_is_measured_by_the_pool_it_would_bring():
+    """Boney M. was big; its neighbours were Dschinghis Khan and Fancy."""
+    sizes = {"Dschinghis Khan": 200_000, "Fancy": 90_000, "Ottawan": 150_000}
+    assert neighbourhood_strength(["Dschinghis Khan", "Fancy", "Ottawan"], sizes) == 150_000
+
+
+def test_unknown_neighbours_are_left_out_not_counted_as_nothing():
+    sizes = {"A": 1_000_000, "B": 0}
+    assert neighbourhood_strength(["A", "B", "C"], sizes) == 1_000_000
+
+
+def test_a_reseed_leans_toward_the_stronger_neighbourhood():
+    """Weighted, so the strong one wins most of the time but not always."""
+    strengths = {"Fleetwood Mac": 3_000_000, "Boney M.": 150_000}
+    rng = random.Random(7)
+    picks = [
+        lean_toward_strength(["Fleetwood Mac", "Boney M."], strengths, rng)
+        for _ in range(200)
+    ]
+    assert picks.count("Fleetwood Mac") > 150
+    assert "Boney M." in picks
+
+
+def test_a_single_candidate_is_simply_chosen():
+    assert lean_toward_strength(["Only"], {}, random.Random(1)) == "Only"

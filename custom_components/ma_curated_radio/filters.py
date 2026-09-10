@@ -809,3 +809,42 @@ def lead_among_credits(
         return first
     best = max(sizes.items(), key=lambda item: item[1], default=(first, 0))
     return best[0] if best[1] > first_size else first
+
+
+# How many of a candidate's neighbours stand for its neighbourhood: the
+# same number a batch would draw from it by default.
+NEIGHBOURHOOD_SIZE: Final = 8
+
+
+def neighbourhood_strength(
+    neighbours: list[str], sizes: Mapping[str, int], take: int = NEIGHBOURHOOD_SIZE
+) -> int:
+    """The median audience of the pool an artist would bring.
+
+    A reseed artist's own size says little about its neighbours'. Boney M.
+    was big enough for the stronger half of an ABBA batch, and its
+    neighbours were Dschinghis Khan, Eruption, Fancy and Ottawan: the next
+    hour fell to a sixth of the reach. Unknown sizes are left out rather
+    than counted as zero.
+    """
+    known = sorted(sizes[n] for n in neighbours[:take] if sizes.get(n, 0) > 0)
+    return known[len(known) // 2] if known else 0
+
+
+def lean_toward_strength(
+    candidates: list[str], strengths: Mapping[str, int], rng: random.Random
+) -> str:
+    """Choose a reseed artist, weighted by the strength of its neighbourhood.
+
+    Weighted rather than always the strongest. Simulated over eleven
+    origins and four refills, always taking the strongest neighbourhood
+    ended stations 70% stronger but looped: Fleetwood Mac alternated
+    between the same two neighbourhoods all evening, Nancy Sinatra sat at
+    one value for three refills, and Dasha climbed out of country. Leaning
+    toward strength ended them about 17% stronger than a flat choice, with
+    a gentler worst refill and no loss of lane or variety.
+    """
+    if len(candidates) == 1:
+        return candidates[0]
+    weights = [max(strengths.get(name, 0), 1) for name in candidates]
+    return rng.choices(candidates, weights=weights, k=1)[0]

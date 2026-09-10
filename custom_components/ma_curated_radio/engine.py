@@ -47,6 +47,7 @@ from .decide import leading_pool
 from .feedback import SkipMemory
 from .filters import (
     FOOTNOTE_SHARE,
+    NEIGHBOURHOOD_SIZE,
     TIER_PATTERN,
     SelectionRules,
     base_title,
@@ -55,8 +56,10 @@ from .filters import (
     credits_artist,
     drop_outliers,
     lead_among_credits,
+    lean_toward_strength,
     matches_provider,
     move_on,
+    neighbourhood_strength,
     reach_of,
     select_tracks,
     sequence_tiered,
@@ -166,6 +169,11 @@ class CuratedRadioEngine:
         # recur heavily between batches, so this usually saves the lookups
         # entirely rather than merely spreading them out.
         self._sizes: dict[str, int] = {}
+        # Last.fm's similar-artist lists by lower-cased artist, for weighing
+        # reseed candidates. Similarity barely moves within a session.
+        self._similar: dict[str, list[tuple[str, float]]] = {}
+        # Its own generator so reseed choices can be reproduced in tests.
+        self._rng = random.Random()
         # Artists that actually contributed to the last batch. A refill
         # reseeds from the stronger half of these rather than from
         # whatever is playing, which stops a station sliding into
@@ -317,7 +325,7 @@ class CuratedRadioEngine:
         # refill, an artist from the stronger half of the last batch,
         # preferring those nearest the origin.
         refilling = mode == MODE_REFILL
-        pool_from = self._pool_seed(
+        pool_from = await self._async_pool_seed(
             seed,
             previous=self._last_pool if refilling else None,
             last_lead=self._last_lead if refilling else "",
@@ -961,7 +969,7 @@ class CuratedRadioEngine:
                 break
             # Each round continues from the one before, the same way a
             # refill continues from the batch before it.
-            pool_from = self._pool_seed(
+            pool_from = await self._async_pool_seed(
                 current_seed,
                 build_session,
                 previous=previous_round,
@@ -1113,7 +1121,7 @@ class CuratedRadioEngine:
             return active.origin
         return current_artist
 
-    def _pool_seed(
+    async def _async_pool_seed(
         self,
         current_artist: str,
         session: ListeningSession | None = None,
@@ -1142,7 +1150,9 @@ class CuratedRadioEngine:
         Drawing at random from the stronger half keeps the station moving,
         which is the point of a refill, while stopping the movement being
         consistently downward; preferring those closest to the origin
-        stops it moving sideways.
+        stops it moving sideways; and leaning toward the candidates whose
+        own neighbours are strongest stops a big artist with a small
+        circle from taking the next hour down with it.
 
         ``previous`` is passed in rather than read from the live queue's
         state. Reading it here let a car playlist reseed every round from
@@ -1161,13 +1171,32 @@ class CuratedRadioEngine:
             active.degree_of,
             fenced=self._degree_cap is not None,
         )
-        if strong:
-            chosen = random.choice(strong)
-            if chosen.lower() != current_artist.lower():
-                _LOGGER.debug(
-                    "Reseeding from %s rather than %s, which is playing",
-                    chosen,
-                    current_artist,
-                )
-            return chosen
-        return current_artist
+        if not strong:
+            return current_artist
+        strengths = {
+            name: await self._async_neighbourhood(name) for name in strong
+        } if len(strong) > 1 else {}
+        chosen = lean_toward_strength(strong, strengths, self._rng)
+        _LOGGER.debug(
+            "Reseeding from %s rather than %s, which is playing; neighbourhoods %s",
+            chosen,
+            current_artist,
+            ", ".join(f"{n} {s:,}" for n, s in strengths.items()) or "not compared",
+        )
+        return chosen
+
+    async def _async_neighbourhood(self, artist: str) -> int:
+        """Median audience of the neighbours this artist would bring.
+
+        Both lookups are cached for the life of the entry, so weighing the
+        same candidates again on later refills costs nothing.
+        """
+        key = artist.lower()
+        if key not in self._similar:
+            self._similar[key] = await self._async_lookup_similar(artist)
+        neighbours = [
+            name
+            for name, _ in clean_similar_artists(self._similar[key], artist)
+        ][:NEIGHBOURHOOD_SIZE]
+        sizes = await self._async_sizes(neighbours)
+        return neighbourhood_strength(neighbours, sizes)
