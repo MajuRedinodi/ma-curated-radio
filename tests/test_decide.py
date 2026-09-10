@@ -11,6 +11,7 @@ from decide import (
     QueueFacts,
     decide,
     is_bulk_load,
+    is_transitional,
     leading_pool,
 )
 
@@ -167,3 +168,29 @@ def test_nothing_playing_primes_nothing():
 
 def test_matching_ignores_case_and_stray_spacing():
     assert leading_pool(POOLS, ["  boston "], lands_next=True) == 1
+
+
+# --- Between tracks ------------------------------------------------------
+
+BLANK = QueueFacts(current_uri="", next_uri="", items=1, remaining=0)
+
+
+def test_a_queue_between_tracks_is_not_a_pick():
+    """A second pick on a phone, "Walk This Way", was left as one song.
+
+    While the queue was being replaced it reported no current track for a
+    moment. That blank was read as a pick, the run it started had no
+    artist to build from, and the real pick a moment later was then
+    judged against an expectation taken from the blank.
+    """
+    assert call(BLANK) is Decision.NOTHING
+
+
+def test_a_queue_between_tracks_does_not_refill_either():
+    """An empty reading says nothing, including that the queue ran dry."""
+    assert call(BLANK, expected_uri="") is Decision.NOTHING
+
+
+def test_only_a_blank_reading_is_transitional():
+    assert is_transitional(BLANK)
+    assert not is_transitional(PICK)

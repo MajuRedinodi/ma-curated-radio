@@ -216,7 +216,11 @@ class CuratedRadioEngine:
             while self._superseded:
                 self._superseded = False
                 result = await self._async_build(MODE_REPLACE)
-        self._last_batch = result
+        # A run that queued nothing does not replace the record of the last
+        # one that did. It used to, so a pointless run moments after a good
+        # batch left the dashboard reporting no batch at all.
+        if result.ran or self._last_batch is None:
+            self._last_batch = result
         async_dispatcher_send(self._hass, signal_update(self._entry_id))
         return result
 

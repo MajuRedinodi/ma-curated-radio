@@ -24,7 +24,7 @@ from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.util import dt as dt_util
 
 from .const import MODE_REFILL, MODE_REPLACE, SKIP_GRACE_SECONDS
-from .decide import Decision, QueueFacts, decide
+from .decide import Decision, QueueFacts, decide, is_transitional
 from .engine import CuratedRadioEngine
 from .feedback import PlaybackSnapshot, SkipMemory
 from .filters import base_title
@@ -150,15 +150,21 @@ class CuratedRadioDetector:
             queue = await async_get_queue(self._hass, self._settings.player)
             if queue is None:
                 return
+            facts = QueueFacts(
+                current_uri=queue.current_uri,
+                next_uri=queue.next_uri,
+                items=queue.items,
+                remaining=queue.remaining,
+            )
+            if is_transitional(facts):
+                # Between tracks. Ignored outright, expectation included, so
+                # the real track arriving next is judged against what was
+                # expected before the blank rather than against the blank.
+                return
 
             cooling = self._in_cooldown()
             verdict = decide(
-                QueueFacts(
-                    current_uri=queue.current_uri,
-                    next_uri=queue.next_uri,
-                    items=queue.items,
-                    remaining=queue.remaining,
-                ),
+                facts,
                 expected_uri=self._expected_next,
                 current_is_ours=self._engine.was_queued(queue.current_uri),
                 next_is_ours=self._engine.was_queued(queue.next_uri),

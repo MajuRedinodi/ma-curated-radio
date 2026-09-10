@@ -84,6 +84,23 @@ def is_bulk_load(
     return abs(queue.items - previous_items) >= threshold
 
 
+def is_transitional(queue: QueueFacts) -> bool:
+    """True while a queue is between tracks and says nothing yet.
+
+    A queue being replaced reports no current track for a moment. Read as
+    a track change, that blank looked like a pick: nothing played was ours
+    and nothing matched the expectation. The run it started found no
+    artist to build from and gave up, and the real pick arriving a moment
+    later was then compared against an expectation taken from the blank,
+    so it was never recognised either. Observed on a phone player: a
+    second pick, "Walk This Way", was left as a queue of one song.
+
+    Such a reading is not a decision at all. The caller should ignore it
+    entirely and keep the expectation it already had.
+    """
+    return not queue.current_uri
+
+
 def decide(
     queue: QueueFacts,
     *,
@@ -109,7 +126,7 @@ def decide(
     the state immediately after a restart. Nothing can be called a pick
     then, because there is no expectation to have been broken.
     """
-    if in_cooldown:
+    if in_cooldown or is_transitional(queue):
         return Decision.NOTHING
 
     picked = (
