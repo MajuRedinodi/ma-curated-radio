@@ -666,8 +666,11 @@ settings, and the reported reach tells the two apart. See
   from the stronger half of the batch that just played rather than from
   whatever is in the ear at that moment, because a big artist's
   neighbours are mostly smaller than it and reseeding off the current
-  track steps down more often than up. An observed evening halved its
-  median reach in a single hop before that changed.
+  track steps down more often than up. Nothing about it is audible in a
+  single batch, which all read as good hours; it accumulates, and by the
+  time it is noticeable you are three hours and two reseeds from the
+  cause. An observed evening went from a median reach of 759,000 to
+  338,000 across one reseed before this changed.
 - **Some live recordings carry no marker at all.** The filters read the
   title, the version and the album, and a Hall of Fame induction recording
   of "Master Of Puppets" announces itself in none of them. Only the running
