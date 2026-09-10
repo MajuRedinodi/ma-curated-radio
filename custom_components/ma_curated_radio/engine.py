@@ -430,6 +430,11 @@ class CuratedRadioEngine:
         filters the results down to tracks that artist is actually
         credited on. Without that second step a cover is unfindable: the
         original always outranks it.
+
+        If that filter leaves nothing, the unfiltered results come back
+        instead. A guest is often uncredited, so an empty result is more
+        likely to mean the credits are thin than that the recording is
+        absent.
         """
         phrase = " ".join(part for part in (query, artist) if part).strip()
         found = await self._native.async_search_tracks(
@@ -441,7 +446,23 @@ class CuratedRadioEngine:
             )
             if artist:
                 found = [t for t in found if credits_artist(t.artists, artist)]
-        return found
+        if found or not artist:
+            return found
+        # Filtering by artist found nothing, which does not mean the
+        # recording is absent. A guest often goes uncredited: Tidal files
+        # Ozzy Osbourne's "Stayin' Alive" under Dweezil Zappa alone, so
+        # searching by the singer can never reach it. Hand back the
+        # unfiltered results rather than nothing, since the person asking
+        # can see which is which and the alternative is a dead end.
+        _LOGGER.debug(
+            "Nothing credited to %s for %s; returning every match", artist, phrase
+        )
+        loose = await self._native.async_search_tracks(phrase, limit, credited_to="")
+        if loose is None:
+            loose = await async_search_tracks(
+                self._hass, self._settings.ma_config_entry_id, phrase
+            )
+        return loose
 
     async def _async_search(self, artist: str) -> list[TrackInfo]:
         """Search one artist's tracks, natively if the client allows it."""
