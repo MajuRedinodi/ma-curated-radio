@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from typing import Any
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant, ServiceCall, callback
+from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse, callback
 from homeassistant.exceptions import ConfigEntryNotReady, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -19,13 +20,16 @@ from .const import (
     ATTR_ARTIST,
     ATTR_CONFIG_ENTRY_ID,
     ATTR_LENGTH,
+    ATTR_LIMIT,
     ATTR_MODE,
     ATTR_NAME,
     ATTR_PROVIDER,
+    ATTR_QUERY,
     ATTR_SEED_ARTIST,
     ATTR_TRACK,
     DEFAULT_PLAYLIST_LENGTH,
     DEFAULT_PLAYLIST_NAME,
+    DEFAULT_SEARCH_RESULTS,
     DOMAIN,
     MODE_REPLACE,
     MODES,
@@ -33,6 +37,7 @@ from .const import (
     SERVICE_BUILD_PLAYLIST,
     SERVICE_FORGET_FEEDBACK,
     SERVICE_RUN_BATCH,
+    SERVICE_SEARCH,
     SERVICE_UNMUTE_ARTIST,
     signal_update,
 )
@@ -60,6 +65,16 @@ RUN_BATCH_SCHEMA = vol.Schema(
 )
 UNMUTE_ARTIST_SCHEMA = vol.Schema({**_ENTRY_FIELD, vol.Required(ATTR_ARTIST): cv.string})
 ALLOW_TRACK_SCHEMA = vol.Schema({**_ENTRY_FIELD, vol.Required(ATTR_TRACK): cv.string})
+SEARCH_SCHEMA = vol.Schema(
+    {
+        **_ENTRY_FIELD,
+        vol.Optional(ATTR_QUERY, default=""): cv.string,
+        vol.Optional(ATTR_ARTIST, default=""): cv.string,
+        vol.Optional(ATTR_LIMIT, default=DEFAULT_SEARCH_RESULTS): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=100)
+        ),
+    }
+)
 BUILD_PLAYLIST_SCHEMA = vol.Schema(
     {
         **_ENTRY_FIELD,
@@ -124,6 +139,13 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         SERVICE_UNMUTE_ARTIST,
         _make_unmute_artist(hass),
         schema=UNMUTE_ARTIST_SCHEMA,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_SEARCH,
+        _make_search(hass),
+        schema=SEARCH_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(
         DOMAIN,
@@ -247,6 +269,34 @@ def _make_unmute_artist(hass: HomeAssistant):
         async_dispatcher_send(hass, signal_update(entry.entry_id))
 
     return _unmute_artist
+
+
+def _make_search(hass: HomeAssistant):
+    """Build the search action handler."""
+
+    async def _search(call: ServiceCall) -> dict[str, Any]:
+        """Find tracks, returning more of them than the action surface does."""
+        entry = _resolve(hass, call.data.get(ATTR_CONFIG_ENTRY_ID))
+        found = await entry.runtime_data.engine.async_search(
+            call.data[ATTR_QUERY],
+            call.data[ATTR_LIMIT],
+            call.data[ATTR_ARTIST],
+        )
+        return {
+            "tracks": [
+                {
+                    "uri": track.uri,
+                    "name": track.name,
+                    "version": track.version,
+                    "album": track.album,
+                    "artists": track.artists,
+                    "duration": track.duration,
+                }
+                for track in found
+            ]
+        }
+
+    return _search
 
 
 def _make_allow_track(hass: HomeAssistant):

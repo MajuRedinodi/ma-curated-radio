@@ -25,6 +25,32 @@ unmute_artist:
       example: Maisie Peters
       selector:
         text:
+search:
+  fields:
+    config_entry_id:
+      required: false
+      selector:
+        config_entry:
+          integration: ma_curated_radio
+    query:
+      required: false
+      example: Stayin Alive
+      selector:
+        text:
+    artist:
+      required: false
+      example: Ozzy Osbourne
+      selector:
+        text:
+    limit:
+      required: false
+      default: 20
+      selector:
+        number:
+          min: 1
+          max: 100
+          step: 1
+          mode: box
 allow_track:
   fields:
     config_entry_id:

@@ -315,7 +315,7 @@ class NativeClient:
         return [TrackInfo.from_item(track) for track in (tracks or [])]
 
     async def async_search_tracks(
-        self, artist: str, limit: int
+        self, artist: str, limit: int, *, credited_to: str | None = None
     ) -> list[TrackInfo] | None:
         """Search an artist's tracks natively, so a limit can be set.
 
@@ -355,8 +355,13 @@ class NativeClient:
             TrackInfo.from_item(item) for item in (field_of(results, "tracks", []) or [])
         ]
         # Search matches loosely enough to return the right words on the
-        # wrong record, exactly as the service surface does.
-        return [track for track in tracks if credits_artist(track.artists, artist)]
+        # wrong record, exactly as the service surface does. A free-text
+        # search has no artist to check against and passes None, which
+        # keeps everything: the point of one is to find a cover.
+        wanted = artist if credited_to is None else credited_to
+        if not wanted:
+            return tracks
+        return [track for track in tracks if credits_artist(track.artists, wanted)]
 
     async def async_queued_uris(self, queue_id: str) -> set[str]:
         """Return URIs already sitting in the queue, or an empty set.

@@ -208,9 +208,17 @@ DEFAULT_ENABLED: Final = True
 
 SERVICE_UNMUTE_ARTIST: Final = "unmute_artist"
 SERVICE_ALLOW_TRACK: Final = "allow_track"
+SERVICE_SEARCH: Final = "search"
 SERVICE_FORGET_FEEDBACK: Final = "forget_feedback"
 ATTR_ARTIST: Final = "artist"
 ATTR_TRACK: Final = "track"
+ATTR_QUERY: Final = "query"
+ATTR_LIMIT: Final = "limit"
+
+# How many results a free-text search returns by default. The action
+# Music Assistant exposes returns five with no way to ask for more, which
+# is too few to find a particular recording of a well-covered song.
+DEFAULT_SEARCH_RESULTS: Final = 20
 
 
 def signal_update(entry_id: str) -> str:

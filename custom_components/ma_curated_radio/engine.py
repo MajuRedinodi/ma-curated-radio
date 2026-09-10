@@ -45,6 +45,7 @@ from .filters import (
     SelectionRules,
     base_title,
     clean_similar_artists,
+    credits_artist,
     drop_outliers,
     matches_provider,
     reach_of,
@@ -412,6 +413,35 @@ class CuratedRadioEngine:
                 ", ".join(f"{name} ({size:,})" for name, size in dropped),
             )
         return keep
+
+    async def async_search(
+        self, query: str, limit: int, artist: str = ""
+    ) -> list[TrackInfo]:
+        """Find tracks by title, by artist, or by both.
+
+        Music Assistant's own search action takes no limit and returns
+        five, which is too few to find a particular recording of a
+        well-covered song: searching for "Stayin' Alive" returns three
+        Bee Gees pressings and nothing else. The native client takes a
+        limit, so this exists to make that reachable.
+
+        Giving an artist as well does two things. It goes into the search
+        text, since the provider ranks on the whole phrase, and it then
+        filters the results down to tracks that artist is actually
+        credited on. Without that second step a cover is unfindable: the
+        original always outranks it.
+        """
+        phrase = " ".join(part for part in (query, artist) if part).strip()
+        found = await self._native.async_search_tracks(
+            phrase, limit, credited_to=artist
+        )
+        if found is None:
+            found = await async_search_tracks(
+                self._hass, self._settings.ma_config_entry_id, phrase
+            )
+            if artist:
+                found = [t for t in found if credits_artist(t.artists, artist)]
+        return found
 
     async def _async_search(self, artist: str) -> list[TrackInfo]:
         """Search one artist's tracks, natively if the client allows it."""
