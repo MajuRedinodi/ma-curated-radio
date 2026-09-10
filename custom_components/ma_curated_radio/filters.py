@@ -627,3 +627,32 @@ def without_backing_band(name: str) -> str:
     """
     stripped = _BACKING_BAND.sub("", name.strip())
     return "" if stripped.lower() == name.strip().lower() else stripped
+
+
+def strong_artists(sized: list[tuple[str, int]]) -> list[str]:
+    """The artists in a batch at or above its median audience.
+
+    A refill reseeds off the batch that just played, and a big artist's
+    neighbours are mostly smaller than it, simply because there are far
+    more small artists than big ones. Reseeding off whichever happened to
+    be playing therefore steps down more often than up, and over an
+    evening that is a one-way ratchet into obscurity. An observed session
+    halved in one hop: a Carole King batch at a median reach of 759,000
+    reseeded to Janis Ian at 338,000, whose own pool was Eva Cassidy and
+    Steve Forbert.
+
+    Returning the upper half rather than the single largest is
+    deliberate. Always taking the biggest would pin a station to one
+    artist and stop it moving at all, and the movement is the point; this
+    only stops the movement being consistently downward.
+
+    Artists of unknown size are included, on the same principle as
+    everywhere else here: a Last.fm miss is not evidence of being small.
+    """
+    if not sized:
+        return []
+    known = sorted(size for _, size in sized if size > 0)
+    if not known:
+        return [name for name, _ in sized]
+    median = known[len(known) // 2]
+    return [name for name, size in sized if size == 0 or size >= median]

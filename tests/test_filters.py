@@ -22,6 +22,7 @@ from filters import (
     matches_provider,
     reach_of,
     sequence_tiered,
+    strong_artists,
     tier_of,
     weighted_sample,
 )
@@ -504,3 +505,40 @@ def test_the_cap_gives_way_rather_than_dropping_tracks():
 def test_an_empty_pool_orders_nothing():
     assert sequence_tiered([], {}, ["P"]) == []
     assert sequence_tiered([[], []], {}, ["P"]) == []
+
+
+def test_reseeding_uses_the_stronger_half_of_a_batch():
+    """A refill must not ratchet a station into obscurity.
+
+    Observed: a Carole King batch at 759,000 median reach reseeded to
+    Janis Ian at 338,000, whose own pool was Eva Cassidy and Steve
+    Forbert. A big artist's neighbours are mostly smaller than it, so
+    reseeding off whichever happens to be playing steps down more often
+    than up.
+    """
+    batch = [
+        ("Carole King", 900000),
+        ("Paul Simon", 1200000),
+        ("Carly Simon", 700000),
+        ("Janis Ian", 338000),
+        ("Judy Collins", 200000),
+    ]
+    strong = strong_artists(batch)
+    assert "Paul Simon" in strong
+    assert "Janis Ian" not in strong
+    assert "Judy Collins" not in strong
+
+
+def test_reseeding_keeps_more_than_one_candidate():
+    """Always taking the biggest would pin a station to one artist."""
+    batch = [("A", 900000), ("B", 800000), ("C", 700000), ("D", 100000)]
+    assert len(strong_artists(batch)) > 1
+
+
+def test_an_artist_of_unknown_size_stays_a_candidate():
+    batch = [("A", 900000), ("B", 100000), ("Unknown", 0)]
+    assert "Unknown" in strong_artists(batch)
+
+
+def test_reseeding_from_nothing_returns_nothing():
+    assert strong_artists([]) == []

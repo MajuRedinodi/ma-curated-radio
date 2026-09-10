@@ -660,6 +660,14 @@ settings, and the reported reach tells the two apart. See
   pool of mid-sized artists. The reach reported with each batch is there to
   tell the two apart before it plays: roughly, above 800,000 depth is free
   and below 400,000 it bites.
+- **A station drifts in loudness as well as in genre.** The degree fence
+  guards how far a session travels from the artist that started it, and
+  nothing guarded how well known its artists stayed. A refill reseeds
+  from the stronger half of the batch that just played rather than from
+  whatever is in the ear at that moment, because a big artist's
+  neighbours are mostly smaller than it and reseeding off the current
+  track steps down more often than up. An observed evening halved its
+  median reach in a single hop before that changed.
 - **Some live recordings carry no marker at all.** The filters read the
   title, the version and the album, and a Hall of Fame induction recording
   of "Master Of Puppets" announces itself in none of them. Only the running

@@ -50,6 +50,7 @@ from .filters import (
     reach_of,
     select_tracks,
     sequence_tiered,
+    strong_artists,
     tier_of,
     weighted_sample,
     without_backing_band,
@@ -148,6 +149,11 @@ class CuratedRadioEngine:
         # recur heavily between batches, so this usually saves the lookups
         # entirely rather than merely spreading them out.
         self._sizes: dict[str, int] = {}
+        # Artists that actually contributed to the last batch. A refill
+        # reseeds from the stronger half of these rather than from
+        # whatever is playing, which stops a station sliding into
+        # obscurity over an evening.
+        self._last_pool: list[str] = []
 
     @property
     def history(self) -> TitleHistory:
@@ -297,6 +303,8 @@ class CuratedRadioEngine:
             self._history.add([title_by_uri[uri] for uri in enqueued])
 
         reach_median, reach_low, counts = self._summarise(enqueued, sized, tiers)
+        if enqueued:
+            self._last_pool = list(pool_artists)
 
         _LOGGER.debug(
             "Queued %s track(s) in %s mode, seeded from %s via %s; "
@@ -858,10 +866,32 @@ class CuratedRadioEngine:
         """Which artist the similar-artist pool is drawn from.
 
         Artist radio always draws from the artist you picked, however far
-        into the evening it is. Everything else draws from what is playing
-        and relies on the degree fence to stay in the neighbourhood.
+        into the evening it is.
+
+        Everything else draws from the batch that just played rather than
+        from whatever happens to be in the ear at the moment the refill
+        fires. A big artist's neighbours are mostly smaller than it, so
+        reseeding off the current track steps down more often than up,
+        and over an evening that is a one-way ratchet into obscurity. An
+        observed station halved its median reach in one hop that way.
+
+        Drawing at random from the stronger half keeps the station
+        moving, which is the point of a refill, while stopping the
+        movement being consistently downward.
         """
         active = session or self._listening
         if self._settings.seed_lean == SEED_LEAN_ARTIST and active.origin:
             return active.origin
+        strong = strong_artists(
+            [(name, self._sizes.get(name.lower(), 0)) for name in self._last_pool]
+        )
+        if strong:
+            chosen = random.choice(strong)
+            if chosen.lower() != current_artist.lower():
+                _LOGGER.debug(
+                    "Reseeding from %s rather than %s, which is playing",
+                    chosen,
+                    current_artist,
+                )
+            return chosen
         return current_artist
