@@ -542,3 +542,40 @@ def test_an_artist_of_unknown_size_stays_a_candidate():
 
 def test_reseeding_from_nothing_returns_nothing():
     assert strong_artists([]) == []
+
+
+@pytest.mark.parametrize(
+    ("name", "album"),
+    [
+        # Reached a September queue past the original token list, which
+        # only knew the word "Christmas". Neither the title nor the album
+        # contains it.
+        ("Winter Wonderland", "The Best Man Holiday: Original Motion Picture"),
+        ("Let It Snow! Let It Snow! Let It Snow!", "A Jolly Collection"),
+        ("Sleigh Ride", "Seasonal Favourites"),
+        ("The Little Drummer Boy", "Carols"),
+        ("Auld Lang Syne", "New Year"),
+        ("Silent Night", "Hymns"),
+        ("Rockin' Around the Christmas Tree", "Greatest Hits"),
+    ],
+)
+def test_holiday_standards_are_caught_without_the_word_christmas(name, album):
+    assert is_holiday(name, "", album)
+
+
+@pytest.mark.parametrize(
+    ("name", "album"),
+    [
+        # The single words that would catch the songs above are exactly
+        # the words ordinary songs use.
+        ("Winter", "Boys for Pele"),
+        ("A Hazy Shade of Winter", "Bookends"),
+        ("Chasing Cars", "Eyes Open"),
+        ("Holiday", "American Idiot"),
+        ("Holiday Road", "National Lampoon's Vacation"),
+        ("Hell's Bells", "Back in Black"),
+        ("Ring My Bell", "Anita Ward"),
+    ],
+)
+def test_ordinary_songs_are_not_mistaken_for_holiday_music(name, album):
+    assert not is_holiday(name, "", album)

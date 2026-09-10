@@ -30,13 +30,63 @@ LIVE_MARKERS: Final = (
     "unplugged",
 )
 
+# Holiday content, checked as substrings against title, version and
+# album together.
+#
+# Mostly phrases rather than words, because the single words that would
+# catch these songs are exactly the words ordinary songs use. "Winter"
+# would take Vivaldi and Tori Amos, "snow" would take Snow Patrol,
+# "holiday" would take Madonna and Green Day and Lindsey Buckingham's
+# "Holiday Road", and "bells" would take Chime Bell and Hell's Bells.
+# Phrases carry no such risk: nothing that is not a Christmas record is
+# called "Winter Wonderland".
+#
+# The list is unbounded by nature and will always miss something. It is
+# ordered roughly by how often a thing turns up in a mainstream
+# artist's back catalogue, which is where the misses actually hurt: a
+# soul singer's one Christmas single sitting in an August batch.
 HOLIDAY_TOKENS: Final = (
+    # The obvious ones.
     "christmas",
     "xmas",
     "santa",
-    "jingle",
     "yuletide",
-    "noel",
+    "navidad",
+    # Standards whose titles never say Christmas. Emeli Sandé's "Winter
+    # Wonderland", on "The Best Man Holiday" soundtrack, reached a
+    # September queue past every word above.
+    "winter wonderland",
+    "let it snow",
+    "sleigh ride",
+    "sleigh bells",
+    "jingle",
+    "silver bells",
+    "frosty the snowman",
+    "rudolph",
+    "holly jolly",
+    "mistletoe",
+    "auld lang syne",
+    "baby it's cold outside",
+    "baby its cold outside",
+    # Carols.
+    "silent night",
+    "holy night",
+    "the first noel",
+    "deck the hall",
+    "drummer boy",
+    "away in a manger",
+    "come all ye faithful",
+    "hark the herald",
+    "god rest ye merry",
+    "god rest you merry",
+    "good king wenceslas",
+    "carol of the bells",
+    "what child is this",
+    "ding dong merrily",
+    "twelve days of",
+    "we three kings",
+    "o christmas tree",
+    "greensleeves",
 )
 
 # Last.fm returns collaboration credits as if they were standalone artists
