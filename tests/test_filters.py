@@ -11,6 +11,7 @@ import pytest
 from filters import (
     base_title,
     clean_similar_artists,
+    close_to_home,
     credits_artist,
     drop_outliers,
     freshness,
@@ -579,3 +580,51 @@ def test_holiday_standards_are_caught_without_the_word_christmas(name, album):
 )
 def test_ordinary_songs_are_not_mistaken_for_holiday_music(name, album):
     assert not is_holiday(name, "", album)
+
+
+# --- Where a refill reseeds from -----------------------------------------
+
+DEGREES = {
+    "sam smith": 0,
+    "adele": 1,
+    "calum scott": 1,
+    "christina aguilera": 2,
+    "jessie j": 3,
+}
+
+
+def test_a_refill_prefers_the_strong_artists_nearest_home():
+    """A Sam Smith station reseeded from Christina Aguilera.
+
+    She was big enough for the stronger half and sits at its 2000s-pop
+    edge, and the next hour was Jessie J, JoJo, Lindsay Lohan and Ashley
+    Tisdale.
+    """
+    strong = ["Christina Aguilera", "Adele", "Calum Scott"]
+    chosen = close_to_home(strong, lambda a: DEGREES.get(a.lower()), fenced=True)
+    assert set(chosen) == {"Adele", "Calum Scott"}
+
+
+def test_two_steps_out_is_used_when_nobody_is_one_step_out():
+    strong = ["Christina Aguilera", "Jessie J"]
+    chosen = close_to_home(strong, lambda a: DEGREES.get(a.lower()), fenced=True)
+    assert chosen == ["Christina Aguilera"]
+
+
+def test_a_station_that_has_travelled_still_reseeds_from_somewhere():
+    """A preference, not a filter: nobody close is not nobody at all."""
+    strong = ["Jessie J", "Somebody Unmapped"]
+    chosen = close_to_home(strong, lambda a: DEGREES.get(a.lower()), fenced=True)
+    assert chosen == strong
+
+
+def test_discovery_is_left_to_wander():
+    strong = ["Christina Aguilera", "Adele"]
+    chosen = close_to_home(strong, lambda a: DEGREES.get(a.lower()), fenced=False)
+    assert chosen == strong
+
+
+def test_the_origin_itself_counts_as_home():
+    strong = ["Sam Smith", "Christina Aguilera"]
+    chosen = close_to_home(strong, lambda a: DEGREES.get(a.lower()), fenced=True)
+    assert chosen == ["Sam Smith"]

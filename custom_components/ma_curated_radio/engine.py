@@ -46,6 +46,7 @@ from .filters import (
     SelectionRules,
     base_title,
     clean_similar_artists,
+    close_to_home,
     credits_artist,
     drop_outliers,
     matches_provider,
@@ -247,12 +248,20 @@ class CuratedRadioEngine:
         self._anchor(seed, restart=mode != MODE_REFILL)
         # The artist the batch is actually built around, which in artist
         # radio is the one you picked rather than whoever is playing now.
-        lead = self._lead_artist(seed)
-        # Where the neighbours come from, which is not always the lead. On
-        # a refill the lead is whoever is playing while the pool is drawn
-        # from the stronger half of the last batch, and reporting only the
-        # lead made a Christina Aguilera pool read as Emeli Sandé's.
-        pool_from = self._pool_seed(seed, reseeding=mode == MODE_REFILL)
+        # Where the neighbours come from. On a pick, the artist picked; on a
+        # refill, an artist from the stronger half of the last batch,
+        # preferring those nearest the origin.
+        pool_from = self._pool_seed(
+            seed, previous=self._last_pool if mode == MODE_REFILL else None
+        )
+        # The artist the batch is built around. On a refill that is the
+        # reseed artist too, not whoever happened to be playing when the
+        # queue ran low: the lead takes the lead slots, and handing them to
+        # whoever was in the ear gave the smallest artist in a batch three
+        # more of her deepest songs. Simulated, letting the reseed artist
+        # lead kept a station's reach up by about a seventh over four
+        # refills. In artist radio both are the origin either way.
+        lead = pool_from if mode == MODE_REFILL else self._lead_artist(seed)
         artists = [lead, *await self._async_similar_artists(pool_from)]
 
         # On a refill the tail of the queue is still populated, so avoid
@@ -783,6 +792,7 @@ class CuratedRadioEngine:
         seen_titles = self._history.current() | self._skips.suppressed_titles
         artists_used: list[str] = []
         current_seed = seed_artist
+        previous_round: list[str] | None = None
 
         # Scoped to this build. The same artists recur every round, and
         # re-fetching them was most of the time a long build took.
@@ -792,12 +802,20 @@ class CuratedRadioEngine:
         for _ in range(PLAYLIST_MAX_ROUNDS):
             if len(ordered) >= length:
                 break
+            # Each round continues from the one before, the same way a
+            # refill continues from the batch before it.
+            pool_from = self._pool_seed(
+                current_seed, build_session, previous=previous_round
+            )
+            lead = (
+                pool_from
+                if previous_round
+                else self._lead_artist(current_seed, build_session)
+            )
             round_artists = [
-                self._lead_artist(current_seed, build_session),
+                lead,
                 *await self._async_similar_artists(
-                    self._pool_seed(current_seed, build_session, reseeding=True),
-                    similar_cache,
-                    build_session,
+                    pool_from, similar_cache, build_session
                 ),
             ]
             per_artist: list[list[str]] = []
@@ -848,10 +866,7 @@ class CuratedRadioEngine:
                 )
             )
 
-            # Reseed off a similar artist from this round, the same way a
-            # refill reseeds off whatever happens to be playing.
-            candidates = round_artists[1:]
-            current_seed = random.choice(candidates) if candidates else current_seed
+            previous_round = list(round_pools)
 
         ordered = ordered[:length]
         if not ordered:
@@ -954,7 +969,7 @@ class CuratedRadioEngine:
         current_artist: str,
         session: ListeningSession | None = None,
         *,
-        reseeding: bool = False,
+        previous: list[str] | None = None,
     ) -> str:
         """Which artist the similar-artist pool is drawn from.
 
@@ -965,25 +980,34 @@ class CuratedRadioEngine:
         whole of what a pick means, and the batch before it is somebody
         else's station.
 
-        A refill draws from the batch that just played rather than from
-        whatever happens to be in the ear at the moment it fires. A big
-        artist's neighbours are mostly smaller than it, so reseeding off
-        the current track steps down more often than up, and over an
-        evening that is a one-way ratchet into obscurity. An observed
-        evening fell from a median reach of 995,000 to 338,000 across two
-        reseeds that way.
+        A continuation (a refill, or a playlist's next round) draws from
+        ``previous``, the artists of the batch or round before it, rather
+        than from whatever happens to be in the ear at the moment it
+        fires. A big artist's neighbours are mostly smaller than it, so
+        reseeding off the current track steps down more often than up, and
+        over an evening that is a one-way ratchet into obscurity. An
+        observed evening fell from a median reach of 995,000 to 338,000
+        across two reseeds that way.
 
-        Drawing at random from the stronger half keeps the station
-        moving, which is the point of a refill, while stopping the
-        movement being consistently downward.
+        Drawing at random from the stronger half keeps the station moving,
+        which is the point of a refill, while stopping the movement being
+        consistently downward; preferring those closest to the origin
+        stops it moving sideways.
+
+        ``previous`` is passed in rather than read from the live queue's
+        state. Reading it here let a car playlist reseed every round from
+        whatever the living room last played.
         """
         active = session or self._listening
         if self._settings.seed_lean == SEED_LEAN_ARTIST and active.origin:
             return active.origin
-        if not reseeding:
+        if not previous:
             return current_artist
         strong = strong_artists(
-            [(name, self._sizes.get(name.lower(), 0)) for name in self._last_pool]
+            [(name, self._sizes.get(name.lower(), 0)) for name in previous]
+        )
+        strong = close_to_home(
+            strong, active.degree_of, fenced=self._degree_cap is not None
         )
         if strong:
             chosen = random.choice(strong)

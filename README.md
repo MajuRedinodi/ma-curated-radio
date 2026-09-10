@@ -37,11 +37,12 @@ set up. No helpers, no `rest_command`, no YAML.
    spends the big records across the whole hour instead. No artist plays
    more than twice in a row.
 6. As the batch plays down to its last couple of tracks, it **refills**
-   without touching what is already queued. Whoever is playing leads the
-   refill, and its neighbours are drawn from an artist in the stronger half
-   of the batch that just played. That is what lets an evening drift
-   naturally instead of being locked to one batch decided at the start,
-   without sliding into ever smaller artists as it goes.
+   without touching what is already queued. The refill is built around an
+   artist from the stronger half of the batch that just played, preferring
+   those closest to where the station started. That is what lets an
+   evening drift naturally instead of being locked to one batch decided at
+   the start, without sliding into ever smaller artists or sideways into
+   somebody else's station as it goes.
 
 ## Requirements
 
@@ -548,13 +549,13 @@ The Band, Van Morrison, Steve Winwood, Joe Walsh, Dave Mason;
 median reach 580,807, weakest 106,212, tiers {'P': 7, 'D': 6, 'S': 6}
 ```
 
-**Led by** and **neighbours from** are the same artist on a pick and
-usually different on a refill. The lead is whoever was playing when the
-queue ran low, and takes the lead slots; the neighbours are drawn from an
-artist in the stronger half of the batch before. When a refill sounds as
-though it has wandered, the neighbours are where it went, so that is the
-name to look at. The sensor's state is the lead, and its `neighbours_from`
-attribute is the other one.
+**Led by** is the artist the batch is built around, and **neighbours from**
+is where its similar artists were drawn. Since 0.31 they are the same
+artist: the one picked, or on a refill the one chosen from the batch
+before. Before 0.31 a refill was led by whoever happened to be playing,
+so in an older log the two can differ, and the neighbours are the name
+that explains where a station went. On the sensor, the state is the lead
+and the `neighbours_from` attribute is the other.
 
 **Median reach** is the useful one. Each track scores its artist's audience
 decayed by how far down that artist's own ordering it sits, and the median
@@ -682,8 +683,9 @@ settings, and the reported reach tells the two apart. See
 - **A station drifts in loudness as well as in genre.** The degree fence
   guards how far a session travels from the artist that started it, and
   nothing guarded how well known its artists stayed. A refill reseeds
-  from the stronger half of the batch that just played rather than from
-  whatever is in the ear at that moment, because a big artist's
+  from the stronger half of the batch that just played, nearest the
+  origin first, rather than from whatever is in the ear at that moment,
+  and that artist leads the refill as well. A big artist's
   neighbours are mostly smaller than it and reseeding off the current
   track steps down more often than up. Nothing about it is audible in a
   single batch, which all read as good hours; it accumulates, and by the
