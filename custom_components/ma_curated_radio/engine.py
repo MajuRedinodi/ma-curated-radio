@@ -224,7 +224,9 @@ class CuratedRadioEngine:
         lead = self._lead_artist(seed)
         artists = [
             lead,
-            *await self._async_similar_artists(self._pool_seed(seed)),
+            *await self._async_similar_artists(
+                self._pool_seed(seed, reseeding=mode == MODE_REFILL)
+            ),
         ]
 
         # On a refill the tail of the queue is still populated, so avoid
@@ -706,7 +708,7 @@ class CuratedRadioEngine:
             round_artists = [
                 self._lead_artist(current_seed, build_session),
                 *await self._async_similar_artists(
-                    self._pool_seed(current_seed, build_session),
+                    self._pool_seed(current_seed, build_session, reseeding=True),
                     similar_cache,
                     build_session,
                 ),
@@ -861,19 +863,28 @@ class CuratedRadioEngine:
         return current_artist
 
     def _pool_seed(
-        self, current_artist: str, session: ListeningSession | None = None
+        self,
+        current_artist: str,
+        session: ListeningSession | None = None,
+        *,
+        reseeding: bool = False,
     ) -> str:
         """Which artist the similar-artist pool is drawn from.
 
         Artist radio always draws from the artist you picked, however far
         into the evening it is.
 
-        Everything else draws from the batch that just played rather than
-        from whatever happens to be in the ear at the moment the refill
-        fires. A big artist's neighbours are mostly smaller than it, so
-        reseeding off the current track steps down more often than up,
-        and over an evening that is a one-way ratchet into obscurity. An
-        observed station halved its median reach in one hop that way.
+        A manual pick always draws from the artist picked. That is the
+        whole of what a pick means, and the batch before it is somebody
+        else's station.
+
+        A refill draws from the batch that just played rather than from
+        whatever happens to be in the ear at the moment it fires. A big
+        artist's neighbours are mostly smaller than it, so reseeding off
+        the current track steps down more often than up, and over an
+        evening that is a one-way ratchet into obscurity. An observed
+        evening fell from a median reach of 995,000 to 338,000 across two
+        reseeds that way.
 
         Drawing at random from the stronger half keeps the station
         moving, which is the point of a refill, while stopping the
@@ -882,6 +893,8 @@ class CuratedRadioEngine:
         active = session or self._listening
         if self._settings.seed_lean == SEED_LEAN_ARTIST and active.origin:
             return active.origin
+        if not reseeding:
+            return current_artist
         strong = strong_artists(
             [(name, self._sizes.get(name.lower(), 0)) for name in self._last_pool]
         )
