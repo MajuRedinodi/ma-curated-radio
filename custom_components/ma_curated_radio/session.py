@@ -40,6 +40,37 @@ class ListeningSession:
     degrees: dict[str, int] = field(default_factory=dict)
     last_active: datetime = field(default_factory=_now)
 
+    def as_dict(self) -> dict[str, object]:
+        """A form that survives a restart."""
+        return {
+            "origin": self.origin,
+            "degrees": dict(self.degrees),
+            "last_active": self.last_active.isoformat(),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, object] | None) -> ListeningSession:
+        """Rebuild a saved session, or an empty one if nothing usable was saved.
+
+        A station used to forget where it started every time Home Assistant
+        restarted, and the first refill afterwards anchored a new session to
+        whoever happened to be playing. An evening begun on "Super Trouper"
+        was re-anchored to Van McCoy by an update installed mid-evening, and
+        spent its last hour close to "The Hustle".
+        """
+        if not data or not data.get("origin"):
+            return cls()
+        try:
+            last_active = datetime.fromisoformat(str(data["last_active"]))
+        except (KeyError, ValueError):
+            return cls()
+        degrees = data.get("degrees") or {}
+        return cls(
+            origin=str(data["origin"]),
+            degrees={str(k): int(v) for k, v in dict(degrees).items()},
+            last_active=last_active,
+        )
+
     @classmethod
     def start(cls, origin: str) -> ListeningSession:
         """Begin a session anchored to one artist."""

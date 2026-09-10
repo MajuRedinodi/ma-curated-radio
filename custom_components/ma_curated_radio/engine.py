@@ -12,10 +12,12 @@ import logging
 import random
 from collections import deque
 from dataclasses import dataclass, field
+from typing import Any
 
 import aiohttp
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .const import (
@@ -36,6 +38,8 @@ from .const import (
     SEED_LEAN_MULTIPLIER,
     SESSION_EXPIRY_HOURS,
     SPLIT_DUO_CREDITS,
+    STATION_SAVE_DELAY,
+    STATION_STORAGE_VERSION,
     TIER_DECAY,
     signal_update,
 )
@@ -173,6 +177,53 @@ class CuratedRadioEngine:
         # Set when a pick arrives while a batch is building. The build in
         # progress is then for a song the listener has already left.
         self._superseded = False
+        # Everything above that describes the station in progress, kept on
+        # disk so a restart does not end it. Separate from skip memory's
+        # store because it is short-lived by nature and safe to lose.
+        self._store: Store[dict[str, Any]] = Store(
+            hass, STATION_STORAGE_VERSION, f"ma_curated_radio.{entry_id}.station"
+        )
+
+    async def async_load(self) -> None:
+        """Pick the station up where it was before a restart.
+
+        A session that has gone stale in the meantime is restored anyway
+        and then replaced by the usual expiry check on the next batch, so
+        last night's station does not carry into the morning.
+        """
+        try:
+            data = await self._store.async_load()
+        except Exception as err:  # noqa: BLE001 - a bad store must not block setup
+            _LOGGER.warning("Could not read the saved station: %s", err)
+            return
+        if not data:
+            return
+        self._listening = ListeningSession.from_dict(data.get("session"))
+        self._last_pool = [str(a) for a in data.get("last_pool") or []]
+        self._last_lead = str(data.get("last_lead") or "")
+        self._alias = dict(data.get("alias") or {})
+        self._lead_override = dict(data.get("lead_override") or {})
+        self._history.restore(data.get("history"))
+        if self._listening.active:
+            _LOGGER.debug(
+                "Resumed the station anchored to %s, last led by %s",
+                self._listening.origin,
+                self._last_lead or "nobody yet",
+            )
+
+    def _save_station(self) -> None:
+        """Persist the station in progress, batched with other writes."""
+        self._store.async_delay_save(
+            lambda: {
+                "session": self._listening.as_dict(),
+                "last_pool": self._last_pool,
+                "last_lead": self._last_lead,
+                "alias": self._alias,
+                "lead_override": self._lead_override,
+                "history": self._history.as_list(),
+            },
+            STATION_SAVE_DELAY,
+        )
 
     @property
     def history(self) -> TitleHistory:
@@ -227,6 +278,8 @@ class CuratedRadioEngine:
         # batch left the dashboard reporting no batch at all.
         if result.ran or self._last_batch is None:
             self._last_batch = result
+        if result.ran:
+            self._save_station()
         async_dispatcher_send(self._hass, signal_update(self._entry_id))
         return result
 
@@ -1034,6 +1087,12 @@ class CuratedRadioEngine:
         ):
             self._listening = ListeningSession.start(artist)
             _LOGGER.debug("Queue session anchored to %s", artist)
+            if not restart:
+                # A refill onto a session that had gone stale, typically the
+                # first music of the morning after a station last night.
+                # Last night's batch is not something to reseed from.
+                self._last_pool = []
+                self._last_lead = ""
         else:
             self._listening.touch()
 

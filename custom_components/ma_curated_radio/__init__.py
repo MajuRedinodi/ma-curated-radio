@@ -190,6 +190,7 @@ async def async_setup_entry(
     engine = CuratedRadioEngine(
         hass, settings, async_get_clientsession(hass), skips, entry.entry_id
     )
+    await engine.async_load()
     detector = CuratedRadioDetector(hass, settings, engine, skips)
     entry.runtime_data = RuntimeData(
         settings=settings, engine=engine, detector=detector, skips=skips

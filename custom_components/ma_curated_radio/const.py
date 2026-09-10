@@ -380,3 +380,9 @@ def with_style_value(
     per_style = {name: dict(values) for name, values in (options.get(CONF_STYLE_SETTINGS) or {}).items()}
     per_style.setdefault(style, {})[key] = int(value)
     return {**options, CONF_STYLE_SETTINGS: per_style}
+
+# The station in progress, saved so a restart does not end it: where it
+# started, the last batch's artists and lead, and recent titles. Written a
+# few seconds after each batch, batched with any other change.
+STATION_STORAGE_VERSION: Final = 1
+STATION_SAVE_DELAY: Final = 10

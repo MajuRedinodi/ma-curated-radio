@@ -5,6 +5,8 @@ observed build ran Taylor Swift, Maisie Peters, Lorde, Katy Perry, Ke$ha,
 Selena Gomez, Anitta in twenty-four tracks.
 """
 
+from datetime import timedelta
+
 from session import ListeningSession
 
 
@@ -86,3 +88,33 @@ def test_re_anchoring_defeats_the_fence():
         held.eligible(parent, [child], 3)
     assert held.degree_of("Duke Dumont") == 3
     assert held.eligible("Duke Dumont", ["Jax Jones"], 3) == []
+
+
+def test_a_saved_session_comes_back_anchored_where_it_started():
+    """An evening begun on "Super Trouper" ended anchored to Van McCoy.
+
+    An update installed mid-evening restarted Home Assistant, the station
+    forgot where it started, and the first refill afterwards anchored a new
+    session to whoever happened to be playing.
+    """
+    session = ListeningSession.start("ABBA")
+    session.admit("Boney M.", 1)
+    session.admit("Van McCoy", 3)
+    restored = ListeningSession.from_dict(session.as_dict())
+    assert restored.origin == "ABBA"
+    assert restored.degree_of("Boney M.") == 1
+    assert restored.degree_of("Van McCoy") == 3
+
+
+def test_a_restored_session_keeps_its_age():
+    """So last night's station still expires before the morning."""
+    session = ListeningSession.start("ABBA")
+    session.last_active = session.last_active - timedelta(hours=30)
+    restored = ListeningSession.from_dict(session.as_dict())
+    assert restored.is_stale(12)
+
+
+def test_nothing_usable_saved_means_no_session():
+    assert not ListeningSession.from_dict(None).active
+    assert not ListeningSession.from_dict({}).active
+    assert not ListeningSession.from_dict({"origin": "ABBA"}).active

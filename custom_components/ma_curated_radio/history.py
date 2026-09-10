@@ -57,3 +57,25 @@ class TitleHistory:
     def clear(self) -> None:
         """Forget everything."""
         self._items.clear()
+
+    def as_list(self) -> list[list[str]]:
+        """A form that survives a restart: pairs of title and ISO time."""
+        self.prune()
+        return [[title, when.isoformat()] for title, when in self._items]
+
+    def restore(self, saved: list[list[str]] | None) -> None:
+        """Put back what was saved, dropping anything malformed or aged out.
+
+        Without this a restart forgot the last two hours, so the first
+        batch afterwards could queue the songs that had just played.
+        """
+        items: list[tuple[str, datetime]] = []
+        for entry in saved or []:
+            try:
+                title, when = entry
+                items.append((str(title), datetime.fromisoformat(when)))
+            except (TypeError, ValueError):
+                continue
+        items.sort(key=lambda pair: pair[1])
+        self._items = deque(items)
+        self.prune()
