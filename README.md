@@ -226,7 +226,10 @@ views:
             entity: sensor.family_room_stereo_last_batch_seed
             name: Last batch seed
             color: purple
-            state_content: [state, last_changed]
+            # last_updated, not last_changed: a refill led by the same
+            # artist leaves the state unchanged, so last_changed would keep
+            # showing when the station started rather than its latest batch.
+            state_content: [state, last_updated]
             grid_options: {columns: full}
 
           - type: heading

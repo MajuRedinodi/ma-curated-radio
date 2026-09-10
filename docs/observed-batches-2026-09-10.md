@@ -126,8 +126,56 @@ country (Maren Morris, Miranda Lambert, The Chicks, Carrie Underwood).
 
 ### Refills
 
-To be added as they land. The prediction on record before the first one:
-built around one of the big names nearest Beyoncé (Rihanna, Janet
-Jackson or Destiny's Child) and staying R&B. A Destiny's Child or
-Carters refill that circles back through the same family would be the
-0.31.0 narrowing cost showing up.
+The prediction on record before the first one: built around one of the
+big names nearest Beyoncé (Rihanna, Janet Jackson or Destiny's Child) and
+staying R&B. A Destiny's Child or Carters refill that circles back through
+the same family would be the 0.31.0 narrowing cost showing up.
+
+**Refill 1, 13:00. The prediction missed, in the worse direction.**
+
+```
+13:00  refill  led by Beyoncé, neighbours from Beyoncé
+       median 1,660,464  weakest 388,201  tiers 7/6/6
+       Destiny's Child, Summer Walker, Chloe x Halle, The Carters,
+       Kelly Rowland, Janet Jackson, Chlöe, Doja Cat
+```
+
+```
+20  Beyoncé              CUFF IT
+21  Chloe x Halle        Do It
+22  Summer Walker        Playing Games (w/ Bryson Tiller)
+23  Destiny's Child      Cater 2 U
+24  THE CARTERS          FRIENDS
+25  Kelly Rowland        Motivation (w/ Lil Wayne)
+26  Janet Jackson        All For You
+27  Chlöe                Have Mercy
+28  Summer Walker        Body
+29  Doja Cat             Agora Hills
+30  Chloe x Halle        Ungodly Hour
+31  Kelly Rowland        Like This (w/ Eve)
+32  Beyoncé              Halo
+33  THE CARTERS          BOSS
+34  Janet Jackson        Together Again
+35  Destiny's Child      Jumpin', Jumpin'
+36  Chlöe                Surprise
+37  Destiny's Child      Soldier (w/ T.I., Lil Wayne)
+38  Doja Cat             Say So
+```
+
+It reseeded from Beyoncé herself. 0.31.0 prefers stronger-half artists
+closest to the origin, and the closest artist of all is the origin, so
+she was always a candidate; the random pick landed on her and the refill
+was her circle again. Thirteen of the nineteen are Beyoncé, her group, her
+family or her label (Beyoncé 2, The Carters 2, Destiny's Child 3, Kelly
+Rowland 2, Chloe x Halle 2, Chlöe 2); across both batches, 23 of 39.
+
+Two more things it exposed. The dashboard tile read "2 hours ago" after
+the refill, because it showed when the sensor's state last changed and a
+refill led by the same artist does not change it. And the refill reported
+exactly the median reach of the first batch, because reach counted each
+song's position within its own batch, so the artists' deeper songs scored
+like their hits.
+
+All three fixed in 0.31.1: a refill never reseeds from the artist who led
+the batch before, the tile uses last_updated, and reach and tiers use each
+song's position in its artist's own ordering.

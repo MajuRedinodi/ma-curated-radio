@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import random
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Final
@@ -247,7 +247,9 @@ def matches_provider(uri: str, provider_filter: str) -> bool:
 
 
 def tier_of(
-    sized: list[tuple[str, list[str], int]], decay: float
+    sized: list[tuple[str, list[str], int]],
+    decay: float,
+    rank: Mapping[str, int] | None = None,
 ) -> dict[str, str]:
     """Label each track Power, Secondary or Deep, relative to this pool.
 
@@ -262,6 +264,9 @@ def tier_of(
     Terciles of the pool in front of it, never absolute numbers. A fixed
     threshold tuned on rock would mark an entire country station as deep
     cuts, because Last.fm undercounts the genre by about ten times.
+
+    ``rank`` gives each track's position in its artist's ordering when that
+    differs from its position in this batch; see ``reach_of``.
     """
     # An unknown size means the lookup missed, not that the artist is
     # tiny. Scoring it as zero would put every one of its tracks in the
@@ -274,7 +279,8 @@ def tier_of(
     scored: list[tuple[str, float]] = []
     for _, uris, size in sized:
         weight = size if size > 0 else fallback
-        for position, uri in enumerate(uris):
+        for index, uri in enumerate(uris):
+            position = rank.get(uri, index) if rank else index
             scored.append((uri, weight * (decay**position)))
     scored.sort(key=lambda pair: pair[1], reverse=True)
     third = len(scored) // 3
@@ -287,7 +293,9 @@ def tier_of(
 
 
 def reach_of(
-    sized: list[tuple[str, list[str], int]], decay: float
+    sized: list[tuple[str, list[str], int]],
+    decay: float,
+    rank: Mapping[str, int] | None = None,
 ) -> dict[str, int]:
     """Estimated audience for each track, on an absolute scale.
 
@@ -300,13 +308,22 @@ def reach_of(
     Unknown artist sizes take the pool median, for the same reason they
     do when tiering: a lookup miss is not evidence that an artist is
     small.
+
+    ``rank`` is each track's position in its artist's ordering, when that
+    differs from its position in this batch. It does on every refill:
+    songs already played are excluded before a batch is chosen, so
+    counting positions within the batch scores an artist's fourth song
+    as though it were their first. A refill of the same artists' deeper
+    songs then reported exactly the same median reach as the hour of
+    hits before it.
     """
     known = sorted(size for _, _, size in sized if size > 0)
     fallback = known[len(known) // 2] if known else 0
     reach: dict[str, int] = {}
     for _, uris, size in sized:
         weight = size if size > 0 else fallback
-        for position, uri in enumerate(uris):
+        for index, uri in enumerate(uris):
+            position = rank.get(uri, index) if rank else index
             reach[uri] = int(weight * (decay**position))
     return reach
 
@@ -740,3 +757,24 @@ def close_to_home(
         if close:
             return close
     return strong
+
+
+def move_on(strong: list[str], last_lead: str) -> list[str]:
+    """Reseed candidates without the artist who led the last batch.
+
+    Preferring artists close to the origin makes the origin itself the
+    closest candidate of all, and a refill built around the origin again
+    is a near copy of the hour before. Observed: a Texas Hold 'Em station
+    refilled from Beyoncé and returned Destiny's Child, The Carters and
+    Janet Jackson again, plus Kelly Rowland, Chloe x Halle and Chlöe, so six
+    of its nine artists were Beyoncé, her group, her family or her label.
+
+    So a refill always moves at least one step. The station can still come
+    home, just not two hours running. If the last lead is the only
+    candidate, it stays: repeating beats stopping.
+    """
+    target = last_lead.strip().lower()
+    if not target:
+        return strong
+    rest = [a for a in strong if a.strip().lower() != target]
+    return rest or strong

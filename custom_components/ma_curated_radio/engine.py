@@ -50,6 +50,7 @@ from .filters import (
     credits_artist,
     drop_outliers,
     matches_provider,
+    move_on,
     reach_of,
     select_tracks,
     sequence_tiered,
@@ -160,6 +161,9 @@ class CuratedRadioEngine:
         # whatever is playing, which stops a station sliding into
         # obscurity over an evening.
         self._last_pool: list[str] = []
+        # Who led that batch. A refill never reseeds from them again, or a
+        # station anchored close to home just rebuilds the same hour.
+        self._last_lead = ""
         # Set when a pick arrives while a batch is building. The build in
         # progress is then for a song the listener has already left.
         self._superseded = False
@@ -251,8 +255,11 @@ class CuratedRadioEngine:
         # Where the neighbours come from. On a pick, the artist picked; on a
         # refill, an artist from the stronger half of the last batch,
         # preferring those nearest the origin.
+        refilling = mode == MODE_REFILL
         pool_from = self._pool_seed(
-            seed, previous=self._last_pool if mode == MODE_REFILL else None
+            seed,
+            previous=self._last_pool if refilling else None,
+            last_lead=self._last_lead if refilling else "",
         )
         # The artist the batch is built around. On a refill that is the
         # reseed artist too, not whoever happened to be playing when the
@@ -261,7 +268,7 @@ class CuratedRadioEngine:
         # more of her deepest songs. Simulated, letting the reseed artist
         # lead kept a station's reach up by about a seventh over four
         # refills. In artist radio both are the origin either way.
-        lead = pool_from if mode == MODE_REFILL else self._lead_artist(seed)
+        lead = pool_from if refilling else self._lead_artist(seed)
         artists = [lead, *await self._async_similar_artists(pool_from)]
 
         # On a refill the tail of the queue is still populated, so avoid
@@ -282,8 +289,10 @@ class CuratedRadioEngine:
         # theirs, so a later pool cannot smuggle the same act back in.
         covered: set[str] = set()
         pool_artists: list[str] = []
+        rank: dict[str, int] = {}
         for index, artist in enumerate(artists):
             tracks = await self._async_tracks_for(artist)
+            rank.update(self._rank(tracks, covered))
             uris, titles = self._select(
                 tracks,
                 current_uri=queue.current_uri,
@@ -326,7 +335,7 @@ class CuratedRadioEngine:
             (artist, uris, sizes.get(artist, 0))
             for artist, uris in zip(pool_artists, per_artist, strict=True)
         ]
-        tiers = tier_of(sized, TIER_DECAY)
+        tiers = tier_of(sized, TIER_DECAY, rank)
         ordered = sequence_tiered(
             per_artist,
             tiers,
@@ -347,9 +356,10 @@ class CuratedRadioEngine:
         if enqueued:
             self._history.add([title_by_uri[uri] for uri in enqueued])
 
-        reach_median, reach_low, counts = self._summarise(enqueued, sized, tiers)
+        reach_median, reach_low, counts = self._summarise(enqueued, sized, tiers, rank)
         if enqueued:
             self._last_pool = list(pool_artists)
+            self._last_lead = lead
 
         _LOGGER.debug(
             "Queued %s track(s) in %s mode, led by %s, neighbours from %s, via %s; "
@@ -379,6 +389,7 @@ class CuratedRadioEngine:
         enqueued: list[str],
         sized: list[tuple[str, list[str], int]],
         tiers: dict[str, str],
+        rank: dict[str, int],
     ) -> tuple[int, int, dict[str, int]]:
         """Median reach, weakest reach, and the tier split of a batch.
 
@@ -387,7 +398,7 @@ class CuratedRadioEngine:
         compare across stations; the tier counts are relative to their
         own pool and only describe the texture within one.
         """
-        reach = reach_of(sized, TIER_DECAY)
+        reach = reach_of(sized, TIER_DECAY, rank)
         played = sorted(reach.get(uri, 0) for uri in enqueued)
         counts: dict[str, int] = {}
         for uri in enqueued:
@@ -666,6 +677,49 @@ class CuratedRadioEngine:
             cache[artist] = tracks
         return tracks
 
+    async def _async_program(
+        self,
+        pool_artists: list[str],
+        per_artist: list[list[str]],
+        rank: dict[str, int],
+    ) -> list[str]:
+        """Order one playlist round the same way the live queue is.
+
+        A round built by plain round-robin plays every artist's biggest
+        track and then every artist's second, so a long playlist arrives
+        as a sawtooth of strong and weak stretches rather than an even one.
+        """
+        sizes = await self._async_sizes(pool_artists)
+        sized = [
+            (artist, uris, sizes.get(artist, 0))
+            for artist, uris in zip(pool_artists, per_artist, strict=True)
+        ]
+        return sequence_tiered(
+            per_artist,
+            tier_of(sized, TIER_DECAY, rank),
+            TIER_PATTERN,
+            max_consecutive=self._settings.max_consecutive,
+        )
+
+    def _rank(self, tracks: list[TrackInfo], covered: set[str]) -> dict[str, int]:
+        """Each usable track's position in its artist's own ordering.
+
+        The position the song would hold in a first batch: after the
+        filters that decide whether a track is usable at all, and before
+        anything that depends on what has already played. Raw provider
+        order would not do, because it would penalise an artist whose
+        search results are full of live versions and karaoke.
+        """
+        usable, _ = self._select(
+            tracks,
+            current_uri="",
+            excluded_titles=set(),
+            excluded_uris=set(),
+            excluded_artists=covered,
+            limit=0,
+        )
+        return {uri: position for position, uri in enumerate(usable)}
+
     def _rules(self) -> SelectionRules:
         """This player's settings, as the selection understands them."""
         settings = self._settings
@@ -793,6 +847,7 @@ class CuratedRadioEngine:
         artists_used: list[str] = []
         current_seed = seed_artist
         previous_round: list[str] | None = None
+        previous_lead = ""
 
         # Scoped to this build. The same artists recur every round, and
         # re-fetching them was most of the time a long build took.
@@ -805,7 +860,10 @@ class CuratedRadioEngine:
             # Each round continues from the one before, the same way a
             # refill continues from the batch before it.
             pool_from = self._pool_seed(
-                current_seed, build_session, previous=previous_round
+                current_seed,
+                build_session,
+                previous=previous_round,
+                last_lead=previous_lead,
             )
             lead = (
                 pool_from
@@ -820,9 +878,11 @@ class CuratedRadioEngine:
             ]
             per_artist: list[list[str]] = []
             round_pools: list[str] = []
+            round_rank: dict[str, int] = {}
             covered: set[str] = set()
             for index, artist in enumerate(round_artists):
                 tracks = await self._async_tracks_for(artist, track_cache)
+                round_rank.update(self._rank(tracks, covered))
                 uris, titles = self._select(
                     tracks,
                     current_uri="",
@@ -843,30 +903,11 @@ class CuratedRadioEngine:
                         artists_used.append(artist)
             if not per_artist:
                 break
-            # Programmed the same way the live queue is. A round built by
-            # plain round-robin plays every artist's biggest track and then
-            # every artist's second, so a long playlist arrives as a
-            # sawtooth of strong and weak stretches rather than an even
-            # one.
-            sizes = await self._async_sizes(round_pools)
             ordered.extend(
-                sequence_tiered(
-                    per_artist,
-                    tier_of(
-                        [
-                            (artist, uris, sizes.get(artist, 0))
-                            for artist, uris in zip(
-                                round_pools, per_artist, strict=True
-                            )
-                        ],
-                        TIER_DECAY,
-                    ),
-                    TIER_PATTERN,
-                    max_consecutive=settings.max_consecutive,
-                )
+                await self._async_program(round_pools, per_artist, round_rank)
             )
-
             previous_round = list(round_pools)
+            previous_lead = lead
 
         ordered = ordered[:length]
         if not ordered:
@@ -970,6 +1011,7 @@ class CuratedRadioEngine:
         session: ListeningSession | None = None,
         *,
         previous: list[str] | None = None,
+        last_lead: str = "",
     ) -> str:
         """Which artist the similar-artist pool is drawn from.
 
@@ -1007,7 +1049,9 @@ class CuratedRadioEngine:
             [(name, self._sizes.get(name.lower(), 0)) for name in previous]
         )
         strong = close_to_home(
-            strong, active.degree_of, fenced=self._degree_cap is not None
+            move_on(strong, last_lead),
+            active.degree_of,
+            fenced=self._degree_cap is not None,
         )
         if strong:
             chosen = random.choice(strong)

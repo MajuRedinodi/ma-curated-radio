@@ -9,6 +9,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from filters import (
+    TIER_POWER,
     base_title,
     clean_similar_artists,
     close_to_home,
@@ -21,6 +22,7 @@ from filters import (
     is_non_song,
     is_too_short,
     matches_provider,
+    move_on,
     reach_of,
     sequence_tiered,
     strong_artists,
@@ -628,3 +630,50 @@ def test_the_origin_itself_counts_as_home():
     strong = ["Sam Smith", "Christina Aguilera"]
     chosen = close_to_home(strong, lambda a: DEGREES.get(a.lower()), fenced=True)
     assert chosen == ["Sam Smith"]
+
+
+def test_a_refill_moves_on_from_the_artist_who_led_the_last_hour():
+    """A Texas Hold 'Em station refilled from Beyoncé again.
+
+    Preferring artists near the origin made the origin itself the nearest,
+    and the refill was a near copy of the hour before: six of its nine
+    artists were Beyoncé, her group, her family or her label.
+    """
+    strong = ["Beyoncé", "Rihanna", "Janet Jackson"]
+    assert "Beyoncé" not in move_on(strong, "Beyoncé")
+
+
+def test_the_last_lead_stays_when_nobody_else_is_left():
+    """Repeating beats stopping."""
+    assert move_on(["Beyoncé"], "Beyoncé") == ["Beyoncé"]
+
+
+def test_nothing_is_dropped_on_the_first_refill_after_a_restart():
+    assert move_on(["A", "B"], "") == ["A", "B"]
+
+
+def test_a_deeper_song_reaches_less_even_when_it_leads_its_batch():
+    """Songs already played are excluded before a batch is chosen.
+
+    Counting positions within the batch scored an artist's fourth song as
+    though it were their first, so a refill of the same artists' deeper
+    songs reported exactly the median reach of the hits before it.
+    """
+    pool = [("Beyoncé", ["fourth", "fifth"], 1_000_000)]
+    naive = reach_of(pool, 0.7)
+    honest = reach_of(pool, 0.7, {"fourth": 3, "fifth": 4})
+    assert naive["fourth"] == 1_000_000
+    assert honest["fourth"] < naive["fourth"]
+    assert honest["fifth"] < honest["fourth"]
+
+
+def test_true_rank_also_decides_the_tiers():
+    """A big artist's fifth song should not out-tier a small artist's hit."""
+    pool = [
+        ("Big", ["big-5th"], 1_000_000),
+        ("Small", ["small-1st"], 200_000),
+        ("Mid", ["mid-1st"], 500_000),
+    ]
+    tiers = tier_of(pool, 0.7, {"big-5th": 5, "small-1st": 0, "mid-1st": 0})
+    assert tiers["mid-1st"] == TIER_POWER
+    assert tiers["big-5th"] != TIER_POWER
