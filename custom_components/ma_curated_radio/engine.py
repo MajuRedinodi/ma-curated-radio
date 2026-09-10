@@ -25,6 +25,7 @@ from .const import (
     FAMILIARITY_EXPONENT,
     LASTFM_POOL_SIZE,
     MODE_REFILL,
+    MODE_REPLACE,
     PAIR_LISTENER_RATIO,
     PLAYLIST_CHUNK,
     PLAYLIST_MAX_ROUNDS,
@@ -155,6 +156,9 @@ class CuratedRadioEngine:
         # whatever is playing, which stops a station sliding into
         # obscurity over an evening.
         self._last_pool: list[str] = []
+        # Set when a pick arrives while a batch is building. The build in
+        # progress is then for a song the listener has already left.
+        self._superseded = False
 
     @property
     def history(self) -> TitleHistory:
@@ -178,14 +182,32 @@ class CuratedRadioEngine:
     async def async_run(self, mode: str) -> BatchResult:
         """Build and enqueue one batch.
 
-        Overlapping runs are skipped rather than queued, matching the
-        ``mode: single`` behaviour of the script this replaces.
+        An overlapping refill is skipped rather than queued, matching the
+        ``mode: single`` behaviour of the script this replaces: a refill
+        that waits a minute loses nothing.
+
+        A replace is different, because it means somebody picked something,
+        and the latest pick has to win. One arriving mid-build marks the
+        build in progress as superseded, and the newest pick is built as
+        soon as the lock frees. Dropping it instead let a station built
+        from the first of two quick picks be written in behind the second:
+        a remix swapped for the original forty seconds in, with a cold
+        neighbourhood taking a minute to build, only came out right
+        because both were by the same artist.
         """
         if self._lock.locked():
+            if mode == MODE_REPLACE:
+                self._superseded = True
+                _LOGGER.debug("A newer pick arrived mid-build; building it next")
+                return BatchResult(mode=mode, skipped_reason="superseded")
             _LOGGER.debug("A batch is already building; skipping %s request", mode)
             return BatchResult(mode=mode, skipped_reason="already_running")
         async with self._lock:
+            self._superseded = False
             result = await self._async_build(mode)
+            while self._superseded:
+                self._superseded = False
+                result = await self._async_build(MODE_REPLACE)
         self._last_batch = result
         async_dispatcher_send(self._hass, signal_update(self._entry_id))
         return result
@@ -301,6 +323,14 @@ class CuratedRadioEngine:
             leading=leading,
             length=self._settings.batch_length,
         )
+        if self._superseded:
+            # Somebody picked something else while this was being built.
+            # Writing it now would put a station for a song they have
+            # already moved on from behind the one they chose.
+            _LOGGER.debug("Discarding the batch for %s; a newer pick arrived", lead)
+            return BatchResult(
+                mode=mode, seed_artist=lead, artists=artists, skipped_reason="superseded"
+            )
         enqueued = await self._async_enqueue(ordered, mode)
         if enqueued:
             self._history.add([title_by_uri[uri] for uri in enqueued])
