@@ -21,6 +21,7 @@ from filters import (
     is_live,
     is_non_song,
     is_too_short,
+    lead_among_credits,
     matches_provider,
     move_on,
     reach_of,
@@ -677,3 +678,30 @@ def test_true_rank_also_decides_the_tiers():
     tiers = tier_of(pool, 0.7, {"big-5th": 5, "small-1st": 0, "mid-1st": 0})
     assert tiers["mid-1st"] == TIER_POWER
     assert tiers["big-5th"] != TIER_POWER
+
+
+# --- Which credited artist leads a pick ----------------------------------
+
+
+def test_a_footnote_first_credit_hands_the_lead_to_the_star():
+    """Different Drum, credited to Stone Poneys and Linda Ronstadt.
+
+    Built around the first credit it gave three obscure 1967 album cuts at
+    8,278 listeners and none of her hits.
+    """
+    sizes = {"Stone Poneys": 8_278, "Linda Ronstadt": 1_200_000}
+    assert lead_among_credits("Stone Poneys", sizes, 697_141) == "Linda Ronstadt"
+
+
+def test_a_duo_known_by_its_first_name_keeps_it():
+    """The Beat Goes On: Cher is bigger, but Sonny is how the duo is known.
+
+    Handing the lead to the biggest credit would put Believe into a 1967
+    hour.
+    """
+    sizes = {"Sonny": 181_000, "Cher": 3_000_000}
+    assert lead_among_credits("Sonny", sizes, 528_000) == "Sonny"
+
+
+def test_without_a_pair_audience_the_first_credit_stands():
+    assert lead_among_credits("A", {"A": 10, "B": 1_000_000}, 0) == "A"

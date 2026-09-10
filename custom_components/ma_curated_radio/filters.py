@@ -778,3 +778,34 @@ def move_on(strong: list[str], last_lead: str) -> list[str]:
         return strong
     rest = [a for a in strong if a.strip().lower() != target]
     return rest or strong
+
+
+# Below this share of a pair's audience, the first credited name is a
+# footnote rather than how the act is known. Measured on the two cases that
+# define it: "Sonny" alone draws 34% of Sonny & Cher, and is how that duo
+# is known; "Stone Poneys" alone draws 1% of Stone Poneys & Linda Ronstadt,
+# and is not. Thirtyfold apart, so the line needs no precision.
+FOOTNOTE_SHARE: Final = 0.10
+
+
+def lead_among_credits(
+    first: str, sizes: Mapping[str, int], pair_size: int
+) -> str:
+    """Which credited artist a pick's station should be built around.
+
+    The first credit, unless it is a footnote to the pair: then whichever
+    credited artist has the largest audience of their own. "Different
+    Drum" is credited to Stone Poneys and to Linda Ronstadt, and building
+    around the first credit gave a station three obscure 1967 album cuts
+    at 8,278 listeners and none of her hits.
+
+    Deliberately not simply "the biggest credit". The Beat Goes On is
+    credited to Sonny and to Cher, Cher alone is far bigger than the duo,
+    and a Cher-led station would put Believe into a 1967 hour. Sonny is
+    how that duo is known, which is what the share measures.
+    """
+    first_size = sizes.get(first, 0)
+    if not pair_size or first_size >= pair_size * FOOTNOTE_SHARE:
+        return first
+    best = max(sizes.items(), key=lambda item: item[1], default=(first, 0))
+    return best[0] if best[1] > first_size else first

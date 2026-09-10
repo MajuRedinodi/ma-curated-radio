@@ -42,6 +42,7 @@ from .const import (
 from .decide import leading_pool
 from .feedback import SkipMemory
 from .filters import (
+    FOOTNOTE_SHARE,
     TIER_PATTERN,
     SelectionRules,
     base_title,
@@ -49,6 +50,7 @@ from .filters import (
     close_to_home,
     credits_artist,
     drop_outliers,
+    lead_among_credits,
     matches_provider,
     move_on,
     reach_of,
@@ -152,6 +154,10 @@ class CuratedRadioEngine:
         # it costs two lookups and the answer cannot change while the
         # same song is the reason the station exists.
         self._alias: dict[str, str] = {}
+        # A credited name that is only a footnote to its pair, mapped to the
+        # credited artist who should lead instead. Settled alongside the
+        # alias, on the pick that starts a station.
+        self._lead_override: dict[str, str] = {}
         # Artist audience sizes, kept for the life of the entry. Neighbours
         # recur heavily between batches, so this usually saves the lookups
         # entirely rather than merely spreading them out.
@@ -254,8 +260,6 @@ class CuratedRadioEngine:
         # A manual pick is a new station, so it re-anchors the session; a
         # refill continues the one already running.
         self._anchor(seed, restart=mode != MODE_REFILL)
-        # The artist the batch is actually built around, which in artist
-        # radio is the one you picked rather than whoever is playing now.
         # Where the neighbours come from. On a pick, the artist picked; on a
         # refill, an artist from the stronger half of the last batch,
         # preferring those nearest the origin.
@@ -272,7 +276,9 @@ class CuratedRadioEngine:
         # more of her deepest songs. Simulated, letting the reseed artist
         # lead kept a station's reach up by about a seventh over four
         # refills. In artist radio both are the origin either way.
-        lead = pool_from if refilling else self._lead_artist(seed)
+        # And a credited name that is a footnote to its pair hands the lead
+        # to the star, while the neighbours still come from the pair.
+        lead = self._led_by(pool_from if refilling else self._lead_artist(seed))
         artists = [lead, *await self._async_similar_artists(pool_from)]
 
         # On a refill the tail of the queue is still populated, so avoid
@@ -587,6 +593,7 @@ class CuratedRadioEngine:
         """
         key = seed.lower()
         self._alias.pop(key, None)
+        self._lead_override.pop(key, None)
         if len(credited) != SPLIT_DUO_CREDITS or not self._settings.lastfm_api_key:
             return
         joined = " & ".join(credited)
@@ -608,6 +615,7 @@ class CuratedRadioEngine:
                 alone,
                 seed,
             )
+            await self._async_choose_lead(seed, credited, alone, pair)
             return
         _LOGGER.debug(
             "%s is a collaboration (%s listeners against %s for %s alone); "
@@ -618,6 +626,43 @@ class CuratedRadioEngine:
             seed,
             seed,
         )
+
+    async def _async_choose_lead(
+        self, seed: str, credited: list[str], alone: int, pair: int
+    ) -> None:
+        """Hand the lead to the star when the first credit is a footnote.
+
+        Only reached for a duo, and only costs a lookup when the first
+        credited name draws a small share of the pair: see
+        ``lead_among_credits``. The neighbours still come from the pair.
+        """
+        if alone >= pair * FOOTNOTE_SHARE:
+            return
+        others = [name for name in credited if name.lower() != seed.lower()]
+        counts = await asyncio.gather(
+            *(
+                async_get_artist_listeners(
+                    self._session, self._settings.lastfm_api_key, name
+                )
+                for name in others
+            )
+        )
+        sizes = {seed: alone, **dict(zip(others, counts, strict=True))}
+        lead = lead_among_credits(seed, sizes, pair)
+        if lead != seed:
+            self._lead_override[seed.lower()] = lead
+            _LOGGER.debug(
+                "%s is a footnote to %s (%s of %s listeners); %s leads",
+                seed,
+                " & ".join(credited),
+                alone,
+                pair,
+                lead,
+            )
+
+    def _led_by(self, artist: str) -> str:
+        """The artist a station built from this one is actually led by."""
+        return self._lead_override.get(artist.lower(), artist)
 
     async def _async_lookup_similar(self, seed: str) -> list[tuple[str, float]]:
         """Ask Last.fm about a seed, under its resolved name if it has one."""
@@ -872,7 +917,7 @@ class CuratedRadioEngine:
             lead = (
                 pool_from
                 if previous_round
-                else self._lead_artist(current_seed, build_session)
+                else self._led_by(self._lead_artist(current_seed, build_session))
             )
             round_artists = [
                 lead,
