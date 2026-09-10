@@ -432,9 +432,9 @@ class CuratedRadioEngine:
         original always outranks it.
 
         If that filter leaves nothing, the unfiltered results come back
-        instead. A guest is often uncredited, so an empty result is more
-        likely to mean the credits are thin than that the recording is
-        absent.
+        instead. An empty list cannot distinguish "no such recording"
+        from "credited differently", and only one of those is worth
+        showing somebody.
         """
         phrase = " ".join(part for part in (query, artist) if part).strip()
         found = await self._native.async_search_tracks(
@@ -448,12 +448,13 @@ class CuratedRadioEngine:
                 found = [t for t in found if credits_artist(t.artists, artist)]
         if found or not artist:
             return found
-        # Filtering by artist found nothing, which does not mean the
-        # recording is absent. A guest often goes uncredited: Tidal files
-        # Ozzy Osbourne's "Stayin' Alive" under Dweezil Zappa alone, so
-        # searching by the singer can never reach it. Hand back the
-        # unfiltered results rather than nothing, since the person asking
-        # can see which is which and the alternative is a dead end.
+        # Filtering by artist found nothing, which is not the same as the
+        # recording being absent. Credits disagree with a name for plenty
+        # of ordinary reasons: Last.fm asks for "Tom Petty and The
+        # Heartbreakers" where Tidal credits plain "Tom Petty", and a
+        # guest is sometimes left off entirely. Hand back the unfiltered
+        # matches rather than nothing, since the person asking can see
+        # which is which and an empty list tells them nothing at all.
         _LOGGER.debug(
             "Nothing credited to %s for %s; returning every match", artist, phrase
         )
