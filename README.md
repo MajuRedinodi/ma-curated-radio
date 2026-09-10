@@ -669,8 +669,17 @@ settings, and the reported reach tells the two apart. See
   track steps down more often than up. Nothing about it is audible in a
   single batch, which all read as good hours; it accumulates, and by the
   time it is noticeable you are three hours and two reseeds from the
-  cause. An observed evening went from a median reach of 759,000 to
-  338,000 across one reseed before this changed.
+  cause. An observed evening, before this changed:
+
+  ```
+  pick    Carly Simon    median reach 994,825   weakest 187,662
+  refill  Carole King    median reach 759,282   weakest 145,944
+  refill  Janis Ian      median reach 337,793   weakest  82,924
+  ```
+
+  The same lane throughout, and the degree fence behaving exactly as
+  designed. Both the typical track and the worst one fell by half across
+  two and a half hours.
 - **Some live recordings carry no marker at all.** The filters read the
   title, the version and the album, and a Hall of Fame induction recording
   of "Master Of Puppets" announces itself in none of them. Only the running
