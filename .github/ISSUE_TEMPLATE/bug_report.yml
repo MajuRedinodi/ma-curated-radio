@@ -52,17 +52,19 @@ body:
       label: The batch log line
       description: |
         Search the log for `ma_curated_radio.engine`. The useful line
-        starts `Queued N track(s)` and carries the artists, the median
-        reach and the tier split. Include the lines around it too: the
-        pick, the anchor, the seam and any dropped artists.
+        starts `Queued N track(s)` and carries the lead, where the
+        neighbours came from, the artists, the median reach and the tier
+        split. Include the lines around it too: the pick, the anchor, the
+        seam and any dropped artists.
       render: text
       placeholder: |
         Manual pick: tidal--xxxx://track/123456
         Queue session anchored to Fleetwood Mac
         Too small for this pool, dropped: Christine McVie (78,730)
         Batch follows Fleetwood Mac; primed Fleetwood Mac
-        Queued 19 track(s) in replace mode, seeded from Fleetwood Mac via
-        ...; median reach 580,807, weakest 106,212, tiers {'P': 7, ...}
+        Queued 19 track(s) in replace mode, led by Fleetwood Mac,
+        neighbours from Fleetwood Mac, via ...; median reach 580,807,
+        weakest 106,212, tiers {'P': 7, ...}
     validations:
       required: true
 

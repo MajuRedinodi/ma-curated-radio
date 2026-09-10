@@ -101,6 +101,9 @@ class LastBatchSensor(CuratedRadioEntity, SensorEntity):
             return {}
         return {
             "mode": result.mode,
+            # The state is the batch's lead, which on a refill is simply
+            # whoever was playing. This is where its artists came from.
+            "neighbours_from": result.pool_from or None,
             "artists": result.artists,
             "tracks_queued": result.queued,
             "skipped_reason": result.skipped_reason or None,

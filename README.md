@@ -37,9 +37,11 @@ set up. No helpers, no `rest_command`, no YAML.
    spends the big records across the whole hour instead. No artist plays
    more than twice in a row.
 6. As the batch plays down to its last couple of tracks, it **refills**
-   without touching what is already queued, reseeding off whatever is
-   playing at that moment. That is what lets an evening drift naturally
-   instead of being locked to one batch decided at the start.
+   without touching what is already queued. Whoever is playing leads the
+   refill, and its neighbours are drawn from an artist in the stronger half
+   of the batch that just played. That is what lets an evening drift
+   naturally instead of being locked to one batch decided at the start,
+   without sliding into ever smaller artists as it goes.
 
 ## Requirements
 
@@ -540,11 +542,19 @@ plays rather than at track ten. It appears on the debug log line and as
 attributes on the **Last batch seed** sensor.
 
 ```
-Queued 19 track(s) in replace mode, seeded from Jackson Browne via
-Jackson Browne, Little River Band, Dan Fogelberg, The Band, Van Morrison,
-Steve Winwood, Joe Walsh, Dave Mason; median reach 580,807,
-weakest 106,212, tiers {'P': 7, 'D': 6, 'S': 6}
+Queued 19 track(s) in replace mode, led by Jackson Browne, neighbours from
+Jackson Browne, via Jackson Browne, Little River Band, Dan Fogelberg,
+The Band, Van Morrison, Steve Winwood, Joe Walsh, Dave Mason;
+median reach 580,807, weakest 106,212, tiers {'P': 7, 'D': 6, 'S': 6}
 ```
+
+**Led by** and **neighbours from** are the same artist on a pick and
+usually different on a refill. The lead is whoever was playing when the
+queue ran low, and takes the lead slots; the neighbours are drawn from an
+artist in the stronger half of the batch before. When a refill sounds as
+though it has wandered, the neighbours are where it went, so that is the
+name to look at. The sensor's state is the lead, and its `neighbours_from`
+attribute is the other one.
 
 **Median reach** is the useful one. Each track scores its artist's audience
 decayed by how far down that artist's own ordering it sits, and the median
@@ -556,6 +566,14 @@ rough guide, from observed stations:
 | under 400,000 | a pool of mid-sized or cult artists; reduce tracks per artist or it finds genuinely obscure material fast. Observed: a Pantera station at 211,000 reached Nailbomb and Exhorder and was called too deep at three tracks an artist. |
 | 400,000 to 800,000 | comfortable; three tracks an artist reaches interesting places without leaving the map. Observed: Jackson Browne at 581,000. |
 | over 800,000 | a pool of giants; a third or fourth track is still a hit, so depth is nearly free. Observed: Fleetwood Mac at 900,000 and Metallica at 1,900,000. |
+
+These bands are wrong for country, and probably for classical. Last.fm's
+audience barely listens to current country, so a modern country station
+built entirely of radio hits (Tennessee Orange, I Hope, 'Til You Can't,
+Fast Car) was observed reading 135,000 to 154,000, where the table above
+would call it deep. In those genres the numbers still compare one batch
+with the next, so a sudden fall means something; they just do not say how
+well you will know the songs.
 
 **Weakest** is the lowest-scoring track that made it in, which is the one
 most likely to be the dud.
@@ -588,7 +606,8 @@ against 2028979 for Antonio Vivaldi alone); asking Last.fm about Antonio Vivaldi
 Queue session anchored to Antonio Vivaldi
 Too small for this pool, dropped: Christine McVie (78,730)
 Batch follows Antonio Vivaldi; primed Antonio Vivaldi
-Queued 19 track(s) in replace mode, seeded from Antonio Vivaldi via ...;
+Queued 19 track(s) in replace mode, led by Antonio Vivaldi, neighbours from
+Antonio Vivaldi, via ...;
 median reach 1,048,914, weakest 186,916, tiers {'P': 7, 'D': 6, 'S': 6}
 ```
 

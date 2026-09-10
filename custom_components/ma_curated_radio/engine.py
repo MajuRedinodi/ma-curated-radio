@@ -91,6 +91,9 @@ class BatchResult:
 
     mode: str
     seed_artist: str = ""
+    # The artist the similar-artist pool was drawn from. The same as the
+    # seed on a pick; on a refill, usually someone else.
+    pool_from: str = ""
     artists: list[str] = field(default_factory=list)
     queued: int = 0
     skipped_reason: str = ""
@@ -245,12 +248,12 @@ class CuratedRadioEngine:
         # The artist the batch is actually built around, which in artist
         # radio is the one you picked rather than whoever is playing now.
         lead = self._lead_artist(seed)
-        artists = [
-            lead,
-            *await self._async_similar_artists(
-                self._pool_seed(seed, reseeding=mode == MODE_REFILL)
-            ),
-        ]
+        # Where the neighbours come from, which is not always the lead. On
+        # a refill the lead is whoever is playing while the pool is drawn
+        # from the stronger half of the last batch, and reporting only the
+        # lead made a Christina Aguilera pool read as Emeli Sandé's.
+        pool_from = self._pool_seed(seed, reseeding=mode == MODE_REFILL)
+        artists = [lead, *await self._async_similar_artists(pool_from)]
 
         # On a refill the tail of the queue is still populated, so avoid
         # re-adding anything already sitting there. Native-only; an empty
@@ -340,11 +343,12 @@ class CuratedRadioEngine:
             self._last_pool = list(pool_artists)
 
         _LOGGER.debug(
-            "Queued %s track(s) in %s mode, seeded from %s via %s; "
+            "Queued %s track(s) in %s mode, led by %s, neighbours from %s, via %s; "
             "median reach %s, weakest %s, tiers %s",
             len(enqueued),
             mode,
             lead,
+            pool_from,
             ", ".join(artists),
             f"{reach_median:,}",
             f"{reach_low:,}",
@@ -353,6 +357,7 @@ class CuratedRadioEngine:
         return BatchResult(
             mode=mode,
             seed_artist=lead,
+            pool_from=pool_from,
             artists=artists,
             queued=len(enqueued),
             reach_median=reach_median,
