@@ -34,6 +34,12 @@ DEFAULT_MAX_ARTISTS: Final = 3
 DEFAULT_TRACKS_PER_ARTIST: Final = 3
 DEFAULT_REFILL_THRESHOLD: Final = 2
 DEFAULT_HISTORY_MINUTES: Final = 120
+# How long a song counts as already heard today. Inside the repeat window
+# above it cannot play at all; after that, only once its artist has nothing
+# fresh left. A four-hour Don Henley morning replayed thirteen of its first
+# hour's nineteen songs at 11:08, because the two-hour window had let them
+# go and each returning artist started again from their biggest song.
+HEARD_MINUTES: Final = 480
 DEFAULT_SETTLE_SECONDS: Final = 3
 DEFAULT_COOLDOWN_SECONDS: Final = 120
 DEFAULT_PROVIDER_FILTER: Final = ""

@@ -27,6 +27,7 @@ from .const import (
     EXPLICIT_CLEAN,
     EXPLICIT_PREFER,
     FAMILIARITY_EXPONENT,
+    HEARD_MINUTES,
     LASTFM_POOL_SIZE,
     MODE_REFILL,
     MODE_REPLACE,
@@ -65,6 +66,7 @@ from .filters import (
     move_on,
     neighbourhood_strength,
     reach_of,
+    select_fresh_first,
     select_tracks,
     sequence_tiered,
     strong_artists,
@@ -165,7 +167,7 @@ class CuratedRadioEngine:
         self._settings = settings
         self._session = session
         self._skips = skips
-        self._history = TitleHistory(settings.history_minutes)
+        self._history = TitleHistory(settings.history_minutes, HEARD_MINUTES)
         self._native = NativeClient(hass, settings.ma_config_entry_id)
         self._lock = asyncio.Lock()
         # Deliberately a separate lock. Sharing the batch lock would let a
@@ -402,6 +404,7 @@ class CuratedRadioEngine:
             current_uri=queue.current_uri,
             recent_titles=recent_titles,
             already_queued=already_queued,
+            heard=self._history.heard(),
         )
         bar = depth_bar(await self._async_sizes(artists))
         pools = await gather(bar=bar)
@@ -500,11 +503,13 @@ class CuratedRadioEngine:
         bar: int,
         cache: dict[str, list[TrackInfo]] | None = None,
         provider: str = "",
+        heard: set[str] | None = None,
     ) -> _Pools:
         """Each artist's picks for one batch or playlist round, unordered.
 
         ``bar`` is the depth limit's listener threshold; zero lifts it.
         ``provider``, if given, keeps only that provider's tracks.
+        ``heard`` are titles played earlier today, used only as a fallback.
         """
         pools = _Pools()
         # Artists already given a pool. Anything crediting one of them is
@@ -520,6 +525,7 @@ class CuratedRadioEngine:
                 tracks,
                 current_uri=current_uri,
                 excluded_titles=recent_titles | set(pools.title_by_uri.values()),
+                heard=heard,
                 excluded_uris=already_queued
                 | too_deep(tracks, artist_rank, known.get(artist), bar, cap),
                 excluded_artists=covered,
@@ -963,8 +969,25 @@ class CuratedRadioEngine:
         excluded_uris: set[str],
         excluded_artists: set[str],
         limit: int,
+        heard: set[str] | None = None,
     ) -> tuple[list[str], list[str]]:
-        """Filter one artist's tracks down to this batch's picks."""
+        """Filter one artist's tracks down to this batch's picks.
+
+        ``heard``, if given, holds back songs played earlier today until the
+        artist has nothing fresh left.
+        """
+        if heard:
+            return select_fresh_first(
+                tracks,
+                self._rules(),
+                heard=heard,
+                current_uri=current_uri,
+                excluded_titles=excluded_titles,
+                excluded_uris=excluded_uris,
+                excluded_artists=excluded_artists,
+                limit=limit,
+                now=dt_util.utcnow(),
+            )
         return select_tracks(
             tracks,
             self._rules(),

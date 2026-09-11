@@ -4,6 +4,11 @@ The YAML implementation approximated this with three ``input_text`` helpers
 shifted like a ring buffer, because a single helper caps at 255 characters.
 Nothing here is stored in an entity, so a real time window replaces the
 three-batch approximation: a title is excluded until it ages out.
+
+Two windows. Inside the short one a title is not played again at all.
+Inside the long one it may be, but only once its artist has nothing fresh
+left: a station whose fence keeps returning to the same artists otherwise
+replays their biggest songs the moment the short window lets them go.
 """
 
 from __future__ import annotations
@@ -17,9 +22,10 @@ from homeassistant.util import dt as dt_util
 class TitleHistory:
     """Normalised track titles seen recently, pruned by age."""
 
-    def __init__(self, window_minutes: int) -> None:
-        """Set up an empty history with the given retention window."""
+    def __init__(self, window_minutes: int, heard_minutes: int = 0) -> None:
+        """Set up an empty history with its two retention windows."""
         self._window = timedelta(minutes=window_minutes)
+        self._heard = timedelta(minutes=heard_minutes)
         self._items: deque[tuple[str, datetime]] = deque()
 
     @property
@@ -28,8 +34,8 @@ class TitleHistory:
         return int(self._window.total_seconds() // 60)
 
     def prune(self) -> None:
-        """Drop everything older than the retention window."""
-        cutoff = dt_util.utcnow() - self._window
+        """Drop everything older than the longer of the two windows."""
+        cutoff = dt_util.utcnow() - max(self._window, self._heard)
         while self._items and self._items[0][1] < cutoff:
             self._items.popleft()
 
@@ -40,17 +46,22 @@ class TitleHistory:
         self.prune()
 
     def current(self) -> set[str]:
-        """Return the set of titles still inside the window."""
+        """Titles inside the short window, which must not play again yet."""
+        self.prune()
+        cutoff = dt_util.utcnow() - self._window
+        return {title for title, when in self._items if when >= cutoff}
+
+    def heard(self) -> set[str]:
+        """Titles inside the long window, to be played again only if need be."""
         self.prune()
         return {title for title, _ in self._items}
 
     def __len__(self) -> int:
-        """Number of remembered titles still inside the window."""
-        self.prune()
-        return len(self._items)
+        """Number of remembered titles inside the short window."""
+        return len(self.current())
 
     def set_window(self, minutes: int) -> None:
-        """Change the retention window, keeping what still fits."""
+        """Change the short retention window, keeping what still fits."""
         self._window = timedelta(minutes=minutes)
         self.prune()
 

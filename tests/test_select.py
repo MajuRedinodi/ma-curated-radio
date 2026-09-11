@@ -9,7 +9,7 @@ prompted it.
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from filters import SelectionRules, select_tracks
+from filters import SelectionRules, select_fresh_first, select_tracks
 
 
 @dataclass
@@ -183,3 +183,35 @@ def test_words_that_merely_start_with_demo_are_left_alone():
         Track("t2", "Democracy", artists=["Leonard Cohen"]),
     ]
     assert uris(tracks) == ["t1", "t2"]
+
+
+def fresh(tracks, heard, **kwargs):
+    chosen, _ = select_fresh_first(tracks, SelectionRules(), heard=heard, **kwargs)
+    return chosen
+
+
+_HENLEY = [
+    Track("t1", "The Boys of Summer"),
+    Track("t2", "Dirty Laundry"),
+    Track("t3", "The End of the Innocence"),
+    Track("t4", "All She Wants to Do Is Dance"),
+]
+
+
+def test_songs_heard_today_wait_while_the_artist_has_fresh_ones():
+    """The 11:08 refill that replayed the first hour."""
+    heard = {"the boys of summer", "dirty laundry"}
+    assert fresh(_HENLEY, heard, limit=2) == ["t3", "t4"]
+
+
+def test_heard_songs_fill_in_when_nothing_fresh_is_left():
+    """Better a song from this morning than an artist with no pool."""
+    heard = {"the boys of summer", "dirty laundry", "the end of the innocence"}
+    assert fresh(_HENLEY, heard, limit=2) == ["t4", "t1"]
+
+
+def test_the_repeat_window_still_wins_over_heard():
+    """Inside the short window a song is not played at all."""
+    heard = {"the boys of summer", "dirty laundry", "the end of the innocence"}
+    chosen = fresh(_HENLEY, heard, limit=2, excluded_titles={"the boys of summer"})
+    assert chosen == ["t4", "t2"]

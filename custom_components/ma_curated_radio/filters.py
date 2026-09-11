@@ -498,6 +498,57 @@ class SelectionRules:
     fresh_days: int = 0
 
 
+def select_fresh_first(
+    tracks: list[Any],
+    rules: SelectionRules,
+    *,
+    heard: set[str],
+    current_uri: str = "",
+    excluded_titles: set[str] | None = None,
+    excluded_uris: set[str] | None = None,
+    excluded_artists: set[str] | None = None,
+    limit: int = 0,
+    now: datetime | None = None,
+) -> tuple[list[str], list[str]]:
+    """Like select_tracks, but songs heard today wait their turn.
+
+    They are passed over while the artist has anything fresh, and fill in
+    only when it does not. Selection starts from an artist's biggest song,
+    so without this a returning artist replayed the same hits the moment
+    the repeat window let them go: a Don Henley morning replayed thirteen
+    of its first hour's nineteen songs.
+
+    Both passes apply every other rule, the depth limit included, so a
+    shortage of fresh songs is made up with a hit heard earlier rather than
+    with a deeper cut nobody heard at all.
+    """
+    titles_out = set(excluded_titles or ())
+    uris_out = set(excluded_uris or ())
+    fresh, fresh_titles = select_tracks(
+        tracks,
+        rules,
+        current_uri=current_uri,
+        excluded_titles=titles_out | heard,
+        excluded_uris=set(uris_out),
+        excluded_artists=excluded_artists,
+        limit=limit,
+        now=now,
+    )
+    if not limit or len(fresh) >= limit:
+        return fresh, fresh_titles
+    again, again_titles = select_tracks(
+        tracks,
+        rules,
+        current_uri=current_uri,
+        excluded_titles=titles_out | set(fresh_titles),
+        excluded_uris=uris_out | set(fresh),
+        excluded_artists=excluded_artists,
+        limit=limit - len(fresh),
+        now=now,
+    )
+    return fresh + again, fresh_titles + again_titles
+
+
 def select_tracks(
     tracks: list[Any],
     rules: SelectionRules,
@@ -521,6 +572,7 @@ def select_tracks(
     got into a batch twice under two names: Jeff Lynne and Electric Light
     Orchestra between them played three in a row while the run cap saw
     two different artists.
+
     """
     titles_out: set[str] = excluded_titles or set()
     uris_out: set[str] = excluded_uris or set()
