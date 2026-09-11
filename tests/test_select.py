@@ -166,3 +166,20 @@ def test_a_real_cover_is_still_welcome():
     """Shawn Colvin's Baker Street was the best thing in its batch."""
     tracks = [Track("t1", "Baker Street", artists=["Shawn Colvin", "David Crosby"])]
     assert uris(tracks) == ["t1"]
+
+
+def test_a_demo_is_not_one_of_the_hits():
+    """.38 Special's "F2D", from an album called "Demo 2", opened an hour."""
+    tracks = [
+        Track("t1", "F2D", album="Demo 2", artists=[".38 Special"]),
+        Track("t2", "Hold On Loosely", artists=[".38 Special"]),
+    ]
+    assert uris(tracks) == ["t2"]
+
+
+def test_words_that_merely_start_with_demo_are_left_alone():
+    tracks = [
+        Track("t1", "Demolition Man", artists=["The Police"]),
+        Track("t2", "Democracy", artists=["Leonard Cohen"]),
+    ]
+    assert uris(tracks) == ["t1", "t2"]

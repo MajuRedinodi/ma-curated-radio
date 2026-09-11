@@ -180,6 +180,21 @@ def base_title(name: str) -> str:
     return _PUNCTUATION.sub("", title).strip().lower()
 
 
+def is_demo(name: str, version: str, album: str) -> bool:
+    """Return True for demos and rough mixes.
+
+    An unfinished recording, which nobody asking for a band's hits wants.
+    A search for .38 Special handed back "F2D" from an album called "Demo
+    2", and it opened an hour of their neighbours' biggest records.
+
+    Whole words only, in the title, version and album, so "Demolition
+    Man" and "Democracy" are left alone.
+    """
+    text = " ".join((name, version, album)).lower()
+    words = set(_WORDS.split(text))
+    return bool(words & {"demo", "demos"}) or "rough mix" in text
+
+
 def is_live(name: str, version: str) -> bool:
     """Return True for live recordings.
 
@@ -538,7 +553,10 @@ def select_tracks(
             continue
         if rules.clean_only and track.explicit:
             continue
-        if is_non_song(track.name, track.version):
+        # Commentary, skits and demos: none of them is the song itself.
+        if is_non_song(track.name, track.version) or is_demo(
+            track.name, track.version, track.album
+        ):
             continue
         if rules.skip_live and is_live(track.name, track.version):
             continue
