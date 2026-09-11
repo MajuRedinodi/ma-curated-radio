@@ -12,6 +12,7 @@ import logging
 import random
 from collections import deque
 from dataclasses import asdict, dataclass, field, fields
+from functools import partial
 from typing import Any
 
 import aiohttp
@@ -22,6 +23,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     DEFAULT_PLAYLIST_LENGTH,
+    DEPTH_TOP_TRACKS,
     EXPLICIT_CLEAN,
     EXPLICIT_PREFER,
     FAMILIARITY_EXPONENT,
@@ -54,7 +56,9 @@ from .filters import (
     clean_similar_artists,
     close_to_home,
     credits_artist,
+    depth_bar,
     drop_outliers,
+    keep_one_act,
     lead_among_credits,
     lean_toward_strength,
     matches_provider,
@@ -65,11 +69,16 @@ from .filters import (
     sequence_tiered,
     strong_artists,
     tier_of,
+    too_deep,
     weighted_sample,
     without_backing_band,
 )
 from .history import TitleHistory
-from .lastfm import async_get_artist_listeners, async_get_similar_artists
+from .lastfm import (
+    async_get_artist_listeners,
+    async_get_similar_artists,
+    async_get_top_tracks,
+)
 from .ma import (
     NativeClient,
     PlaylistUnsupportedError,
@@ -94,6 +103,16 @@ class PlaylistResult:
     tracks: int = 0
     replaced: int = 0
     error: str = ""
+
+
+@dataclass(slots=True)
+class _Pools:
+    """Each artist's picks for one batch, before they are ordered."""
+
+    artists: list[str] = field(default_factory=list)
+    per_artist: list[list[str]] = field(default_factory=list)
+    title_by_uri: dict[str, str] = field(default_factory=dict)
+    rank: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -176,6 +195,9 @@ class CuratedRadioEngine:
         # Last.fm's similar-artist lists by lower-cased artist, for weighing
         # reseed candidates. Similarity barely moves within a session.
         self._similar: dict[str, list[tuple[str, float]]] = {}
+        # Each artist's best-known songs on Last.fm with their listeners, for
+        # the depth limit. Kept for the life of the entry, like sizes.
+        self._top_tracks: dict[str, list[tuple[str, int]]] = {}
         # Its own generator so reseed choices can be reproduced in tests.
         self._rng = random.Random()
         # Artists that actually contributed to the last batch. A refill
@@ -370,29 +392,25 @@ class CuratedRadioEngine:
         # for weeks. Both are just titles the batch must not contain.
         recent_titles = self._history.current() | self._skips.suppressed_titles
 
-        per_artist: list[list[str]] = []
-        title_by_uri: dict[str, str] = {}
-        # Artists already given a pool. Anything crediting one of them is
-        # theirs, so a later pool cannot smuggle the same act back in.
-        covered: set[str] = set()
-        pool_artists: list[str] = []
-        rank: dict[str, int] = {}
-        for index, artist in enumerate(artists):
-            tracks = await self._async_tracks_for(artist)
-            rank.update(self._rank(tracks, covered))
-            uris, titles = self._select(
-                tracks,
-                current_uri=queue.current_uri,
-                excluded_titles=recent_titles | set(title_by_uri.values()),
-                excluded_uris=already_queued,
-                excluded_artists=covered,
-                limit=self._track_cap(is_seed=index == 0),
-            )
-            covered.add(artist.strip().lower())
-            if uris:
-                pool_artists.append(artist)
-                per_artist.append(uris)
-                title_by_uri.update(zip(uris, titles, strict=True))
+        # How deep into each artist a batch may reach: their A-tracks
+        # always, and past those only songs enough people actually know. A
+        # tight fence refills from the same artists, and without this it
+        # reached a little further down each of them every time round.
+        gather = partial(
+            self._async_pools,
+            artists,
+            current_uri=queue.current_uri,
+            recent_titles=recent_titles,
+            already_queued=already_queued,
+        )
+        bar = depth_bar(await self._async_sizes(artists))
+        pools = await gather(bar=bar)
+        if not pools.per_artist and bar:
+            # Better a deeper song than a station that stops.
+            _LOGGER.debug("Nothing within reach for %s; lifting the depth limit", lead)
+            pools = await gather(bar=0)
+        pool_artists, per_artist = pools.artists, pools.per_artist
+        title_by_uri, rank = pools.title_by_uri, pools.rank
 
         if not per_artist:
             _LOGGER.debug("No usable tracks for %s or any similar artist", lead)
@@ -471,6 +489,79 @@ class CuratedRadioEngine:
             tiers=counts,
             built_at=dt_util.utcnow().isoformat() if enqueued else "",
         )
+
+    async def _async_pools(
+        self,
+        artists: list[str],
+        *,
+        current_uri: str,
+        recent_titles: set[str],
+        already_queued: set[str],
+        bar: int,
+        cache: dict[str, list[TrackInfo]] | None = None,
+        provider: str = "",
+    ) -> _Pools:
+        """Each artist's picks for one batch or playlist round, unordered.
+
+        ``bar`` is the depth limit's listener threshold; zero lifts it.
+        ``provider``, if given, keeps only that provider's tracks.
+        """
+        pools = _Pools()
+        # Artists already given a pool. Anything crediting one of them is
+        # theirs, so a later pool cannot smuggle the same act back in.
+        covered: set[str] = set()
+        known = await self._async_top_tracks(artists) if bar else {}
+        for index, artist in enumerate(artists):
+            tracks = await self._async_tracks_for(artist, cache)
+            artist_rank = self._rank(tracks, covered)
+            pools.rank.update(artist_rank)
+            cap = self._track_cap(is_seed=index == 0)
+            uris, titles = self._select(
+                tracks,
+                current_uri=current_uri,
+                excluded_titles=recent_titles | set(pools.title_by_uri.values()),
+                excluded_uris=already_queued
+                | too_deep(tracks, artist_rank, known.get(artist), bar, cap),
+                excluded_artists=covered,
+                limit=cap,
+            )
+            covered.add(artist.strip().lower())
+            if provider:
+                kept = [
+                    (uri, title)
+                    for uri, title in zip(uris, titles, strict=True)
+                    if matches_provider(uri, provider)
+                ]
+                uris, titles = [u for u, _ in kept], [t for _, t in kept]
+            if uris:
+                pools.artists.append(artist)
+                pools.per_artist.append(uris)
+                pools.title_by_uri.update(zip(uris, titles, strict=True))
+        return pools
+
+    async def _async_top_tracks(
+        self, artists: list[str]
+    ) -> dict[str, list[tuple[str, int]] | None]:
+        """Each artist's best-known songs on Last.fm, cached like sizes.
+
+        A failed lookup caches nothing and comes back as None, which the
+        depth limit reads as "do not cut", so an outage costs nothing.
+        """
+        key = self._settings.lastfm_api_key
+        if not key:
+            return {}
+        wanted = [a for a in artists if a.lower() not in self._top_tracks]
+        if wanted:
+            found = await asyncio.gather(
+                *(
+                    async_get_top_tracks(self._session, key, artist, DEPTH_TOP_TRACKS)
+                    for artist in wanted
+                )
+            )
+            for artist, songs in zip(wanted, found, strict=True):
+                if songs is not None:
+                    self._top_tracks[artist.lower()] = songs
+        return {a: self._top_tracks.get(a.lower()) for a in artists}
 
     def _summarise(
         self,
@@ -800,6 +891,9 @@ class CuratedRadioEngine:
                 _LOGGER.debug("Nothing for %s; trying %s", artist, plain)
                 searched = await self._async_search(plain)
             tracks = searched
+        # One act per name: a namesake that the credit check cannot tell
+        # apart is told apart by its provider ID instead.
+        tracks = keep_one_act(tracks, artist)
         if cache is not None:
             cache[artist] = tracks
         return tracks
@@ -1003,37 +1097,27 @@ class CuratedRadioEngine:
                     pool_from, similar_cache, build_session
                 ),
             ]
-            per_artist: list[list[str]] = []
-            round_pools: list[str] = []
-            round_rank: dict[str, int] = {}
-            covered: set[str] = set()
-            for index, artist in enumerate(round_artists):
-                tracks = await self._async_tracks_for(artist, track_cache)
-                round_rank.update(self._rank(tracks, covered))
-                uris, titles = self._select(
-                    tracks,
-                    current_uri="",
-                    excluded_titles=seen_titles,
-                    excluded_uris=set(ordered),
-                    excluded_artists=covered,
-                    limit=self._track_cap(is_seed=index == 0),
-                )
-                covered.add(artist.strip().lower())
-                if provider:
-                    uris = [u for u in uris if matches_provider(u, provider)]
-                    titles = titles[: len(uris)]
-                if uris:
-                    round_pools.append(artist)
-                    per_artist.append(uris)
-                    seen_titles.update(titles)
-                    if artist not in artists_used:
-                        artists_used.append(artist)
-            if not per_artist:
-                break
-            ordered.extend(
-                await self._async_program(round_pools, per_artist, round_rank)
+            gather = partial(
+                self._async_pools,
+                round_artists,
+                current_uri="",
+                recent_titles=seen_titles,
+                already_queued=set(ordered),
+                cache=track_cache,
+                provider=provider,
             )
-            previous_round = list(round_pools)
+            bar = depth_bar(await self._async_sizes(round_artists))
+            pools = await gather(bar=bar)
+            if not pools.per_artist and bar:
+                pools = await gather(bar=0)
+            if not pools.per_artist:
+                break
+            seen_titles.update(pools.title_by_uri.values())
+            artists_used.extend(a for a in pools.artists if a not in artists_used)
+            ordered.extend(
+                await self._async_program(pools.artists, pools.per_artist, pools.rank)
+            )
+            previous_round = list(pools.artists)
             previous_lead = lead
 
         ordered = ordered[:length]

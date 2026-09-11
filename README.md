@@ -27,8 +27,13 @@ set up. No helpers, no `rest_command`, no YAML.
    neighbour whose whole catalogue is obscure gives a station nothing but
    tracks nobody knows.
 4. Each artist contributes its best-known tracks. Live versions, holiday
-   content, karaoke, commentary and anything played recently are filtered
-   out.
+   content, karaoke, demos, commentary and anything played recently are
+   filtered out. How deep into an artist a station goes depends on how well
+   known each song actually is, from Last.fm's per-song listener counts:
+   every artist's own biggest songs are always allowed, but past those a
+   song has to be known well enough for the station it is on. The Beatles
+   and Michael Jackson are effectively uncapped; a band with three hits
+   plays its three hits, not its album tracks.
 5. Those candidates are then **programmed** rather than shuffled. Each is
    scored by how large its artist is and how far down that artist's own
    ordering it sits, and the batch is filled to a Power, Deep, Secondary

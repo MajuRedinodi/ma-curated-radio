@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import random
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Final
@@ -866,3 +866,105 @@ def lean_toward_strength(
         return candidates[0]
     weights = [max(strengths.get(name, 0), 1) for name in candidates]
     return rng.choices(candidates, weights=weights, k=1)[0]
+
+
+# A second act sharing a name is dropped only when the main one clearly
+# dominates the results. A genuine catalogue split across two provider
+# pages, which happens with reissues, stays whole.
+NAMESAKE_DOMINANCE: Final = 0.6
+
+
+def keep_one_act(tracks: list[Any], wanted: str) -> list[Any]:
+    """Drop tracks by a different artist who merely shares the name.
+
+    A search for .38 Special returned "F2D", from "Demo 2", by a scream
+    metal band that is also called .38 Special. The credit check passed,
+    because the names match exactly, and it played in an hour of arena
+    rock. Names are not unique; the provider's artist ID is.
+
+    Keeps the ID credited on most of the results, which is the act the
+    search is really about, and drops the others only when that ID holds a
+    clear majority. Tracks without IDs are kept, since there is nothing to
+    judge them by.
+    """
+    ids: list[str] = []
+    for track in tracks:
+        match = ""
+        for name, uri in zip(track.artists, track.artist_uris, strict=False):
+            if uri and credits_artist([name], wanted):
+                match = uri
+                break
+        ids.append(match)
+    counts: dict[str, int] = {}
+    for uri in ids:
+        if uri:
+            counts[uri] = counts.get(uri, 0) + 1
+    if len(counts) <= 1:
+        return tracks
+    main, main_count = max(counts.items(), key=lambda item: item[1])
+    if main_count < NAMESAKE_DOMINANCE * sum(counts.values()):
+        return tracks
+    return [t for t, uri in zip(tracks, ids, strict=True) if not uri or uri == main]
+
+
+# The listeners a song past an artist's A-tracks needs, as a share of the
+# station's typical artist audience. On an 80s rock station that is about
+# 45k, which lets REO Speedwagon play eleven songs, down to "Keep Pushin'"
+# and "Back on the Road Again" but not the Hi Infidelity album tracks,
+# Loverboy four, Mr. Mister their two, and leaves the Beatles, Michael
+# Jackson and ABBA effectively uncapped: their fiftieth songs are better
+# known than most bands' first. A tenth was tried first and cut singles.
+DEPTH_BAR_SHARE: Final = 0.05
+
+
+def depth_bar(sizes: Mapping[str, int]) -> int:
+    """The listeners a song beyond an artist's A-tracks must have.
+
+    Relative to the station in front of it, like every other popularity
+    judgement here, so a country station is not held to rock's numbers.
+    Zero, meaning no limit, when no audience is known.
+    """
+    known = sorted(size for size in sizes.values() if size > 0)
+    typical = known[len(known) // 2] if known else 0
+    return int(typical * DEPTH_BAR_SHARE)
+
+
+def too_deep(
+    tracks: list[Any],
+    rank: Mapping[str, int],
+    known: Sequence[tuple[str, int]] | None,
+    bar: int,
+    a_tracks: int,
+) -> set[str]:
+    """The URIs of an artist's songs that are past what this station plays.
+
+    An artist's A-tracks are always allowed: the first ``a_tracks`` of
+    their own ordering, and their ``a_tracks`` biggest songs on Last.fm,
+    since the two do not always agree. Past those a song needs at least
+    ``bar`` Last.fm listeners, and a song Last.fm does not list among the
+    artist's best known is taken to be short of it.
+
+    Nothing is cut when the numbers are missing (``known`` is None or
+    empty, or the bar is zero), because a Last.fm outage should not empty
+    the station.
+
+    This is what stops a tight fence, refilling from the same artists, from
+    reaching further down each of them every time it comes back round.
+    """
+    if not known or bar <= 0:
+        return set()
+    listeners: dict[str, int] = {}
+    for title, count in known:
+        key = base_title(title)
+        listeners[key] = max(count, listeners.get(key, 0))
+    biggest = {base_title(title) for title, _ in known[:a_tracks]}
+    cut: set[str] = set()
+    for track in tracks:
+        position = rank.get(track.uri)
+        if position is None or position < a_tracks:
+            continue
+        title = base_title(track.name)
+        if title in biggest or listeners.get(title, 0) >= bar:
+            continue
+        cut.add(track.uri)
+    return cut

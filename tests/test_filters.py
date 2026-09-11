@@ -14,6 +14,7 @@ from filters import (
     clean_similar_artists,
     close_to_home,
     credits_artist,
+    depth_bar,
     drop_outliers,
     freshness,
     hotness,
@@ -21,6 +22,7 @@ from filters import (
     is_live,
     is_non_song,
     is_too_short,
+    keep_one_act,
     lead_among_credits,
     lean_toward_strength,
     matches_provider,
@@ -30,6 +32,7 @@ from filters import (
     sequence_tiered,
     strong_artists,
     tier_of,
+    too_deep,
     weighted_sample,
 )
 
@@ -737,3 +740,86 @@ def test_a_reseed_leans_toward_the_stronger_neighbourhood():
 
 def test_a_single_candidate_is_simply_chosen():
     assert lean_toward_strength(["Only"], {}, random.Random(1)) == "Only"
+
+
+class _Song:
+    """Just enough of a track for the depth and namesake rules."""
+
+    def __init__(self, uri, name, artists=(), artist_uris=()):
+        self.uri = uri
+        self.name = name
+        self.artists = list(artists)
+        self.artist_uris = list(artist_uris)
+
+
+def test_the_depth_bar_follows_the_station():
+    """A share of the typical artist, so country is not held to rock's numbers."""
+    rock = {"REO Speedwagon": 1_287_000, "Pat Benatar": 1_488_000, "Loverboy": 703_000}
+    assert depth_bar(rock) == 64_350
+    assert depth_bar({"Unknown": 0}) == 0
+
+
+# Shaped like the real Last.fm numbers: the Beatles' tail stays huge, Mr.
+# Mister fall off a cliff after their second song.
+_BEATLES = [
+    ("Here Comes the Sun - Remastered 2009", 1_592_000),
+    ("Let It Be", 1_423_000),
+    ("Blackbird", 914_000),
+    ("Eleanor Rigby", 816_000),
+]
+_MR_MISTER = [("Broken Wings", 576_000), ("Kyrie", 224_000), ("Third Song", 40_000)]
+
+
+def _ranked(titles):
+    songs = [_Song(f"t:{i}", title) for i, title in enumerate(titles)]
+    return songs, {song.uri: i for i, song in enumerate(songs)}
+
+
+def test_a_giant_keeps_its_deep_hits():
+    songs, rank = _ranked(["Here Comes the Sun", "Let It Be", "Blackbird", "Eleanor Rigby"])
+    assert too_deep(songs, rank, _BEATLES, 100_000, 2) == set()
+
+
+def test_a_mid_sized_act_stops_at_its_hits():
+    songs, rank = _ranked(["Broken Wings", "Kyrie", "Third Song", "Uncredited B-side"])
+    assert too_deep(songs, rank, _MR_MISTER, 100_000, 2) == {"t:2", "t:3"}
+
+
+def test_a_tracks_are_always_allowed_even_below_the_bar():
+    """A small act on a big station still gets its own biggest songs."""
+    small = [("Family Tradition", 38_000), ("A Country Boy Can Survive", 32_000)]
+    songs, rank = _ranked(["Born to Boogie", "A Country Boy Can Survive", "Family Tradition"])
+    # The first two by the provider's order, the third by Last.fm's.
+    assert too_deep(songs, rank, small, 100_000, 2) == set()
+
+
+def test_nothing_is_cut_without_numbers():
+    """A Last.fm outage must not empty the station."""
+    songs, rank = _ranked(["One", "Two", "Three"])
+    assert too_deep(songs, rank, None, 100_000, 1) == set()
+    assert too_deep(songs, rank, [], 100_000, 1) == set()
+    assert too_deep(songs, rank, _MR_MISTER, 0, 1) == set()
+
+
+def test_a_namesake_is_left_out():
+    """The .38 Special search that returned a scream metal demo."""
+    real = [
+        _Song(f"r:{i}", f"Hit {i}", [".38 Special"], ["tidal://artist/1"])
+        for i in range(6)
+    ]
+    other = _Song("o:1", "F2D", [".38 Special"], ["tidal://artist/99"])
+    assert keep_one_act([*real, other], ".38 Special") == real
+
+
+def test_an_even_split_is_left_alone():
+    """No clear majority, so there is nothing to say which act was meant."""
+    one = [_Song(f"a:{i}", "A", ["Name"], ["id:1"]) for i in range(3)]
+    two = [_Song(f"b:{i}", "B", ["Name"], ["id:2"]) for i in range(3)]
+    assert keep_one_act([*one, *two], "Name") == [*one, *two]
+
+
+def test_tracks_without_ids_are_kept():
+    songs = [_Song(f"r:{i}", "A", ["Act"], ["id:1"]) for i in range(4)]
+    stray = _Song("s", "B", ["Act"], [])
+    namesake = _Song("n", "C", ["Act"], ["id:2"])
+    assert keep_one_act([*songs, stray, namesake], "Act") == [*songs, stray]

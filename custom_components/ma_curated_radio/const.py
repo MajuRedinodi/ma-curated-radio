@@ -91,6 +91,12 @@ PAIR_LISTENER_RATIO: Final = 1.0
 # changes, so this is not a tuned constant; it only has to fall.
 TIER_DECAY: Final = 0.7
 
+# How many of an artist's best-known songs to fetch from Last.fm for the
+# depth limit. A provider search returns 25, and the Beatles' hundredth song
+# on Last.fm is still well known, so a hundred covers every song a search
+# can offer that could clear the bar.
+DEPTH_TOP_TRACKS: Final = 100
+
 # Drop a neighbour whose audience is below this share of the pool's own
 # median. Christine McVie arrived at 2% of her pool's median and gave a
 # Fleetwood Mac station three tracks nobody knew; across four observed

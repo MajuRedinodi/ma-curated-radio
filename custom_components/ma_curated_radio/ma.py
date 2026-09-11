@@ -101,6 +101,10 @@ class TrackInfo:
     duration: int = 0
     explicit: bool = False
     artists: list[str] = field(default_factory=list)
+    # Provider IDs for the credited artists, aligned with ``artists``. Names
+    # are not unique: a search for .38 Special also returned a scream-metal
+    # band of the same name, and only the ID tells them apart.
+    artist_uris: list[str] = field(default_factory=list)
     popularity: int = 0
     released: datetime | None = None
 
@@ -115,6 +119,7 @@ class TrackInfo:
             duration=int(field_of(item, "duration", 0) or 0),
             explicit=_explicit(item),
             artists=_artist_names(item),
+            artist_uris=_artist_uris(item),
             popularity=_popularity(item),
             released=_released(item),
         )
@@ -152,6 +157,15 @@ def _artist_names(media_item: Any) -> list[str]:
         if name:
             names.append(name)
     return names
+
+
+def _artist_uris(media_item: Any) -> list[str]:
+    """Provider IDs of the credited artists, aligned with their names."""
+    return [
+        text_of(artist, "uri")
+        for artist in field_of(media_item, "artists", []) or []
+        if text_of(artist, "name")
+    ]
 
 
 async def async_get_queue(hass: HomeAssistant, player: str) -> QueueSnapshot | None:
