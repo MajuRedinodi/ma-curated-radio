@@ -24,7 +24,7 @@ from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.util import dt as dt_util
 
 from .const import MODE_REFILL, MODE_REPLACE, SKIP_GRACE_SECONDS
-from .decide import Decision, QueueFacts, decide, is_transitional
+from .decide import Decision, QueueFacts, decide, is_transitional, track_started
 from .engine import CuratedRadioEngine
 from .feedback import PlaybackSnapshot, SkipMemory
 from .filters import base_title
@@ -77,6 +77,10 @@ class CuratedRadioDetector:
         self._last_manual_pick: datetime | None = None
         self._queue_items: int | None = None
         self._task: asyncio.Task[None] | None = None
+        # The track last heard playing. Track changes are judged against
+        # this rather than against the update before, because some players
+        # change the track and start playing it in two separate updates.
+        self._playing_track: str | None = None
 
     def apply_settings(self, settings: Settings) -> None:
         """Adopt changed settings without rebuilding the detector."""
@@ -107,6 +111,10 @@ class CuratedRadioDetector:
 
     def async_start(self) -> CALLBACK_TYPE:
         """Begin watching the player. Returns the unsubscribe callback."""
+        # Whatever the player holds now, paused or not, is not a change.
+        # Otherwise resuming after a restart would read as a pick.
+        if (current := self._hass.states.get(self._settings.player)) is not None:
+            self._playing_track = current.attributes.get("media_content_id")
         unsub = async_track_state_change_event(
             self._hass, [self._settings.player], self._handle_state_event
         )
@@ -124,12 +132,12 @@ class CuratedRadioDetector:
         """Queue up a decision when the playing track actually changes."""
         new_state = event.data["new_state"]
         old_state = event.data["old_state"]
-        if new_state is None or new_state.state != "playing":
+        if new_state is None:
             return
         new_track = new_state.attributes.get("media_content_id")
-        old_track = old_state.attributes.get("media_content_id") if old_state else None
-        if new_track == old_track:
+        if not track_started(new_state.state, new_track, self._playing_track):
             return
+        self._playing_track = new_track
         if not self._settings.enabled:
             # Switched off. Still worth following the queue so that turning
             # it back on does not read the next track as a manual pick.

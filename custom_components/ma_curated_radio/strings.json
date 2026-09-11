@@ -151,6 +151,9 @@
       "muted_artists": {
         "name": "Muted artists"
       },
+      "last_batch_built": {
+        "name": "Last batch built"
+      },
       "last_batch": {
         "name": "Last batch seed"
       },

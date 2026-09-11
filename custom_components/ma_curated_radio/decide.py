@@ -101,6 +101,21 @@ def is_transitional(queue: QueueFacts) -> bool:
     return not queue.current_uri
 
 
+def track_started(state: str, track: str | None, last_playing: str | None) -> bool:
+    """True when a player is playing a different track from the last one heard.
+
+    Compared against the last track seen *playing*, not against whatever
+    the previous update said. The phone player reports a pick in two
+    steps: the new track arrives on an update that still says idle, and
+    playing follows on a second update with the track unchanged. Compared
+    update to update, the first was not playing and the second changed
+    nothing, so a pick of "Rock You Like a Hurricane" from the car built
+    no station at all. A pause and resume of the same song is still no
+    change.
+    """
+    return state == "playing" and track != last_playing
+
+
 def decide(
     queue: QueueFacts,
     *,

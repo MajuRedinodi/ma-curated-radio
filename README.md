@@ -231,11 +231,14 @@ views:
             entity: sensor.family_room_stereo_last_batch_seed
             name: Last batch seed
             color: purple
-            # last_updated, not last_changed: a refill led by the same
-            # artist leaves the state unchanged, so last_changed would keep
-            # showing when the station started rather than its latest batch.
-            state_content: [state, last_updated]
-            grid_options: {columns: full}
+            grid_options: {columns: 6}
+          - type: tile
+            # Its own sensor rather than the seed's last_updated, which a
+            # Home Assistant restart resets to the time of the restart.
+            entity: sensor.family_room_stereo_last_batch_built
+            name: Built
+            color: purple
+            grid_options: {columns: 6}
 
           - type: heading
             heading: Tuning · per station style

@@ -31,6 +31,7 @@ async def async_setup_entry(
         [
             MutedArtistsSensor(entry),
             LastBatchSensor(entry),
+            LastBatchBuiltSensor(entry),
             LastManualPickSensor(entry),
             VersionSensor(entry, str(integration.version)),
         ]
@@ -116,6 +117,33 @@ class LastBatchSensor(CuratedRadioEntity, SensorEntity):
             # timestamps restart with Home Assistant; this does not.
             "built_at": result.built_at or None,
         }
+
+
+class LastBatchBuiltSensor(CuratedRadioEntity, SensorEntity):
+    """When the last batch was actually built.
+
+    A dashboard showing the Last batch seed's own timestamp reported the
+    last restart instead: Home Assistant resets every entity's last-updated
+    time when it starts, so a batch built at 9:36 read as 10:03 after an
+    update was installed. This comes from the batch itself, which is kept
+    on disk, so it survives a restart.
+    """
+
+    _attr_translation_key = "last_batch_built"
+    _attr_icon = "mdi:playlist-clock"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+
+    def __init__(self, entry: MaCuratedRadioConfigEntry) -> None:
+        """Bind to the engine's last result."""
+        super().__init__(entry, "last_batch_built")
+
+    @property
+    def native_value(self) -> datetime | None:
+        """Build time of the most recent batch that queued anything."""
+        result = self.runtime.engine.last_batch
+        if result is None or not result.built_at:
+            return None
+        return dt_util.parse_datetime(result.built_at)
 
 
 class LastManualPickSensor(CuratedRadioEntity, RestoreEntity, SensorEntity):

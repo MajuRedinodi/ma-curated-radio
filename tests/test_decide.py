@@ -13,6 +13,7 @@ from decide import (
     is_bulk_load,
     is_transitional,
     leading_pool,
+    track_started,
 )
 
 # A pick lands on a track the integration did not queue, breaking the
@@ -194,3 +195,27 @@ def test_a_queue_between_tracks_does_not_refill_either():
 def test_only_a_blank_reading_is_transitional():
     assert is_transitional(BLANK)
     assert not is_transitional(PICK)
+
+
+def test_a_pick_reported_in_two_steps_is_still_a_pick():
+    """The phone player: new track while idle, then playing, same track.
+
+    Compared update to update, neither step looked like a change, and a pick
+    of "Rock You Like a Hurricane" from the car built no station.
+    """
+    last_playing = "track/long-long-time"
+    # Step one, idle with the new track: not playing, so nothing yet.
+    assert not track_started("idle", "track/hurricane", last_playing)
+    # Step two, playing with the same new track: judged against what was
+    # last heard playing, so it is a change.
+    assert track_started("playing", "track/hurricane", last_playing)
+
+
+def test_pause_and_resume_is_not_a_change():
+    assert not track_started("playing", "track/a", "track/a")
+
+
+def test_a_player_flapping_between_idle_and_playing_is_not_a_change():
+    """Seen as the phone connected to the car: same song, four state flips."""
+    for state in ("playing", "idle", "playing", "idle", "playing"):
+        assert not track_started(state, "track/a", "track/a")
