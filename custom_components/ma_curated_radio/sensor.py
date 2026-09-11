@@ -112,6 +112,9 @@ class LastBatchSensor(CuratedRadioEntity, SensorEntity):
             "reach_median": result.reach_median,
             "reach_low": result.reach_low,
             "tiers": result.tiers,
+            # The real time the batch was built. The sensor's own
+            # timestamps restart with Home Assistant; this does not.
+            "built_at": result.built_at or None,
         }
 
 

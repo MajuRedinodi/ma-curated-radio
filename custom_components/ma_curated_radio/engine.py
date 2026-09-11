@@ -11,7 +11,7 @@ import asyncio
 import logging
 import random
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from typing import Any
 
 import aiohttp
@@ -118,6 +118,10 @@ class BatchResult:
     reach_median: int = 0
     reach_low: int = 0
     tiers: dict[str, int] = field(default_factory=dict)
+    # When the batch was queued, as ISO time. Kept because the sensor's own
+    # timestamps restart with Home Assistant, and a restored batch would
+    # otherwise look as though it had just been built.
+    built_at: str = ""
 
     @property
     def ran(self) -> bool:
@@ -212,6 +216,17 @@ class CuratedRadioEngine:
         self._alias = dict(data.get("alias") or {})
         self._lead_override = dict(data.get("lead_override") or {})
         self._history.restore(data.get("history"))
+        # The last batch too, so the dashboard shows the station that is
+        # playing rather than "Unknown" until the next refill.
+        saved_batch = data.get("last_batch")
+        if isinstance(saved_batch, dict):
+            known = {f.name for f in fields(BatchResult)}
+            try:
+                self._last_batch = BatchResult(
+                    **{k: v for k, v in saved_batch.items() if k in known}
+                )
+            except TypeError:
+                self._last_batch = None
         if self._listening.active:
             _LOGGER.debug(
                 "Resumed the station anchored to %s, last led by %s",
@@ -229,6 +244,7 @@ class CuratedRadioEngine:
                 "alias": self._alias,
                 "lead_override": self._lead_override,
                 "history": self._history.as_list(),
+                "last_batch": asdict(self._last_batch) if self._last_batch else None,
             },
             STATION_SAVE_DELAY,
         )
@@ -453,6 +469,7 @@ class CuratedRadioEngine:
             reach_median=reach_median,
             reach_low=reach_low,
             tiers=counts,
+            built_at=dt_util.utcnow().isoformat() if enqueued else "",
         )
 
     def _summarise(
