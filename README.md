@@ -452,10 +452,48 @@ the name shown on the dashboard or by its stored key.
 
 ## Taking it with you
 
-Home Assistant cannot reach a car stereo, and Android Auto only runs apps
-that implement Android's own media API, so this integration can never
-appear there. What it can do is put the same music somewhere that already
-has a car app.
+Two ways, and the first one is live: the station builds as you drive,
+exactly as it does at home.
+
+### The live way: your phone as a player
+
+Music Assistant's mobile app carries a player of its own, and Android Auto
+can drive it. Point this integration at that player and the car gets the
+real thing, refills and all.
+
+1. **Expose the phone's player to Home Assistant** in Music Assistant's
+   player settings, so it appears as a `media_player` entity.
+2. **Give it its own entry** of this integration, pointed at that entity.
+   Each player keeps its own station, settings and skip memory, so the car
+   and the living room never interfere with each other.
+3. **Turn off Autoplay** on that player in Music Assistant. Autoplay fires
+   when the queue reaches its last track, which a one-song pick does
+   immediately, so Music Assistant would start its own radio before this
+   integration ever sees the pick.
+4. **Turn on Music Assistant's Remote Access** if you want this away from
+   home, so the phone can still reach the server on mobile data. No VPN
+   needed, and a VPN is worth avoiding here since it tends to upset Android
+   Auto.
+5. **Enable the app's local player** before connecting to the car, or Music
+   Assistant does not appear in Android Auto at all.
+
+**How to pick a song while driving.** Say "Hey Google, play [song] on Music
+Assistant" and nothing happens: Gemini hands music requests only to
+Google's partner apps, and the classic Google Assistant that did support
+this is being retired. What works is the Music Assistant app's own search
+button in Android Auto, with the car's voice input to dictate the song.
+Android Auto blocks typing while driving but allows dictation, so this is
+the sanctioned route. Pick the song, and the station builds behind it a few
+seconds later.
+
+Name a **song**, not an artist. A song is a pick and starts a station. An
+artist queues that artist's catalogue, which looks like a bulk load, and
+this integration deliberately stands aside for those.
+
+### The offline way: a playlist
+
+For somewhere with no connection at all, or a car app that only knows
+playlists.
 
 ```yaml
 action: ma_curated_radio.build_playlist
