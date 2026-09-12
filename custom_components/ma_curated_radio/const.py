@@ -218,6 +218,11 @@ DEFAULT_ARTIST_STRIKE_LIMIT: Final = 3
 # skip, tight enough that bailing out of the last chorus does.
 SKIP_GRACE_SECONDS: Final = 15.0
 
+# Skips this close together are somebody hunting through the queue, not a
+# verdict on any of the songs passed over. Two of them at 1am, from a house
+# full of kids, suppressed two songs for a month.
+SKIP_BURST_SECONDS: Final = 30.0
+
 # --- Entities ----------------------------------------------------------------
 
 CONF_ENABLED: Final = "enabled"

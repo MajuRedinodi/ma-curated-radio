@@ -116,6 +116,17 @@ def track_started(state: str, track: str | None, last_playing: str | None) -> bo
     return state == "playing" and track != last_playing
 
 
+def is_hunting(since_last_skip: float | None, window: float) -> bool:
+    """True when a skip is part of a run rather than a verdict on one song.
+
+    Somebody holding the next button skips songs they never heard. Two of
+    those at one in the morning, from a house full of kids, suppressed two
+    songs for a month each. ``None`` means no skip has been seen yet, which
+    cannot be a run.
+    """
+    return since_last_skip is not None and since_last_skip < window
+
+
 def decide(
     queue: QueueFacts,
     *,

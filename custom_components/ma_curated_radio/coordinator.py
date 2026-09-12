@@ -23,8 +23,20 @@ from homeassistant.core import (
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.util import dt as dt_util
 
-from .const import MODE_REFILL, MODE_REPLACE, SKIP_GRACE_SECONDS
-from .decide import Decision, QueueFacts, decide, is_transitional, track_started
+from .const import (
+    MODE_REFILL,
+    MODE_REPLACE,
+    SKIP_BURST_SECONDS,
+    SKIP_GRACE_SECONDS,
+)
+from .decide import (
+    Decision,
+    QueueFacts,
+    decide,
+    is_hunting,
+    is_transitional,
+    track_started,
+)
 from .engine import CuratedRadioEngine
 from .feedback import PlaybackSnapshot, SkipMemory
 from .filters import base_title
@@ -81,6 +93,11 @@ class CuratedRadioDetector:
         # this rather than against the update before, because some players
         # change the track and start playing it in two separate updates.
         self._playing_track: str | None = None
+        # A skip waiting to be confirmed by the next song playing through,
+        # and when the last one arrived, so a run of them can be told from
+        # a verdict on one song.
+        self._pending_skip: PlaybackSnapshot | None = None
+        self._last_skip_at: datetime | None = None
 
     def apply_settings(self, settings: Settings) -> None:
         """Adopt changed settings without rebuilding the detector."""
@@ -212,11 +229,43 @@ class CuratedRadioDetector:
             _LOGGER.exception("Curated radio batch failed while handling a track change")
 
     async def _async_record_feedback(self, outgoing: PlaybackSnapshot | None) -> None:
-        """Record whether the track that just ended was skipped."""
+        """Record whether the track that just ended was skipped.
+
+        A skip is a verdict on one song, but somebody hunting through the
+        queue produces a run of them that says nothing about any of the
+        songs passed over. Observed at one in the morning with a house full
+        of kids: two songs were suppressed for a month by somebody holding
+        the next button. So a skip is held back until a song is allowed to
+        play, and a second skip arriving first throws both away.
+        """
         if outgoing is None:
             return
         if not outgoing.was_skipped(SKIP_GRACE_SECONDS):
+            await self._async_commit_skip()
             await self._skips.async_record_played()
+            return
+
+        now = dt_util.utcnow()
+        since = (
+            None
+            if self._last_skip_at is None
+            else (now - self._last_skip_at).total_seconds()
+        )
+        self._last_skip_at = now
+        if is_hunting(since, SKIP_BURST_SECONDS):
+            _LOGGER.debug(
+                "Ignoring %s: skipped seconds after the last skip, so somebody "
+                "is hunting rather than judging",
+                outgoing.title,
+            )
+            self._pending_skip = None
+            return
+        self._pending_skip = outgoing
+
+    async def _async_commit_skip(self) -> None:
+        """Record the skip that has been waiting to be confirmed."""
+        outgoing, self._pending_skip = self._pending_skip, None
+        if outgoing is None:
             return
 
         _LOGGER.debug(

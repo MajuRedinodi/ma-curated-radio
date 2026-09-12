@@ -540,10 +540,14 @@ Two consequences, deliberately different in weight:
   in a row means that artist is wrong for this room. A single track played
   through resets the run.
 
-Two things it deliberately does not treat as a skip. Jumping to a different
-song by hand is a choice about where to go, not a verdict on what was
-playing. And the artist you pick yourself is never muted, however much of
-theirs you skip, because you asked for them.
+Three things it deliberately does not treat as a skip. Jumping to a
+different song by hand is a choice about where to go, not a verdict on what
+was playing. The artist you pick yourself is never muted, however much of
+theirs you skip, because you asked for them. And a run of skips seconds
+apart is somebody hunting through the queue rather than judging it: a skip
+is held back until a song is allowed to play, and another skip arriving
+first throws both away. Observed at one in the morning with a house full of
+kids, where holding the next button suppressed two songs for a month.
 
 This is the one piece of state that survives a restart, since feedback that
 evaporates is not feedback.

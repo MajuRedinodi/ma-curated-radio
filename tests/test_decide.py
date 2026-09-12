@@ -11,6 +11,7 @@ from decide import (
     QueueFacts,
     decide,
     is_bulk_load,
+    is_hunting,
     is_transitional,
     leading_pool,
     track_started,
@@ -219,3 +220,15 @@ def test_a_player_flapping_between_idle_and_playing_is_not_a_change():
     """Seen as the phone connected to the car: same song, four state flips."""
     for state in ("playing", "idle", "playing", "idle", "playing"):
         assert not track_started(state, "track/a", "track/a")
+
+
+def test_a_lone_skip_is_a_verdict():
+    """Nothing skipped before it, and nothing else close behind."""
+    assert not is_hunting(None, 30.0)
+    assert not is_hunting(600.0, 30.0)
+
+
+def test_skips_seconds_apart_are_somebody_hunting():
+    """Kids at 1am, holding next: neither song was ever heard."""
+    assert is_hunting(11.0, 30.0)
+    assert is_hunting(0.5, 30.0)
