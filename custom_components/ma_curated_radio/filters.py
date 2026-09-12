@@ -31,6 +31,22 @@ LIVE_MARKERS: Final = (
     "unplugged",
 )
 
+# Words that mark a reworking rather than the record people mean, judged
+# the same way as live versions.
+REMIX_MARKERS: Final = ("remix", "rmx")
+
+# Club and dance reworkings, which are remixes under another name. "Mix"
+# alone is useless: half the catalogue is an "Album Mix" or a "Single Mix"
+# of the record everybody knows.
+REMIX_PHRASES: Final = (
+    "club mix",
+    "dance mix",
+    "extended mix",
+    "dub mix",
+    "house mix",
+    "12\" mix",
+)
+
 # Holiday content, checked as substrings against title, version and
 # album together.
 #
@@ -172,8 +188,16 @@ def base_title(name: str) -> str:
     The last two are for classical, where the same piece arrives as
     "Hungarian Dance No 5" and "Hungarian Dance No. 5, Allegro molto".
     Both reached one queue together.
+
+    Also truncated at " / ", for the medley titles a provider gives the
+    same record under. Chicago's "Hard to Say I'm Sorry / Get Away" and
+    "Hard to Say I'm Sorry" are one song, and both played in one batch.
     """
-    title = name.split(" - ", maxsplit=1)[0].split("(", maxsplit=1)[0]
+    title = (
+        name.split(" - ", maxsplit=1)[0]
+        .split(" / ", maxsplit=1)[0]
+        .split("(", maxsplit=1)[0]
+    )
     head, sep, tail = title.rpartition(",")
     if sep and tail.strip().lower().startswith(TEMPO_MARKINGS):
         title = head
@@ -193,6 +217,27 @@ def is_demo(name: str, version: str, album: str) -> bool:
     text = " ".join((name, version, album)).lower()
     words = set(_WORDS.split(text))
     return bool(words & {"demo", "demos"}) or "rough mix" in text
+
+
+def is_remix(name: str, version: str) -> bool:
+    """Return True for remixes and club mixes.
+
+    Off by default, because a remix is sometimes the version people know.
+    On, it is for a station whose era the remix is not from: Elton John and
+    Dua Lipa's "Cold Heart" arrived in an hour of seventies rock, which is
+    right for the artist and wrong for everything around it.
+
+    Whole words in the title, substrings in the version field, the same way
+    live versions are judged.
+    """
+    haystack = version.lower()
+    words = set(_WORDS.split(name.lower()))
+    if bool(words & {"remix", "rmx", "remixes"}) or any(
+        marker in haystack for marker in REMIX_MARKERS
+    ):
+        return True
+    text = f"{name} {version}".lower()
+    return any(phrase in text for phrase in REMIX_PHRASES)
 
 
 def is_live(name: str, version: str) -> bool:
@@ -494,6 +539,7 @@ class SelectionRules:
     clean_only: bool = False
     prefer_explicit: bool = False
     skip_live: bool = True
+    skip_remix: bool = False
     skip_holiday: bool = True
     fresh_days: int = 0
 
@@ -502,7 +548,7 @@ def select_fresh_first(
     tracks: list[Any],
     rules: SelectionRules,
     *,
-    heard: set[str],
+    heard: Mapping[str, float],
     current_uri: str = "",
     excluded_titles: set[str] | None = None,
     excluded_uris: set[str] | None = None,
@@ -520,7 +566,8 @@ def select_fresh_first(
 
     Both passes apply every other rule, the depth limit included, so a
     shortage of fresh songs is made up with a hit heard earlier rather than
-    with a deeper cut nobody heard at all.
+    with a deeper cut nobody heard at all. ``heard`` maps each title to
+    when it was last heard, and the one heard longest ago comes back first.
     """
     titles_out = set(excluded_titles or ())
     uris_out = set(excluded_uris or ())
@@ -528,7 +575,7 @@ def select_fresh_first(
         tracks,
         rules,
         current_uri=current_uri,
-        excluded_titles=titles_out | heard,
+        excluded_titles=titles_out | set(heard),
         excluded_uris=set(uris_out),
         excluded_artists=excluded_artists,
         limit=limit,
@@ -536,17 +583,22 @@ def select_fresh_first(
     )
     if not limit or len(fresh) >= limit:
         return fresh, fresh_titles
-    again, again_titles = select_tracks(
+    rest, rest_titles = select_tracks(
         tracks,
         rules,
         current_uri=current_uri,
         excluded_titles=titles_out | set(fresh_titles),
         excluded_uris=uris_out | set(fresh),
         excluded_artists=excluded_artists,
-        limit=limit - len(fresh),
+        limit=0,
         now=now,
     )
-    return fresh + again, fresh_titles + again_titles
+    oldest = sorted(range(len(rest)), key=lambda i: heard.get(rest_titles[i], 0.0))
+    wanted = sorted(oldest[: limit - len(fresh)])
+    return (
+        fresh + [rest[i] for i in wanted],
+        fresh_titles + [rest_titles[i] for i in wanted],
+    )
 
 
 def select_tracks(
@@ -610,7 +662,10 @@ def select_tracks(
             track.name, track.version, track.album
         ):
             continue
-        if rules.skip_live and is_live(track.name, track.version):
+        # Versions of the song that are not the song people mean.
+        if (rules.skip_live and is_live(track.name, track.version)) or (
+            rules.skip_remix and is_remix(track.name, track.version)
+        ):
             continue
         if rules.skip_holiday and is_holiday(track.name, track.version, track.album):
             continue

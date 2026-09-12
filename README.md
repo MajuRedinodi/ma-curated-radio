@@ -132,6 +132,7 @@ whichever style is selected, so tuning one cannot quietly retune another.
 | Provider filter | Comma-separated provider prefixes to restrict tracks to, e.g. `tidal`. Empty allows every provider. |
 | Explicit content [no preference] | **Clean only** drops anything flagged explicit, for when younger ears are in the room. **Prefer explicit** puts the original ahead of the radio edit. |
 | Skip live recordings [on] | Live versions rank high in popularity searches and rarely suit background listening. |
+| Skip remixes [off] | Drops remixes and club mixes. Off by default, since a remix is sometimes the version people know. Worth turning on for a station whose era the remixes are not from: an hour of seventies rock does not want a 2021 dance remix, however big it is. |
 | Skip holiday tracks [on] | A popularity ranking will surface an artist's Christmas album in September. |
 | Use catalogue order instead of search [off] | Leave it off. Music Assistant returns an artist's track catalogue rather than a popularity ranking, so turning this on fills batches with album tracks and misses the hits. |
 

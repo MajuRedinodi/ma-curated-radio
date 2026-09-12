@@ -47,6 +47,7 @@
           "cooldown_seconds": "Cooldown window (seconds)",
           "provider_filter": "Provider filter",
           "filter_live": "Skip live recordings",
+          "filter_remix": "Skip remixes",
           "filter_holiday": "Skip holiday tracks",
           "use_native_top_tracks": "Use catalogue order instead of search"
         },
@@ -71,6 +72,7 @@
           "cooldown_seconds": "How long after that routine runs to skip detection entirely.",
           "provider_filter": "Comma-separated provider prefixes to restrict tracks to, for example tidal. Leave empty to allow every provider.",
           "filter_live": "Drop live versions, which rank high in popularity searches but rarely suit background listening.",
+          "filter_remix": "Drop remixes and club mixes. Off by default, since a remix is sometimes the version people know. Worth turning on for a station whose era the remixes are not from.",
           "filter_holiday": "Drop Christmas and other holiday content, which a popularity ranking will surface year round.",
           "use_native_top_tracks": "Off by default, and worth leaving off. Music Assistant returns an artist's track catalogue rather than a popularity ranking, so this fills batches with album tracks and misses the hits. Relevance-ranked search picks the well-known songs."
         }
@@ -84,6 +86,9 @@
       },
       "filter_live": {
         "name": "Skip live recordings"
+      },
+      "filter_remix": {
+        "name": "Skip remixes"
       },
       "filter_holiday": {
         "name": "Skip holiday tracks"

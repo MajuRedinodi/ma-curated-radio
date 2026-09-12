@@ -200,18 +200,69 @@ _HENLEY = [
 
 def test_songs_heard_today_wait_while_the_artist_has_fresh_ones():
     """The 11:08 refill that replayed the first hour."""
-    heard = {"the boys of summer", "dirty laundry"}
+    heard = {"the boys of summer": 100.0, "dirty laundry": 200.0}
     assert fresh(_HENLEY, heard, limit=2) == ["t3", "t4"]
 
 
 def test_heard_songs_fill_in_when_nothing_fresh_is_left():
     """Better a song from this morning than an artist with no pool."""
-    heard = {"the boys of summer", "dirty laundry", "the end of the innocence"}
+    heard = {
+        "the boys of summer": 100.0,
+        "dirty laundry": 200.0,
+        "the end of the innocence": 300.0,
+    }
     assert fresh(_HENLEY, heard, limit=2) == ["t4", "t1"]
 
 
 def test_the_repeat_window_still_wins_over_heard():
     """Inside the short window a song is not played at all."""
-    heard = {"the boys of summer", "dirty laundry", "the end of the innocence"}
+    heard = {
+        "the boys of summer": 100.0,
+        "dirty laundry": 200.0,
+        "the end of the innocence": 300.0,
+    }
     chosen = fresh(_HENLEY, heard, limit=2, excluded_titles={"the boys of summer"})
     assert chosen == ["t4", "t2"]
+
+
+def test_repeats_start_with_whatever_was_heard_longest_ago():
+    """Not with the biggest song, which played four times in one day."""
+    heard = {
+        "the boys of summer": 400.0,
+        "dirty laundry": 100.0,
+        "the end of the innocence": 200.0,
+        "all she wants to do is dance": 300.0,
+    }
+    assert fresh(_HENLEY, heard, limit=2) == ["t2", "t3"]
+
+
+def test_a_medley_title_is_the_same_song():
+    """Chicago's "Hard to Say I'm Sorry / Get Away", twice in one batch."""
+    tracks = [
+        Track("t1", "Hard to Say I'm Sorry / Get Away"),
+        Track("t2", "Hard to Say I'm Sorry"),
+    ]
+    assert uris(tracks) == ["t1"]
+
+
+def test_remixes_are_kept_unless_asked_otherwise():
+    """A remix is sometimes the version people know."""
+    tracks = [Track("t1", "Cold Heart", version="PNAU Remix")]
+    assert uris(tracks) == ["t1"]
+
+
+def test_remixes_are_skipped_when_the_switch_is_on():
+    rules = SelectionRules(skip_remix=True)
+    tracks = [
+        Track("t1", "Cold Heart", version="PNAU Remix"),
+        Track("t2", "Blue Monday (Club Mix)"),
+        Track("t3", "Sacrifice"),
+    ]
+    assert uris(tracks, rules) == ["t3"]
+
+
+def test_an_ordinary_mix_is_not_a_remix():
+    """Half the catalogue is an album or single mix of the known record."""
+    rules = SelectionRules(skip_remix=True)
+    tracks = [Track("t1", "Renegade", version="Album Mix")]
+    assert uris(tracks, rules) == ["t1"]

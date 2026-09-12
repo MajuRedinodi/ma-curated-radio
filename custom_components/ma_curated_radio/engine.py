@@ -11,6 +11,7 @@ import asyncio
 import logging
 import random
 from collections import deque
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field, fields
 from functools import partial
 from typing import Any
@@ -503,7 +504,7 @@ class CuratedRadioEngine:
         bar: int,
         cache: dict[str, list[TrackInfo]] | None = None,
         provider: str = "",
-        heard: set[str] | None = None,
+        heard: Mapping[str, float] | None = None,
     ) -> _Pools:
         """Each artist's picks for one batch or playlist round, unordered.
 
@@ -956,6 +957,7 @@ class CuratedRadioEngine:
             clean_only=settings.explicit == EXPLICIT_CLEAN,
             prefer_explicit=settings.explicit == EXPLICIT_PREFER,
             skip_live=settings.filter_live,
+            skip_remix=settings.filter_remix,
             skip_holiday=settings.filter_holiday,
             fresh_days=settings.fresh_days,
         )
@@ -969,7 +971,7 @@ class CuratedRadioEngine:
         excluded_uris: set[str],
         excluded_artists: set[str],
         limit: int,
-        heard: set[str] | None = None,
+        heard: Mapping[str, float] | None = None,
     ) -> tuple[list[str], list[str]]:
         """Filter one artist's tracks down to this batch's picks.
 

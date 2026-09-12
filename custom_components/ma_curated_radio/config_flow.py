@@ -26,6 +26,7 @@ from .const import (
     CONF_FAMILIARITY,
     CONF_FILTER_HOLIDAY,
     CONF_FILTER_LIVE,
+    CONF_FILTER_REMIX,
     CONF_FRESH_DAYS,
     CONF_HISTORY_MINUTES,
     CONF_LASTFM_API_KEY,
@@ -50,6 +51,7 @@ from .const import (
     DEFAULT_FAMILIARITY,
     DEFAULT_FILTER_HOLIDAY,
     DEFAULT_FILTER_LIVE,
+    DEFAULT_FILTER_REMIX,
     DEFAULT_FRESH_DAYS,
     DEFAULT_HISTORY_MINUTES,
     DEFAULT_MAX_ARTISTS,
@@ -203,6 +205,10 @@ def _options_schema(current: dict[str, Any]) -> vol.Schema:
             vol.Required(
                 CONF_FILTER_LIVE,
                 default=value(CONF_FILTER_LIVE, DEFAULT_FILTER_LIVE),
+            ): selector.BooleanSelector(),
+            vol.Required(
+                CONF_FILTER_REMIX,
+                default=value(CONF_FILTER_REMIX, DEFAULT_FILTER_REMIX),
             ): selector.BooleanSelector(),
             vol.Required(
                 CONF_FILTER_HOLIDAY,

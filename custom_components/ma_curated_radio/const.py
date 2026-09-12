@@ -25,6 +25,7 @@ CONF_COOLDOWN_ENTITY: Final = "cooldown_entity"
 CONF_COOLDOWN_SECONDS: Final = "cooldown_seconds"
 CONF_PROVIDER_FILTER: Final = "provider_filter"
 CONF_FILTER_LIVE: Final = "filter_live"
+CONF_FILTER_REMIX: Final = "filter_remix"
 CONF_FILTER_HOLIDAY: Final = "filter_holiday"
 CONF_USE_NATIVE_TOP_TRACKS: Final = "use_native_top_tracks"
 
@@ -44,6 +45,10 @@ DEFAULT_SETTLE_SECONDS: Final = 3
 DEFAULT_COOLDOWN_SECONDS: Final = 120
 DEFAULT_PROVIDER_FILTER: Final = ""
 DEFAULT_FILTER_LIVE: Final = True
+# Off by default: a remix is sometimes the version people know, and the one
+# that jarred (Elton John and Dua Lipa's "Cold Heart" in an hour of 70s rock)
+# is the only version of that song there is.
+DEFAULT_FILTER_REMIX: Final = False
 DEFAULT_FILTER_HOLIDAY: Final = True
 # Off by default, and the name is a trap. Music Assistant's
 # get_artist_tracks returns an artist's track CATALOGUE, not a popularity

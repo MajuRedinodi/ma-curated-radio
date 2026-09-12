@@ -14,9 +14,11 @@ from .const import (
     CONF_ENABLED,
     CONF_FILTER_HOLIDAY,
     CONF_FILTER_LIVE,
+    CONF_FILTER_REMIX,
     DEFAULT_ENABLED,
     DEFAULT_FILTER_HOLIDAY,
     DEFAULT_FILTER_LIVE,
+    DEFAULT_FILTER_REMIX,
 )
 from .entity import CuratedRadioEntity
 
@@ -46,6 +48,13 @@ SWITCHES: tuple[CuratedRadioSwitchDescription, ...] = (
         entity_category=EntityCategory.CONFIG,
         option_key=CONF_FILTER_LIVE,
         default=DEFAULT_FILTER_LIVE,
+    ),
+    CuratedRadioSwitchDescription(
+        key="filter_remix",
+        translation_key="filter_remix",
+        entity_category=EntityCategory.CONFIG,
+        option_key=CONF_FILTER_REMIX,
+        default=DEFAULT_FILTER_REMIX,
     ),
     CuratedRadioSwitchDescription(
         key="filter_holiday",

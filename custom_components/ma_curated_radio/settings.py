@@ -19,6 +19,7 @@ from .const import (
     CONF_FAMILIARITY,
     CONF_FILTER_HOLIDAY,
     CONF_FILTER_LIVE,
+    CONF_FILTER_REMIX,
     CONF_FRESH_DAYS,
     CONF_HISTORY_MINUTES,
     CONF_LASTFM_API_KEY,
@@ -45,6 +46,7 @@ from .const import (
     DEFAULT_FAMILIARITY,
     DEFAULT_FILTER_HOLIDAY,
     DEFAULT_FILTER_LIVE,
+    DEFAULT_FILTER_REMIX,
     DEFAULT_FRESH_DAYS,
     DEFAULT_HISTORY_MINUTES,
     DEFAULT_MAX_CONSECUTIVE,
@@ -84,6 +86,7 @@ class Settings:
     cooldown_seconds: int
     provider_filter: str
     filter_live: bool
+    filter_remix: bool
     filter_holiday: bool
     use_native_top_tracks: bool
     seed_lean: str
@@ -131,6 +134,7 @@ class Settings:
                 merged.get(CONF_PROVIDER_FILTER, DEFAULT_PROVIDER_FILTER) or ""
             ),
             filter_live=bool(merged.get(CONF_FILTER_LIVE, DEFAULT_FILTER_LIVE)),
+            filter_remix=bool(merged.get(CONF_FILTER_REMIX, DEFAULT_FILTER_REMIX)),
             filter_holiday=bool(
                 merged.get(CONF_FILTER_HOLIDAY, DEFAULT_FILTER_HOLIDAY)
             ),

@@ -51,10 +51,19 @@ class TitleHistory:
         cutoff = dt_util.utcnow() - self._window
         return {title for title, when in self._items if when >= cutoff}
 
-    def heard(self) -> set[str]:
-        """Titles inside the long window, to be played again only if need be."""
+    def heard(self) -> dict[str, float]:
+        """Titles inside the long window, mapped to when each was last heard.
+
+        The times decide which song comes back first when an artist has
+        nothing fresh left. Without them the biggest song returned every
+        time: "The Boys of Summer" played four times in an eleven-hour
+        station while the rest of its artist's songs played twice.
+        """
         self.prune()
-        return {title for title, _ in self._items}
+        last: dict[str, float] = {}
+        for title, when in self._items:
+            last[title] = max(when.timestamp(), last.get(title, 0.0))
+        return last
 
     def __len__(self) -> int:
         """Number of remembered titles inside the short window."""
