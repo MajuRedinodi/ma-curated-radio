@@ -1,4 +1,4 @@
-"""Station style and familiarity, as dropdowns you can put on a dashboard."""
+"""Station style, familiarity, explicit content, and the release dropdowns."""
 
 from __future__ import annotations
 

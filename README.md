@@ -102,9 +102,9 @@ Add the integration once per player you want this behaviour on.
 
 ## Options
 
-Everything below is tunable afterwards from the integration's **Configure**
-button, and most of it is reachable from a dashboard as well. Defaults in
-brackets.
+Most of this is tunable afterwards from the integration's **Configure**
+button, and the ones marked per station style are set from their own
+entities instead, so a dashboard can carry them. Defaults in brackets.
 
 The three that shape a batch are held **per station style**, because the
 styles want opposite things: Artist radio is a showcase built around one
@@ -113,8 +113,8 @@ whichever style is selected, so tuning one cannot quietly retune another.
 
 | Option | What it does |
 |---|---|
-| Similar artists per batch | How many Last.fm-similar artists join the seed artist. Zero keeps every batch to the seed artist alone. Per station style: 3 for Artist radio, 8 for the others. |
-| Tracks per artist | How many tracks to draw from each artist. The seed draws more, by the station style's multiplier. Per station style: 3 everywhere. |
+| Similar artists per batch | How many Last.fm-similar artists join the seed artist. Zero keeps every batch to the seed artist alone. Per station style: 3 for Artist radio, 8 for the others. Set from its own entity, not from Configure. |
+| Tracks per artist | How many tracks to draw from each artist. The seed draws more, by the station style's multiplier. Per station style: 3 everywhere. Set from its own entity, not from Configure. |
 | Tracks per batch | How many of the drawn tracks actually play, which is what lets a batch reach deeper without getting longer. Zero plays everything drawn. Per station style: 19 for Balanced and Discovery, 0 for Artist radio. |
 | Drop artists below [10%] | Drop a similar artist whose audience is below this share of the pool's own median. Catches a neighbour whose whole catalogue is obscure without penalising a genre Last.fm undercounts. Zero disables it. |
 | Station style [balanced] | **Artist radio** always builds from the artist you picked and never wanders. **Balanced** wanders but stays inside the degree fence below. **Discovery** wanders without limit, which is the point of it. |
@@ -134,13 +134,13 @@ whichever style is selected, so tuning one cannot quietly retune another.
 | Skip live recordings [on] | Live versions rank high in popularity searches and rarely suit background listening. |
 | Skip remixes [off] | Drops remixes and club mixes. Off by default, since a remix is sometimes the version people know. Worth turning on for a station whose era the remixes are not from: an hour of seventies rock does not want a 2021 dance remix, however big it is. |
 | Skip holiday tracks [on] | A popularity ranking will surface an artist's Christmas album in September. |
-| Use catalogue order instead of search [off] | Leave it off. Music Assistant returns an artist's track catalogue rather than a popularity ranking, so turning this on fills batches with album tracks and misses the hits. |
 
 ## A dashboard to paste in
 
-Every setting above is reachable from any dashboard, but building one by
-hand is a chore. This is the one actually in use, kept in step with the
-integration.
+The settings worth reaching for day to day have their own entities, so a
+dashboard can carry them; the rest live in Configure. Building a dashboard
+by hand is a chore, so this is the one actually in use, kept in step with
+the integration.
 
 Entities are named after the config entry title, so a player set up as
 "Family Room Stereo" gets `switch.family_room_stereo_curated_radio` and so
@@ -450,6 +450,18 @@ and `ma_curated_radio.allow_track` releases one held-back song, either by
 the name shown on the dashboard or by its stored key.
 `ma_curated_radio.forget_feedback` wipes every remembered skip and mute.
 
+`ma_curated_radio.search` looks a song up in Music Assistant and returns
+the results without playing anything, which is what the dashboard's search
+box uses to offer songs to start a station from.
+
+```yaml
+action: ma_curated_radio.search
+data:
+  query: boys of summer
+  limit: 20
+response_variable: found
+```
+
 ## Starting a station by voice
 
 Nothing here needs configuring. Music Assistant implements Home Assistant's
@@ -608,8 +620,9 @@ is held back until a song is allowed to play, and another skip arriving
 first throws both away. Observed at one in the morning with a house full of
 kids, where holding the next button suppressed two songs for a month.
 
-This is the one piece of state that survives a restart, since feedback that
-evaporates is not feedback.
+Skip memory survives a restart, since feedback that evaporates is not
+feedback. So does the station in progress: its origin, how far it has
+travelled, and what has played recently.
 
 ## Reading a batch
 

@@ -8,10 +8,10 @@ Two paths, in order of preference:
   none of the Jinja Enum-stringification that shaped the YAML version
   applies here.
 * **The native client**, reached through the Music Assistant config entry's
-  runtime data, offers things the service surface does not: genuine artist
-  top-tracks rather than relevance-ranked search, and the literal contents
-  of the current queue. That is another integration's internals, so every
-  call is capability-probed and falls back silently.
+  runtime data, offers things the service surface does not: a search that
+  takes a limit (the action returns five tracks and no more), and the
+  literal contents of the current queue. That is another integration's
+  internals, so every call is capability-probed and falls back silently.
 """
 
 from __future__ import annotations
@@ -19,7 +19,6 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Any
 
 from homeassistant.core import HomeAssistant
@@ -53,20 +52,6 @@ def field_of(obj: Any, key: str, default: Any = None) -> Any:
     return default if value is None else value
 
 
-def _popularity(item: Any) -> int:
-    """Provider popularity, 0 when unknown.
-
-    Only the native client carries metadata; the service surface returns
-    none, so this is zero on that path and the freshness boost simply
-    never fires.
-    """
-    value = field_of(field_of(item, "metadata"), "popularity", 0)
-    try:
-        return int(value or 0)
-    except (TypeError, ValueError):
-        return 0
-
-
 def _explicit(item: Any) -> bool:
     """Whether a track is flagged explicit.
 
@@ -77,12 +62,6 @@ def _explicit(item: Any) -> bool:
     if value is None:
         value = field_of(field_of(item, "metadata"), "explicit")
     return bool(value)
-
-
-def _released(item: Any) -> datetime | None:
-    """Release date, or None when the provider did not say."""
-    value = field_of(field_of(item, "metadata"), "release_date")
-    return value if isinstance(value, datetime) else None
 
 
 def text_of(obj: Any, key: str) -> str:
@@ -105,8 +84,6 @@ class TrackInfo:
     # are not unique: a search for .38 Special also returned a scream-metal
     # band of the same name, and only the ID tells them apart.
     artist_uris: list[str] = field(default_factory=list)
-    popularity: int = 0
-    released: datetime | None = None
 
     @classmethod
     def from_item(cls, item: Any) -> TrackInfo:
@@ -120,8 +97,6 @@ class TrackInfo:
             explicit=_explicit(item),
             artists=_artist_names(item),
             artist_uris=_artist_uris(item),
-            popularity=_popularity(item),
-            released=_released(item),
         )
 
 
@@ -264,14 +239,8 @@ class NativeClient:
         """Track which native capabilities are still worth trying."""
         self._hass = hass
         self._ma_entry_id = ma_entry_id
-        self._top_tracks_available = True
         self._queue_items_available = True
         self._search_available = True
-
-    @property
-    def top_tracks_available(self) -> bool:
-        """False once a native top-tracks lookup has proven unusable."""
-        return self._top_tracks_available
 
     def _mass(self) -> Any:
         """Return the Music Assistant client, or None."""
@@ -286,47 +255,6 @@ class NativeClient:
             return runtime["mass"]
         legacy = (self._hass.data.get(MA_DOMAIN) or {}).get(self._ma_entry_id)
         return getattr(legacy, "mass", None)
-
-    async def async_top_tracks(self, artist: str) -> list[TrackInfo] | None:
-        """Return an artist's real top tracks, or None if unavailable.
-
-        Resolves the artist by name first, then asks the music controller
-        for that artist's top tracks. None means "fall back to search",
-        which is different from an empty list ("this artist has none").
-        """
-        if not self._top_tracks_available:
-            return None
-        mass = self._mass()
-        if mass is None:
-            self._top_tracks_available = False
-            _LOGGER.debug("Native client unavailable; using search for top tracks")
-            return None
-
-        try:
-            results = await mass.music.search(
-                search_query=artist, media_types=["artist"], limit=1
-            )
-            matches = field_of(results, "artists", []) or []
-            if not matches:
-                return []
-            match = matches[0]
-            tracks = await mass.music.get_artist_tracks(
-                text_of(match, "item_id"), text_of(match, "provider")
-            )
-        except (AttributeError, TypeError) as err:
-            # The installed client does not expose this shape. Stop trying.
-            self._top_tracks_available = False
-            _LOGGER.info(
-                "Music Assistant client has no usable top-tracks API (%s); "
-                "falling back to relevance-ranked search for every artist",
-                err,
-            )
-            return None
-        except Exception as err:  # noqa: BLE001 - transient, keep the capability
-            _LOGGER.debug("Native top-tracks lookup failed for %s: %s", artist, err)
-            return None
-
-        return [TrackInfo.from_item(track) for track in (tracks or [])]
 
     async def async_search_tracks(
         self, artist: str, limit: int, *, credited_to: str | None = None
@@ -343,8 +271,8 @@ class NativeClient:
             return None
         mass = self._mass()
         if mass is None:
-            self._search_available = False
-            _LOGGER.debug("Native client unavailable; using the search action")
+            # Transient, as above: do not latch the capability off.
+            _LOGGER.debug("Music Assistant client not ready; using the action")
             return None
 
         try:
@@ -388,7 +316,7 @@ class NativeClient:
             return set()
         mass = self._mass()
         if mass is None:
-            self._queue_items_available = False
+            # Transient, as above: do not latch the capability off.
             return set()
 
         try:

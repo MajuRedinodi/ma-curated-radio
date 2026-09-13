@@ -293,8 +293,14 @@ class CuratedRadioEngine:
         self._settings = settings
         self._history.set_window(settings.history_minutes)
 
-    async def async_run(self, mode: str) -> BatchResult:
+    async def async_run(self, mode: str, *, continuing: bool = True) -> BatchResult:
         """Build and enqueue one batch.
+
+        ``continuing`` says whether the music running out was this
+        integration's own. A refill onto somebody else's queue is not a
+        continuation of the station that happened to run earlier: load a
+        jazz album at nine and the last track of it used to be topped up
+        with neighbours of the Fleetwood Mac station from eight.
 
         An overlapping refill is skipped rather than queued, matching the
         ``mode: single`` behaviour of the script this replaces: a refill
@@ -318,7 +324,7 @@ class CuratedRadioEngine:
             return BatchResult(mode=mode, skipped_reason="already_running")
         async with self._lock:
             self._superseded = False
-            result = await self._async_build(mode)
+            result = await self._async_build(mode, continuing=continuing)
             while self._superseded:
                 self._superseded = False
                 result = await self._async_build(MODE_REPLACE)
@@ -332,7 +338,7 @@ class CuratedRadioEngine:
         async_dispatcher_send(self._hass, signal_update(self._entry_id))
         return result
 
-    async def _async_build(self, mode: str) -> BatchResult:
+    async def _async_build(self, mode: str, *, continuing: bool = True) -> BatchResult:
         """Do the work of one batch."""
         settings = self._settings
         queue = await async_get_queue(self._hass, settings.player)
@@ -360,12 +366,16 @@ class CuratedRadioEngine:
             if queue.current_title:
                 self._history.add([base_title(queue.current_title)])
         # A manual pick is a new station, so it re-anchors the session; a
-        # refill continues the one already running.
-        self._anchor(seed, restart=mode != MODE_REFILL)
+        # refill continues the one already running, unless what ran out was
+        # not ours, in which case that music is the station now.
+        self._anchor(seed, restart=mode != MODE_REFILL or not continuing)
         # Where the neighbours come from. On a pick, the artist picked; on a
         # refill, an artist from the stronger half of the last batch,
         # preferring those nearest the origin.
-        refilling = mode == MODE_REFILL
+        # Reseeding from the last batch is only right while this is the
+        # same station. Topping up somebody else's album builds from what
+        # they put on, the same way a pick does.
+        refilling = mode == MODE_REFILL and continuing
         pool_from = await self._async_pool_seed(
             seed,
             previous=self._last_pool if refilling else None,
@@ -881,9 +891,6 @@ class CuratedRadioEngine:
         if cache is not None and artist in cache:
             return cache[artist]
         tracks: list[TrackInfo] = []
-        if self._settings.use_native_top_tracks:
-            native = await self._native.async_top_tracks(artist)
-            tracks = native or []
         if not tracks:
             # Native search first, purely so a limit can be passed. The
             # service action returns five tracks and no more, which is less
@@ -959,7 +966,6 @@ class CuratedRadioEngine:
             skip_live=settings.filter_live,
             skip_remix=settings.filter_remix,
             skip_holiday=settings.filter_holiday,
-            fresh_days=settings.fresh_days,
         )
 
     def _select(

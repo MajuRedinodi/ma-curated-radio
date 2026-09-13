@@ -5,7 +5,7 @@ replaces, so a behaviour change here is a deliberate one.
 """
 
 import random
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 import pytest
 from filters import (
@@ -16,8 +16,6 @@ from filters import (
     credits_artist,
     depth_bar,
     drop_outliers,
-    freshness,
-    hotness,
     is_holiday,
     is_live,
     is_non_song,
@@ -209,42 +207,6 @@ def test_clean_similar_artists_keeps_match_scores():
 
 
 NOW = datetime(2026, 9, 7, tzinfo=UTC)
-
-
-@pytest.mark.parametrize(
-    ("age_days", "expected"),
-    [(0, 1.0), (60, 0.5), (120, 0.0), (300, 0.0)],
-)
-def test_freshness_decays_across_the_window(age_days, expected):
-    released = NOW - timedelta(days=age_days)
-    assert freshness(released, 120, NOW) == pytest.approx(expected, abs=0.01)
-
-
-def test_freshness_is_zero_without_a_release_date():
-    """A provider that reports nothing must not trigger any promotion."""
-    assert freshness(None, 120, NOW) == 0.0
-
-
-def test_freshness_is_zero_when_disabled():
-    assert freshness(NOW, 0, NOW) == 0.0
-
-
-def test_hot_new_track_outscores_an_old_one():
-    """The Olivia Rodrigo case: new and big should beat old and big."""
-    new_hit = hotness(NOW - timedelta(days=10), 90, 120, NOW)
-    old_hit = hotness(NOW - timedelta(days=900), 100, 120, NOW)
-    assert new_hit > old_hit == 0.0
-
-
-def test_new_flop_is_not_promoted():
-    """New alone is not enough; it has to be popular too."""
-    assert hotness(NOW - timedelta(days=5), 0, 120, NOW) == 0.0
-
-
-def test_hotness_needs_both_signals():
-    assert hotness(None, 100, 120, NOW) == 0.0
-    assert hotness(NOW, 0, 120, NOW) == 0.0
-    assert hotness(NOW, 100, 120, NOW) == pytest.approx(1.0)
 
 
 @pytest.mark.parametrize(
@@ -906,6 +868,3 @@ def test_an_unknown_first_credit_keeps_the_lead():
     assert lead_among_credits("Sonny", {"sonny": 0, "cher": 900_000}, 2_000_000) == "Sonny"
 
 
-def test_a_release_date_without_a_timezone_does_not_kill_the_batch():
-    now = datetime(2026, 9, 13, tzinfo=UTC)
-    assert freshness(datetime(2026, 9, 1), 30, now) > 0

@@ -9,11 +9,20 @@ from typing import Any
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse, callback
+from homeassistant.core import (
+    CALLBACK_TYPE,
+    Event,
+    HomeAssistant,
+    ServiceCall,
+    SupportsResponse,
+    callback,
+)
 from homeassistant.exceptions import ConfigEntryNotReady, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.typing import ConfigType
 
 from .const import (
@@ -27,6 +36,8 @@ from .const import (
     ATTR_QUERY,
     ATTR_SEED_ARTIST,
     ATTR_TRACK,
+    CONF_PLAYER,
+    CONF_PLAYER_REGISTRY_ID,
     DEFAULT_PLAYLIST_LENGTH,
     DEFAULT_PLAYLIST_NAME,
     DEFAULT_SEARCH_RESULTS,
@@ -173,6 +184,7 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: MaCuratedRadioConfigEntry
 ) -> bool:
     """Set up one player from a config entry."""
+    _keep_player_current(hass, entry)
     settings = Settings.from_entry(entry)
 
     ma_entry = hass.config_entries.async_get_entry(settings.ma_config_entry_id)
@@ -200,6 +212,7 @@ async def async_setup_entry(
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(detector.async_start())
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
+    entry.async_on_unload(_watch_for_rename(hass, entry))
 
     _LOGGER.debug("Watching %s for manual picks", settings.player)
     return True
@@ -210,6 +223,71 @@ async def async_unload_entry(
 ) -> bool:
     """Unload a config entry."""
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Forget what a removed player remembered.
+
+    Both stores are keyed by entry id, so nothing else can ever read them
+    again, and leaving them behind means a player deleted and re-added
+    inherits nothing while the files stay in .storage for good.
+    """
+    for key in (
+        f"{DOMAIN}.{entry.entry_id}",
+        f"{DOMAIN}.{entry.entry_id}.station",
+    ):
+        await Store(hass, 1, key).async_remove()
+
+
+@callback
+def _keep_player_current(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Point the entry at wherever the configured player is now.
+
+    A player is configured by entity_id, and everything targets that: the
+    state subscription, every Music Assistant action. Entity ids are not
+    stable, though, and renaming the player in Home Assistant left this
+    integration watching a name nothing would ever report again. No events,
+    no batches, no error, nothing unavailable, no log line. The registry id
+    survives a rename, so it is recorded on first setup and used to find
+    the player's current name on every setup afterwards.
+    """
+    registry = er.async_get(hass)
+    stored = entry.data.get(CONF_PLAYER_REGISTRY_ID)
+    player = entry.data[CONF_PLAYER]
+    current = er.async_resolve_entity_id(registry, stored) if stored else None
+    if current is None:
+        # Nothing recorded yet, or the player was deleted rather than
+        # renamed. Either way the configured name is the best we have.
+        current = player
+        known = registry.async_get(player)
+        stored = known.id if known else None
+    if current == player and stored == entry.data.get(CONF_PLAYER_REGISTRY_ID):
+        return
+    if current != player:
+        _LOGGER.info("The configured player is now %s, was %s", current, player)
+    hass.config_entries.async_update_entry(
+        entry,
+        data={**entry.data, CONF_PLAYER: current, CONF_PLAYER_REGISTRY_ID: stored},
+    )
+
+
+@callback
+def _watch_for_rename(hass: HomeAssistant, entry: ConfigEntry) -> CALLBACK_TYPE:
+    """Reload the entry when the configured player is renamed.
+
+    Setup re-resolves the name, so a reload is the whole repair.
+    """
+
+    @callback
+    def _renamed(event: Event[er.EventEntityRegistryUpdatedData]) -> None:
+        data = event.data
+        if data["action"] != "update":
+            return
+        was = data.get("changes", {}).get("entity_id")
+        if was and was == entry.data.get(CONF_PLAYER):
+            hass.config_entries.async_schedule_reload(entry.entry_id)
+
+    return hass.bus.async_listen(er.EVENT_ENTITY_REGISTRY_UPDATED, _renamed)
 
 
 async def _async_options_updated(

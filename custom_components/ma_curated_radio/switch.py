@@ -1,4 +1,4 @@
-"""The master on/off switch, plus the two content filters."""
+"""The master on/off switch, plus the content filters."""
 
 from __future__ import annotations
 

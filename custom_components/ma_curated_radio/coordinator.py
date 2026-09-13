@@ -231,14 +231,17 @@ class CuratedRadioDetector:
                 _LOGGER.debug("Manual pick: %s", queue.current_uri)
                 self._last_manual_pick = dt_util.utcnow()
                 await asyncio.sleep(self._settings.settle_seconds)
-                await self._engine.async_run(MODE_REPLACE)
+                await self._async_run(MODE_REPLACE)
             elif verdict is Decision.REFILL:
                 # Normal progression, so the outgoing track either ran out
                 # or was skipped. A manual pick is deliberately not counted
                 # as a skip: jumping somewhere else is a choice about where
                 # to go, not a verdict on what was playing.
                 await self._async_record_feedback(outgoing)
-                await self._engine.async_run(MODE_REFILL)
+                await self._async_run(
+                    MODE_REFILL,
+                    continuing=self._engine.was_queued(queue.current_uri),
+                )
             elif not cooling:
                 # Nothing to do about the queue, but the track that just
                 # ended was still either played through or skipped.
@@ -253,6 +256,19 @@ class CuratedRadioDetector:
             raise
         except Exception:  # noqa: BLE001 - the listener has to survive anything
             _LOGGER.exception("Curated radio batch failed while handling a track change")
+
+    async def _async_run(self, mode: str, *, continuing: bool = True) -> None:
+        """Run a batch that a later track change cannot interrupt.
+
+        Every track change cancels the decision in flight, which is right
+        while that decision is still waiting for the player to settle and
+        wrong once it is writing to the queue. Cancelled mid-enqueue, a
+        batch was left half in the queue with none of its bookkeeping done:
+        no repeat protection for the tracks that landed, and a reseed next
+        time from the batch before. Shielded, the write finishes even
+        though this decision has been abandoned.
+        """
+        await asyncio.shield(self._engine.async_run(mode, continuing=continuing))
 
     async def _async_record_feedback(self, outgoing: PlaybackSnapshot | None) -> None:
         """Record whether the track that just ended was skipped.

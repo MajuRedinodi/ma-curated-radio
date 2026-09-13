@@ -1,8 +1,8 @@
 """What the listener rejected, remembered across restarts.
 
 A skip is the strongest signal available without asking anyone to rate
-anything, and it is worthless if it evaporates on restart, so this is the
-one piece of state that gets persisted.
+anything, and it is worthless if it evaporates on restart, so this is
+persisted. So is the station in progress, in the engine's own store.
 
 Two rules, deliberately different in weight:
 
@@ -284,7 +284,7 @@ class SkipMemory:
         return muted
 
     async def async_clear(self) -> None:
-        """Forget everything. Not wired to the UI yet; useful in testing."""
+        """Forget everything, behind the forget_feedback action."""
         self._tracks.clear()
         self._artists.clear()
         self._track_labels.clear()

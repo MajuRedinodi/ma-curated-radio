@@ -11,6 +11,11 @@ MA_DOMAIN: Final = "music_assistant"
 # --- Config entry keys -------------------------------------------------------
 
 CONF_PLAYER: Final = "player"
+# The player's entity registry id, which a rename does not change. The
+# entity_id above is what everything targets, but it is not stable: renaming
+# the Music Assistant player left this integration watching a name nothing
+# would ever report again, with no error and no batch ever built.
+CONF_PLAYER_REGISTRY_ID: Final = "player_registry_id"
 CONF_MA_CONFIG_ENTRY_ID: Final = "ma_config_entry_id"
 CONF_LASTFM_API_KEY: Final = "lastfm_api_key"
 
@@ -27,7 +32,6 @@ CONF_PROVIDER_FILTER: Final = "provider_filter"
 CONF_FILTER_LIVE: Final = "filter_live"
 CONF_FILTER_REMIX: Final = "filter_remix"
 CONF_FILTER_HOLIDAY: Final = "filter_holiday"
-CONF_USE_NATIVE_TOP_TRACKS: Final = "use_native_top_tracks"
 
 # --- Defaults ----------------------------------------------------------------
 
@@ -50,13 +54,6 @@ DEFAULT_FILTER_LIVE: Final = True
 # is the only version of that song there is.
 DEFAULT_FILTER_REMIX: Final = False
 DEFAULT_FILTER_HOLIDAY: Final = True
-# Off by default, and the name is a trap. Music Assistant's
-# get_artist_tracks returns an artist's track CATALOGUE, not a popularity
-# ranking, so enabling this fills batches with album tracks: Bob Seger
-# without Night Moves, Jimmy Buffett without Margaritaville, and the
-# commentary tracks off a deluxe edition. Relevance-ranked search is a
-# worse-sounding idea and a better-sounding result.
-DEFAULT_USE_NATIVE_TOP_TRACKS: Final = False
 
 # How many similar artists to ask Last.fm for, regardless of how many end
 # up in a batch. Last.fm ranks by match score, and the goal is a station
@@ -321,17 +318,6 @@ FAMILIARITY_EXPONENT: Final = {
 
 # The premise is recognisable songs, so this leans that way by default.
 DEFAULT_FAMILIARITY: Final = FAMILIARITY_FAMILIAR
-
-# --- New releases ------------------------------------------------------------
-
-CONF_FRESH_DAYS: Final = "fresh_days"
-
-# Provider top-track rankings are cumulative, so a song released last month
-# ranks below years of catalogue no matter how big it is right now. Inside
-# this window a track is promoted in proportion to how new AND how popular
-# it is, so a hot new single surfaces while a new flop does not. Zero
-# disables the promotion entirely.
-DEFAULT_FRESH_DAYS: Final = 120
 
 # --- Explicit content --------------------------------------------------------
 

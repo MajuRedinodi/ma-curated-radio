@@ -20,7 +20,6 @@ from .const import (
     CONF_FILTER_HOLIDAY,
     CONF_FILTER_LIVE,
     CONF_FILTER_REMIX,
-    CONF_FRESH_DAYS,
     CONF_HISTORY_MINUTES,
     CONF_LASTFM_API_KEY,
     CONF_MA_CONFIG_ENTRY_ID,
@@ -35,7 +34,6 @@ from .const import (
     CONF_SETTLE_SECONDS,
     CONF_TRACK_SUPPRESS_DAYS,
     CONF_TRACKS_PER_ARTIST,
-    CONF_USE_NATIVE_TOP_TRACKS,
     DEFAULT_ARTIST_MUTE_DAYS,
     DEFAULT_ARTIST_STRIKE_LIMIT,
     DEFAULT_BULK_TRACKS,
@@ -47,7 +45,6 @@ from .const import (
     DEFAULT_FILTER_HOLIDAY,
     DEFAULT_FILTER_LIVE,
     DEFAULT_FILTER_REMIX,
-    DEFAULT_FRESH_DAYS,
     DEFAULT_HISTORY_MINUTES,
     DEFAULT_MAX_CONSECUTIVE,
     DEFAULT_MIN_DURATION,
@@ -57,7 +54,6 @@ from .const import (
     DEFAULT_SEED_LEAN,
     DEFAULT_SETTLE_SECONDS,
     DEFAULT_TRACK_SUPPRESS_DAYS,
-    DEFAULT_USE_NATIVE_TOP_TRACKS,
     EXPLICIT_MODES,
     FAMILIARITIES,
     LEGACY_SEED_LEANS,
@@ -88,13 +84,11 @@ class Settings:
     filter_live: bool
     filter_remix: bool
     filter_holiday: bool
-    use_native_top_tracks: bool
     seed_lean: str
     familiarity: str
     explicit: str
     degrees: int
     min_duration: int
-    fresh_days: int
     max_consecutive: int
     track_suppress_days: int
     artist_mute_days: int
@@ -138,15 +132,11 @@ class Settings:
             filter_holiday=bool(
                 merged.get(CONF_FILTER_HOLIDAY, DEFAULT_FILTER_HOLIDAY)
             ),
-            use_native_top_tracks=bool(
-                merged.get(CONF_USE_NATIVE_TOP_TRACKS, DEFAULT_USE_NATIVE_TOP_TRACKS)
-            ),
             seed_lean=style,
             familiarity=_familiarity(merged.get(CONF_FAMILIARITY, DEFAULT_FAMILIARITY)),
             explicit=_explicit_mode(merged.get(CONF_EXPLICIT, DEFAULT_EXPLICIT)),
             degrees=int(merged.get(CONF_DEGREES, DEFAULT_DEGREES)),
             min_duration=int(merged.get(CONF_MIN_DURATION, DEFAULT_MIN_DURATION)),
-            fresh_days=int(merged.get(CONF_FRESH_DAYS, DEFAULT_FRESH_DAYS)),
             max_consecutive=int(
                 merged.get(CONF_MAX_CONSECUTIVE, DEFAULT_MAX_CONSECUTIVE)
             ),

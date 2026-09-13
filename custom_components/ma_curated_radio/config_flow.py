@@ -27,11 +27,9 @@ from .const import (
     CONF_FILTER_HOLIDAY,
     CONF_FILTER_LIVE,
     CONF_FILTER_REMIX,
-    CONF_FRESH_DAYS,
     CONF_HISTORY_MINUTES,
     CONF_LASTFM_API_KEY,
     CONF_MA_CONFIG_ENTRY_ID,
-    CONF_MAX_ARTISTS,
     CONF_MAX_CONSECUTIVE,
     CONF_MIN_DURATION,
     CONF_PLAYER,
@@ -40,8 +38,6 @@ from .const import (
     CONF_SEED_LEAN,
     CONF_SETTLE_SECONDS,
     CONF_TRACK_SUPPRESS_DAYS,
-    CONF_TRACKS_PER_ARTIST,
-    CONF_USE_NATIVE_TOP_TRACKS,
     DEFAULT_ARTIST_MUTE_DAYS,
     DEFAULT_ARTIST_STRIKE_LIMIT,
     DEFAULT_BULK_TRACKS,
@@ -52,9 +48,7 @@ from .const import (
     DEFAULT_FILTER_HOLIDAY,
     DEFAULT_FILTER_LIVE,
     DEFAULT_FILTER_REMIX,
-    DEFAULT_FRESH_DAYS,
     DEFAULT_HISTORY_MINUTES,
-    DEFAULT_MAX_ARTISTS,
     DEFAULT_MAX_CONSECUTIVE,
     DEFAULT_MIN_DURATION,
     DEFAULT_PROVIDER_FILTER,
@@ -62,8 +56,6 @@ from .const import (
     DEFAULT_SEED_LEAN,
     DEFAULT_SETTLE_SECONDS,
     DEFAULT_TRACK_SUPPRESS_DAYS,
-    DEFAULT_TRACKS_PER_ARTIST,
-    DEFAULT_USE_NATIVE_TOP_TRACKS,
     DOMAIN,
     EXPLICIT_MODES,
     FAMILIARITIES,
@@ -100,16 +92,12 @@ def _options_schema(current: dict[str, Any]) -> vol.Schema:
     def value(key: str, default: Any) -> Any:
         return current.get(key, default)
 
+    # Similar artists and Tracks per artist are deliberately absent: they
+    # are held per station style and set from their own entities, and a
+    # single field here wrote one value across every style at once, which
+    # is the opposite of what per-style settings are for.
     return vol.Schema(
         {
-            vol.Required(
-                CONF_MAX_ARTISTS,
-                default=value(CONF_MAX_ARTISTS, DEFAULT_MAX_ARTISTS),
-            ): _number(0, 15),
-            vol.Required(
-                CONF_TRACKS_PER_ARTIST,
-                default=value(CONF_TRACKS_PER_ARTIST, DEFAULT_TRACKS_PER_ARTIST),
-            ): _number(1, 10),
             vol.Required(
                 CONF_SEED_LEAN,
                 default=value(CONF_SEED_LEAN, DEFAULT_SEED_LEAN),
@@ -148,10 +136,6 @@ def _options_schema(current: dict[str, Any]) -> vol.Schema:
                 CONF_MIN_DURATION,
                 default=value(CONF_MIN_DURATION, DEFAULT_MIN_DURATION),
             ): _number(0, 600),
-            vol.Required(
-                CONF_FRESH_DAYS,
-                default=value(CONF_FRESH_DAYS, DEFAULT_FRESH_DAYS),
-            ): _number(0, 730),
             vol.Required(
                 CONF_MAX_CONSECUTIVE,
                 default=value(CONF_MAX_CONSECUTIVE, DEFAULT_MAX_CONSECUTIVE),
@@ -214,12 +198,6 @@ def _options_schema(current: dict[str, Any]) -> vol.Schema:
                 CONF_FILTER_HOLIDAY,
                 default=value(CONF_FILTER_HOLIDAY, DEFAULT_FILTER_HOLIDAY),
             ): selector.BooleanSelector(),
-            vol.Required(
-                CONF_USE_NATIVE_TOP_TRACKS,
-                default=value(
-                    CONF_USE_NATIVE_TOP_TRACKS, DEFAULT_USE_NATIVE_TOP_TRACKS
-                ),
-            ): selector.BooleanSelector(),
         }
     )
 
@@ -227,8 +205,6 @@ def _options_schema(current: dict[str, Any]) -> vol.Schema:
 def _coerce_ints(data: dict[str, Any]) -> dict[str, Any]:
     """Number selectors hand back floats; the settings want whole numbers."""
     integer_keys = (
-        CONF_MAX_ARTISTS,
-        CONF_TRACKS_PER_ARTIST,
         CONF_REFILL_THRESHOLD,
         CONF_BULK_TRACKS,
         CONF_HISTORY_MINUTES,
@@ -240,7 +216,6 @@ def _coerce_ints(data: dict[str, Any]) -> dict[str, Any]:
         CONF_TRACK_SUPPRESS_DAYS,
         CONF_ARTIST_STRIKE_LIMIT,
         CONF_ARTIST_MUTE_DAYS,
-        CONF_FRESH_DAYS,
     )
     return {
         key: int(val) if key in integer_keys else val for key, val in data.items()

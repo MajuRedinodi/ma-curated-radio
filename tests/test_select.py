@@ -7,7 +7,6 @@ prompted it.
 """
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 
 from filters import SelectionRules, select_fresh_first, select_tracks
 
@@ -23,8 +22,6 @@ class Track:
     duration: int = 240
     explicit: bool = False
     artists: list[str] = field(default_factory=list)
-    popularity: int = 0
-    released: datetime | None = None
 
 
 def uris(tracks, rules=None, **kwargs):
@@ -119,29 +116,6 @@ def test_the_provider_filter_keeps_a_batch_on_one_service():
 def test_a_limit_cuts_the_list():
     tracks = [Track(f"t{i}", f"Song {i}") for i in range(5)]
     assert len(uris(tracks, limit=2)) == 2
-
-
-def test_a_hot_new_release_is_promoted_when_the_data_exists():
-    """Provider rankings are cumulative, so a new hit sits below years."""
-    now = datetime(2026, 9, 9, tzinfo=UTC)
-    tracks = [
-        Track("old", "An Old Hit", popularity=90),
-        Track(
-            "new",
-            "A New Hit",
-            popularity=95,
-            released=datetime(2026, 9, 1, tzinfo=UTC),
-        ),
-    ]
-    assert uris(tracks, SelectionRules(fresh_days=120), limit=1, now=now) == ["new"]
-
-
-def test_without_release_dates_the_provider_ordering_is_untouched():
-    """Tidal reports neither popularity nor release date, so this is a
-    no-op in practice and must stay one."""
-    now = datetime(2026, 9, 9, tzinfo=UTC)
-    tracks = [Track("t1", "First"), Track("t2", "Second")]
-    assert uris(tracks, SelectionRules(fresh_days=120), now=now) == ["t1", "t2"]
 
 
 def test_karaoke_is_not_music():

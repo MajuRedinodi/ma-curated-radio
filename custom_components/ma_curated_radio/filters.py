@@ -1,9 +1,9 @@
 """Track and artist filtering rules.
 
-Ported from the YAML/Jinja implementation this integration replaces. The
-comparisons are kept identical so a batch built here matches one the
-blueprint would have built from the same inputs, with one deliberate
-exception documented on :func:`is_live`.
+Every rule here is pinned to a song that reached somebody's evening and
+should not have, or to one that was kept out and should not have been. The
+comments name those songs on purpose: they are the test cases, and a rule
+whose example no longer makes sense is a rule to question.
 """
 
 from __future__ import annotations
@@ -580,7 +580,6 @@ class SelectionRules:
     skip_live: bool = True
     skip_remix: bool = False
     skip_holiday: bool = True
-    fresh_days: int = 0
 
 
 def select_fresh_first(
@@ -727,16 +726,6 @@ def _ordered_for_selection(
     first pushes the edit outside the per-artist cut instead.
     """
     ordered = tracks
-    if rules.fresh_days > 0 and now is not None:
-        # Providers rank by cumulative plays, which buries anything
-        # recent. Tracks scoring zero, meaning old, unpopular, or without
-        # the metadata to tell, keep the provider's ordering exactly: the
-        # sort is stable, so this is a no-op wherever the data is absent.
-        ordered = sorted(
-            ordered,
-            key=lambda t: hotness(t.released, t.popularity, rules.fresh_days, now),
-            reverse=True,
-        )
     if rules.prefer_explicit:
         ordered = sorted(ordered, key=lambda track: not track.explicit)
     return ordered
@@ -773,44 +762,6 @@ def weighted_sample(
 
     keyed.sort(key=lambda pair: pair[0], reverse=True)
     return [name for _, name in keyed[:count]]
-
-
-def freshness(released: datetime | None, window_days: int, now: datetime) -> float:
-    """How new a track is, 1.0 for today down to 0.0 at the window edge.
-
-    Outside the window, or with no release date at all, this is zero, so a
-    provider that does not report release dates simply never triggers any
-    promotion.
-    """
-    if released is None or window_days <= 0:
-        return 0.0
-    if released.tzinfo is None:
-        # A provider that reports a date without a zone would otherwise
-        # raise here, inside the sort that orders a batch, and take the
-        # whole batch down with it.
-        released = released.replace(tzinfo=now.tzinfo)
-    age_days = (now - released).days
-    if age_days < 0 or age_days > window_days:
-        return 0.0
-    return 1.0 - (age_days / window_days)
-
-
-def hotness(
-    released: datetime | None, popularity: int, window_days: int, now: datetime
-) -> float:
-    """Score a track for being both new and genuinely popular.
-
-    Provider top-track rankings are cumulative, so a song released last
-    month sits below five years of catalogue however big it is right now.
-    This is what lifts it: a track has to be recent *and* popular to be
-    promoted, so a new flop stays where the provider put it.
-
-    Zero for anything old, unpopular, or missing metadata, which leaves
-    the provider's own ordering untouched.
-    """
-    if popularity <= 0:
-        return 0.0
-    return freshness(released, window_days, now) * min(popularity, 100) / 100
 
 
 # A backing band written into an artist's name. Last.fm and a provider
