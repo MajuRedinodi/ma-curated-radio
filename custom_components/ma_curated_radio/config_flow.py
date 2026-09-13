@@ -63,6 +63,7 @@ from .const import (
     MA_DOMAIN,
     SEED_LEANS,
 )
+from .entry_data import merge_options
 from .lastfm import async_validate_api_key
 
 STEP_USER_SCHEMA = vol.Schema(
@@ -305,21 +306,14 @@ class MaCuratedRadioOptionsFlow(OptionsFlow):
     ) -> ConfigFlowResult:
         """Show and store the tuning options."""
         if user_input is not None:
-            # Merged, not replaced. What this form returns becomes the whole
-            # of the entry's options, and the form does not show everything
-            # that lives there: the master switch, the popularity floor and
-            # every per-style number set from the dashboard are all stored
-            # options with no field here. Replacing wholesale silently reset
-            # them, so opening this dialog and pressing Submit turned a
-            # switched-off station back on and undid an evening of tuning.
-            merged = {**self.config_entry.options, **_coerce_ints(user_input)}
-            for key in (CONF_COOLDOWN_ENTITY, CONF_PROVIDER_FILTER):
-                # An optional text field that has been cleared is absent
-                # rather than empty, and a merge would put the old value
-                # back, so clearing has to be explicit.
-                if key not in user_input:
-                    merged.pop(key, None)
-            return self.async_create_entry(data=merged)
+            # Merged rather than replaced; merge_options says why.
+            return self.async_create_entry(
+                data=merge_options(
+                    self.config_entry.options,
+                    _coerce_ints(user_input),
+                    clearable=(CONF_COOLDOWN_ENTITY, CONF_PROVIDER_FILTER),
+                )
+            )
 
         current = {**self.config_entry.data, **self.config_entry.options}
         return self.async_show_form(

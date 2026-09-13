@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any
 
 
 class Decision(Enum):
@@ -114,6 +115,65 @@ def track_started(state: str, track: str | None, last_playing: str | None) -> bo
     change.
     """
     return state == "playing" and track != last_playing
+
+
+def starts_station(*, refilling: bool, continuing: bool) -> bool:
+    """True when this batch begins a station rather than continuing one.
+
+    A pick always does. So does a refill onto music that is not ours:
+    somebody put an album on, and topping it up should follow the album
+    rather than resume the station that happened to play before it.
+
+    What follows from it: the session re-anchors, the previous batch is
+    not reseeded from, the credit is resolved afresh, and the song playing
+    goes into repeat memory.
+    """
+    return not refilling or not continuing
+
+
+@dataclass(slots=True)
+class SkipLedger:
+    """Which skips are verdicts on a song, and which are somebody hunting.
+
+    A skip means "not this one", but a run of them seconds apart means
+    somebody is looking for something, and says nothing about anything
+    passed over on the way. So a skip is held until the listener's next
+    verdict: another skip close behind throws both away, a later one
+    confirms it, and a song played through confirms it too.
+
+    Holding them is what makes muting an artist reachable. Committing a
+    skip only when a song later played through, and resetting the run at
+    the same moment, left the run permanently at one.
+    """
+
+    pending: Any = None
+    last_at: float | None = None
+
+    def played(self) -> list[Any]:
+        """A song was allowed to play. Returns skips to record now."""
+        return self._take()
+
+    def skipped(self, outgoing: Any, now: float, window: float) -> list[Any]:
+        """A song was skipped. Returns skips to record now.
+
+        ``window`` is how close together two skips have to be to count as
+        hunting rather than judging.
+        """
+        hunting = is_hunting(
+            None if self.last_at is None else now - self.last_at, window
+        )
+        self.last_at = now
+        if hunting:
+            self.pending = None
+            return []
+        confirmed = self._take()
+        self.pending = outgoing
+        return confirmed
+
+    def _take(self) -> list[Any]:
+        """Hand over whatever was waiting, and stop waiting for it."""
+        pending, self.pending = self.pending, None
+        return [pending] if pending is not None else []
 
 
 def is_hunting(since_last_skip: float | None, window: float) -> bool:

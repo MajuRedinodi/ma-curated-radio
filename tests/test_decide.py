@@ -9,11 +9,13 @@ import pytest
 from decide import (
     Decision,
     QueueFacts,
+    SkipLedger,
     decide,
     is_bulk_load,
     is_hunting,
     is_transitional,
     leading_pool,
+    starts_station,
     track_started,
 )
 
@@ -232,3 +234,67 @@ def test_skips_seconds_apart_are_somebody_hunting():
     """Kids at 1am, holding next: neither song was ever heard."""
     assert is_hunting(11.0, 30.0)
     assert is_hunting(0.5, 30.0)
+
+
+def test_a_pick_always_starts_a_station():
+    assert starts_station(refilling=False, continuing=True)
+    assert starts_station(refilling=False, continuing=False)
+
+
+def test_a_refill_of_our_own_music_continues_the_station():
+    """The whole point of the station memory: an evening is one station."""
+    assert not starts_station(refilling=True, continuing=True)
+
+
+def test_a_refill_onto_somebody_elses_music_starts_a_station():
+    """Put a jazz album on at nine and its last track used to be followed
+    by neighbours of the station that played at eight."""
+    assert starts_station(refilling=True, continuing=False)
+
+
+def test_a_skip_waits_for_the_next_verdict():
+    """A lone skip is not recorded until something confirms it."""
+    ledger = SkipLedger()
+    assert ledger.skipped("song a", now=0.0, window=30.0) == []
+    assert ledger.played() == ["song a"]
+
+
+def test_a_later_skip_confirms_the_one_before_it():
+    """Three deliberate skips are three verdicts, which is what makes
+    muting an artist reachable at all."""
+    ledger = SkipLedger()
+    assert ledger.skipped("a", now=0.0, window=30.0) == []
+    assert ledger.skipped("b", now=300.0, window=30.0) == ["a"]
+    assert ledger.skipped("c", now=600.0, window=30.0) == ["b"]
+    assert ledger.played() == ["c"]
+
+
+def test_skips_seconds_apart_are_both_thrown_away():
+    """Kids at 1am, holding next. Neither song was ever heard."""
+    ledger = SkipLedger()
+    assert ledger.skipped("a", now=0.0, window=30.0) == []
+    assert ledger.skipped("b", now=11.0, window=30.0) == []
+    assert ledger.played() == []
+
+
+def test_a_long_run_records_nothing_at_all():
+    ledger = SkipLedger()
+    for at in (0.0, 5.0, 10.0, 15.0, 20.0):
+        assert ledger.skipped("song", now=at, window=30.0) == []
+    assert ledger.played() == []
+
+
+def test_a_skip_after_a_run_is_judged_on_its_own():
+    """The run ends when the listener stops hunting."""
+    ledger = SkipLedger()
+    ledger.skipped("a", now=0.0, window=30.0)
+    ledger.skipped("b", now=5.0, window=30.0)
+    assert ledger.skipped("c", now=900.0, window=30.0) == []
+    assert ledger.played() == ["c"]
+
+
+def test_playing_through_twice_records_nothing_the_second_time():
+    ledger = SkipLedger()
+    ledger.skipped("a", now=0.0, window=30.0)
+    assert ledger.played() == ["a"]
+    assert ledger.played() == []

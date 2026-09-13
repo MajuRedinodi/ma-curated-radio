@@ -33,8 +33,8 @@ from .const import (
 from .decide import (
     Decision,
     QueueFacts,
+    SkipLedger,
     decide,
-    is_hunting,
     is_transitional,
     track_started,
 )
@@ -96,11 +96,9 @@ class CuratedRadioDetector:
         # this rather than against the update before, because some players
         # change the track and start playing it in two separate updates.
         self._playing_track: str | None = None
-        # A skip waiting to be confirmed by the next song playing through,
-        # and when the last one arrived, so a run of them can be told from
-        # a verdict on one song.
-        self._pending_skip: PlaybackSnapshot | None = None
-        self._last_skip_at: datetime | None = None
+        # Which skips are verdicts and which are somebody hunting through
+        # the queue. The rules live in decide.py, where they can be tested.
+        self._ledger = SkipLedger()
 
     def apply_settings(self, settings: Settings) -> None:
         """Adopt changed settings without rebuilding the detector."""
@@ -305,34 +303,24 @@ class CuratedRadioDetector:
         if outgoing is None:
             return
         if not outgoing.was_skipped(SKIP_GRACE_SECONDS):
-            await self._async_commit_skip()
+            await self._async_commit(self._ledger.played())
             await self._skips.async_record_played()
             return
 
-        now = dt_util.utcnow()
-        since = (
-            None
-            if self._last_skip_at is None
-            else (now - self._last_skip_at).total_seconds()
+        confirmed = self._ledger.skipped(
+            outgoing, dt_util.utcnow().timestamp(), SKIP_BURST_SECONDS
         )
-        self._last_skip_at = now
-        if is_hunting(since, SKIP_BURST_SECONDS):
-            _LOGGER.debug(
-                "Ignoring %s: skipped seconds after the last skip, so somebody "
-                "is hunting rather than judging",
-                outgoing.title,
-            )
-            self._pending_skip = None
-            return
-        await self._async_commit_skip()
-        self._pending_skip = outgoing
+        if not confirmed:
+            _LOGGER.debug("Holding the skip of %s until the next one", outgoing.title)
+        await self._async_commit(confirmed)
 
-    async def _async_commit_skip(self) -> None:
-        """Record the skip that has been waiting to be confirmed."""
-        outgoing, self._pending_skip = self._pending_skip, None
-        if outgoing is None:
-            return
+    async def _async_commit(self, skips: list[PlaybackSnapshot]) -> None:
+        """Record the skips the ledger has confirmed as verdicts."""
+        for outgoing in skips:
+            await self._async_record_skip(outgoing)
 
+    async def _async_record_skip(self, outgoing: PlaybackSnapshot) -> None:
+        """Push one skipped song off, and mute its artist if that is a run."""
         _LOGGER.debug(
             "Skipped %s by %s at %.0fs of %.0fs",
             outgoing.title,

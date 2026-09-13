@@ -47,7 +47,7 @@ from .const import (
     TIER_DECAY,
     signal_update,
 )
-from .decide import leading_pool
+from .decide import leading_pool, starts_station
 from .feedback import SkipMemory
 from .filters import (
     FOOTNOTE_SHARE,
@@ -368,13 +368,16 @@ class CuratedRadioEngine:
             return BatchResult(mode=mode, skipped_reason="no_seed_artist")
 
         seed = queue.seed_artist
+        starting = starts_station(
+            refilling=mode == MODE_REFILL, continuing=continuing
+        )
         # Settle which name Last.fm should be asked about, once, on the
         # song that starts the station. A duet that merely comes up later
         # must not redefine it. A refill onto music that is not ours starts
         # a station too, so it needs this as much as a pick does: without
         # it, topping up a Sonny and Cher album asked Last.fm about "Sonny"
         # and got Skrillex.
-        if mode != MODE_REFILL or not continuing:
+        if starting:
             await self._async_resolve_alias(seed, queue.artists)
             # Put the picked song into repeat memory. Nothing else does:
             # the history records what this integration queues, and a pick
@@ -390,14 +393,14 @@ class CuratedRadioEngine:
         # A manual pick is a new station, so it re-anchors the session; a
         # refill continues the one already running, unless what ran out was
         # not ours, in which case that music is the station now.
-        self._anchor(seed, restart=mode != MODE_REFILL or not continuing)
+        self._anchor(seed, restart=starting)
         # Where the neighbours come from. On a pick, the artist picked; on a
         # refill, an artist from the stronger half of the last batch,
         # preferring those nearest the origin.
         # Reseeding from the last batch is only right while this is the
         # same station. Topping up somebody else's album builds from what
         # they put on, the same way a pick does.
-        refilling = mode == MODE_REFILL and continuing
+        refilling = not starting
         pool_from = await self._async_pool_seed(
             seed,
             previous=self._last_pool if refilling else None,

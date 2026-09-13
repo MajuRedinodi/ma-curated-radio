@@ -56,6 +56,7 @@ from .const import (
 )
 from .coordinator import CuratedRadioDetector
 from .engine import CuratedRadioEngine
+from .entry_data import resolve_player
 from .feedback import STORAGE_VERSION as SKIP_STORAGE_VERSION
 from .feedback import SkipMemory
 from .settings import Settings
@@ -267,23 +268,22 @@ def _keep_player_current(hass: HomeAssistant, entry: ConfigEntry) -> None:
     the player's current name on every setup afterwards.
     """
     registry = er.async_get(hass)
-    stored = entry.data.get(CONF_PLAYER_REGISTRY_ID)
     player = entry.data[CONF_PLAYER]
-    current = er.async_resolve_entity_id(registry, stored) if stored else None
-    if current is None:
-        # Nothing recorded yet, or the player is gone rather than renamed.
-        # Either way the configured name is the best we have.
-        current = player
-        known = registry.async_get(player)
-        stored = known.id if known else None
-        if stored is None:
-            # Nothing in the registry answers to that name. Setting up
-            # anyway is how this used to fail silently, so say so.
-            _LOGGER.warning(
-                "No player called %s exists any more, so nothing will be "
-                "queued for it. Remove this entry and add the player again.",
-                player,
-            )
+    known = registry.async_get
+    current, stored = resolve_player(
+        entry.data.get(CONF_PLAYER_REGISTRY_ID),
+        player,
+        by_id=lambda uuid: er.async_resolve_entity_id(registry, uuid),
+        by_name=lambda name: entry.id if (entry := known(name)) else None,
+    )
+    if stored is None:
+        # Nothing in the registry answers to that name. Setting up anyway
+        # is how this used to fail silently, so say so.
+        _LOGGER.warning(
+            "No player called %s exists any more, so nothing will be "
+            "queued for it. Remove this entry and add the player again.",
+            player,
+        )
     if current == player and stored == entry.data.get(CONF_PLAYER_REGISTRY_ID):
         return
     if current != player:
