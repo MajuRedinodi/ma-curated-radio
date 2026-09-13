@@ -15,6 +15,25 @@ only re-checks downloaded repositories every 48 hours, so use the repo's
 `strings.json` and `translations/en.json` must be byte-identical, JSON and
 YAML must parse, and `ruff check` and `pytest` must pass.
 
+## Two test suites
+
+`tests/` holds the rules: they import the pure modules directly, need
+nothing but pytest, and run in under a second. Anything that can be a
+pure function belongs there, and several have been moved out of the
+wiring on purpose so they could be.
+
+`tests/integration/` runs against a real Home Assistant and needs
+`pip install -r requirements_test.txt`. Without it those tests skip
+rather than fail, so the fast suite still works on a machine with nothing
+set up. They cover what the fast suite cannot reach: setting up, unloading
+and removing an entry, the options flow, and following a renamed player.
+Every bug in that layer so far was found by reading rather than by
+testing, which is what these exist to change.
+
+The framework pins the Home Assistant version it was built against, so
+the integration suite proves the wiring against a slightly older Home
+Assistant than the one you are probably running.
+
 ## Keep the README dashboard in step
 
 The **A dashboard to paste in** section of the README is the dashboard

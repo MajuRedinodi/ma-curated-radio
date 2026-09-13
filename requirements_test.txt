@@ -1,0 +1,9 @@
+# The pure-rule tests need nothing but pytest. These are for the tests
+# that run against a real Home Assistant, in tests/integration.
+#
+# The framework pins the Home Assistant version it was built against,
+# which trails the current release, so these tests prove the wiring
+# against a slightly older Home Assistant than the one this runs on.
+# That still catches what they exist to catch: setup, unload, removal,
+# the options flow and the entity platforms.
+pytest-homeassistant-custom-component==0.13.316

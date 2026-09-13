@@ -15,7 +15,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["PLR2004"]
+"tests/**" = ["PLR2004"]
 "custom_components/ma_curated_radio/ma.py" = ["BLE001"]
 "custom_components/ma_curated_radio/engine.py" = ["BLE001", "PLR0913"]
 "custom_components/ma_curated_radio/coordinator.py" = ["BLE001"]
@@ -26,3 +26,9 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-third-party = ["homeassistant", "voluptuous", "aiohttp"]
+
+[tool.pytest.ini_options]
+# The Home Assistant tests are async and the framework declares no mode
+# of its own, so every one of them errors without this.
+asyncio_mode = "auto"
+testpaths = ["tests"]
