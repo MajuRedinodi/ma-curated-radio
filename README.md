@@ -121,7 +121,7 @@ whichever style is selected, so tuning one cannot quietly retune another.
 | Degrees of separation [3] | How far a session may travel from the artist that started it. Ignored by Artist radio and Discovery. |
 | Most in a row from one artist [2] | How many tracks by the same artist may play back to back. Two lets an artist station feel like an artist station without anyone monopolising the hour. |
 | Skipped song stays away for [30 days] | Skip a song and it will not be queued again for this long. |
-| Skips in a row before muting an artist [3] | Skip this many of one artist's tracks consecutively and they stop being suggested. |
+| Skips in a row before muting an artist [3] | Skip this many of one artist's tracks consecutively and they stop being suggested. Zero switches muting off. |
 | Muted artist stays away for [30 days] | How long a muted artist stays out of the similar-artist pool. |
 | Refill threshold [2] | Top the queue up once this many tracks or fewer remain after the one playing. |
 | Bulk load size [3 tracks] | A manual pick is one track; a playlist or album is many. If the queue holds at least this many tracks we did not choose, and nothing after them is ours either, it is left alone. Judged on queue size rather than growth, because loading a playlist usually replaces the queue rather than adding to it. |
@@ -451,8 +451,8 @@ the name shown on the dashboard or by its stored key.
 `ma_curated_radio.forget_feedback` wipes every remembered skip and mute.
 
 `ma_curated_radio.search` looks a song up in Music Assistant and returns
-the results without playing anything, which is what the dashboard's search
-box uses to offer songs to start a station from.
+the results without playing anything, which is what a dashboard search box
+can use to offer songs to start a station from.
 
 ```yaml
 action: ma_curated_radio.search
@@ -615,10 +615,12 @@ Three things it deliberately does not treat as a skip. Jumping to a
 different song by hand is a choice about where to go, not a verdict on what
 was playing. The artist you pick yourself is never muted, however much of
 theirs you skip, because you asked for them. And a run of skips seconds
-apart is somebody hunting through the queue rather than judging it: a skip
-is held back until a song is allowed to play, and another skip arriving
-first throws both away. Observed at one in the morning with a house full of
-kids, where holding the next button suppressed two songs for a month.
+apart is somebody hunting through the queue rather than judging it. A skip
+is held back until your next verdict: another skip within half a minute
+throws both away, while one later than that confirms the first, which is
+what lets a run of three deliberate skips mute an artist. Observed at one
+in the morning with a house full of kids, where holding the next button
+suppressed two songs for a month.
 
 Skip memory survives a restart, since feedback that evaporates is not
 feedback. So does the station in progress: its origin, how far it has
@@ -739,11 +741,10 @@ settings, and the reported reach tells the two apart. See
   length, not its contents. Where the client is reachable, already-queued
   tracks are excluded too; where it is not, the repeat-memory window does
   the work on its own.
-- **Only Tidal has been tested.** `explicit`, `popularity` and `release_date`
-  are optional fields that providers populate inconsistently, and the
-  provider filter assumes URI schemes. On another provider the explicit
-  filter and the new-release promotion may be more or less reliable than
-  they are here. None of that is load-bearing: each one degrades to doing
+- **Only Tidal has been tested.** `explicit` is an optional field that
+  providers populate inconsistently, and the provider filter assumes URI
+  schemes. On another provider the explicit filter may be more or less
+  reliable than it is here. Neither is load-bearing: each degrades to doing
   nothing rather than doing something wrong.
 - **Playlist building reaches into Music Assistant's internals**, because
   playlist management has no equivalent on the Home Assistant action

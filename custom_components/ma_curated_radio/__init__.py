@@ -22,6 +22,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.helpers.event import async_track_entity_registry_updated_event
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.typing import ConfigType
 
@@ -50,10 +51,12 @@ from .const import (
     SERVICE_RUN_BATCH,
     SERVICE_SEARCH,
     SERVICE_UNMUTE_ARTIST,
+    STATION_STORAGE_VERSION,
     signal_update,
 )
 from .coordinator import CuratedRadioDetector
 from .engine import CuratedRadioEngine
+from .feedback import STORAGE_VERSION as SKIP_STORAGE_VERSION
 from .feedback import SkipMemory
 from .settings import Settings
 
@@ -221,8 +224,19 @@ async def async_setup_entry(
 async def async_unload_entry(
     hass: HomeAssistant, entry: MaCuratedRadioConfigEntry
 ) -> bool:
-    """Unload a config entry."""
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    """Unload a config entry, writing out anything still pending.
+
+    Both stores batch their writes over ten seconds, and a delayed write
+    outlives the objects that scheduled it. Flushing here keeps a skip
+    recorded moments before a reload, and stops a write landing after a
+    deleted entry's files have been removed and recreating them.
+    """
+    unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    runtime = getattr(entry, "runtime_data", None)
+    if runtime is not None:
+        await runtime.skips.async_flush()
+        await runtime.engine.async_flush()
+    return unloaded
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -232,11 +246,12 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     again, and leaving them behind means a player deleted and re-added
     inherits nothing while the files stay in .storage for good.
     """
-    for key in (
-        f"{DOMAIN}.{entry.entry_id}",
-        f"{DOMAIN}.{entry.entry_id}.station",
-    ):
-        await Store(hass, 1, key).async_remove()
+    stores = (
+        (f"{DOMAIN}.{entry.entry_id}", SKIP_STORAGE_VERSION),
+        (f"{DOMAIN}.{entry.entry_id}.station", STATION_STORAGE_VERSION),
+    )
+    for key, version in stores:
+        await Store(hass, version, key).async_remove()
 
 
 @callback
@@ -256,11 +271,19 @@ def _keep_player_current(hass: HomeAssistant, entry: ConfigEntry) -> None:
     player = entry.data[CONF_PLAYER]
     current = er.async_resolve_entity_id(registry, stored) if stored else None
     if current is None:
-        # Nothing recorded yet, or the player was deleted rather than
-        # renamed. Either way the configured name is the best we have.
+        # Nothing recorded yet, or the player is gone rather than renamed.
+        # Either way the configured name is the best we have.
         current = player
         known = registry.async_get(player)
         stored = known.id if known else None
+        if stored is None:
+            # Nothing in the registry answers to that name. Setting up
+            # anyway is how this used to fail silently, so say so.
+            _LOGGER.warning(
+                "No player called %s exists any more, so nothing will be "
+                "queued for it. Remove this entry and add the player again.",
+                player,
+            )
     if current == player and stored == entry.data.get(CONF_PLAYER_REGISTRY_ID):
         return
     if current != player:
@@ -268,6 +291,11 @@ def _keep_player_current(hass: HomeAssistant, entry: ConfigEntry) -> None:
     hass.config_entries.async_update_entry(
         entry,
         data={**entry.data, CONF_PLAYER: current, CONF_PLAYER_REGISTRY_ID: stored},
+        # The unique id is the player's name, so it has to follow the
+        # rename too. Left behind, it names an entity that no longer
+        # exists, and adding the renamed player would be allowed to make a
+        # second entry driving the same speaker.
+        unique_id=current,
     )
 
 
@@ -287,7 +315,9 @@ def _watch_for_rename(hass: HomeAssistant, entry: ConfigEntry) -> CALLBACK_TYPE:
         if was and was == entry.data.get(CONF_PLAYER):
             hass.config_entries.async_schedule_reload(entry.entry_id)
 
-    return hass.bus.async_listen(er.EVENT_ENTITY_REGISTRY_UPDATED, _renamed)
+    return async_track_entity_registry_updated_event(
+        hass, entry.data[CONF_PLAYER], _renamed
+    )
 
 
 async def _async_options_updated(

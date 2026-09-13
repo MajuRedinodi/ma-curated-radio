@@ -1,11 +1,11 @@
-"""Filter parity tests.
+"""Filtering rules.
 
-These mirror the Jinja expressions in the blueprint this integration
-replaces, so a behaviour change here is a deliberate one.
+Each test is pinned to a real song: one that reached somebody's evening
+and should not have, or one that was kept out and should not have been.
+The names in these tests are the specification.
 """
 
 import random
-from datetime import UTC, datetime
 
 import pytest
 from filters import (
@@ -19,6 +19,7 @@ from filters import (
     is_holiday,
     is_live,
     is_non_song,
+    is_remix,
     is_too_short,
     keep_one_act,
     lead_among_credits,
@@ -204,9 +205,6 @@ def test_clean_similar_artists_keeps_match_scores():
         "Lady Gaga",
     )
     assert cleaned == [("Bruno Mars", 0.8)]
-
-
-NOW = datetime(2026, 9, 7, tzinfo=UTC)
 
 
 @pytest.mark.parametrize(
@@ -864,7 +862,97 @@ def test_santana_is_not_a_christmas_album():
 
 
 def test_an_unknown_first_credit_keeps_the_lead():
-    """A lookup miss is not evidence of being small, here as everywhere."""
-    assert lead_among_credits("Sonny", {"sonny": 0, "cher": 900_000}, 2_000_000) == "Sonny"
+    """A lookup miss is not evidence of being small, here as everywhere.
+
+    Keys are the names as credited, the way the engine passes them.
+    """
+    sizes = {"Sonny": 0, "Cher": 900_000}
+    assert lead_among_credits("Sonny", sizes, 2_000_000) == "Sonny"
 
 
+
+
+@pytest.mark.parametrize(
+    ("title", "live"),
+    [
+        # Verbatim from Tidal. The marker comes before any separator.
+        ("Live at the Olympia - Paris, France (October 10, 1969) - Dazed", True),
+        ("Live at Tomorrowland 2026 (Freedom Stage) ID #002", True),
+        ("Song [Live]", True),
+        ("Song [Live at the Forum, 1980]", True),
+        ("Song – Live", True),
+        ("Song — Live", True),
+        ("Helpless [Concert Version]", True),
+        ("Layla [Unplugged]", True),
+        # And the songs that are simply called what they are called.
+        ("Live Wire", False),
+        ("Live to Tell", False),
+        ("Live and Let Die", False),
+        ("(Forever) Live And Die", False),
+        ("Livermore", False),
+    ],
+)
+def test_live_markers_wherever_the_provider_puts_them(title, live):
+    assert is_live(title, "") is live
+
+
+@pytest.mark.parametrize(
+    ("title", "remix"),
+    [
+        # Tidal writes these with no bracket, dash or version field.
+        ("Savage Remix", True),
+        ("Drunk in Love Remix", True),
+        ("Song [PNAU Remix]", True),
+        ("Song – PNAU Remix", True),
+        ("Song [Club Mix]", True),
+        ("Renegade", False),
+        ("Remix Artist Collective", False),
+    ],
+)
+def test_remix_markers_wherever_the_provider_puts_them(title, remix):
+    assert is_remix(title, "") is remix
+
+
+@pytest.mark.parametrize(
+    ("title", "album", "holiday"),
+    [
+        # Christmas records that never say Christmas.
+        ("Don't Shoot Me Santa", "Don't Waste Your Wishes", True),
+        ("Back Door Santa", "Back Door Santa", True),
+        ("Santa's Coming for Us", "", True),
+        ("Must Be Santa", "", True),
+        ("Santa Looked a Lot Like Daddy", "", True),
+        # Places named after him, and the band.
+        ("Santa Monica", "", False),
+        ("Santa Fe", "", False),
+        ("Black Magic Woman", "Santana", False),
+        ("Evil Ways", "Santana III", False),
+        ("Don't Let Me Be Misunderstood", "Santa Esmeralda", False),
+    ],
+)
+def test_santa_without_the_places_named_after_him(title, album, holiday):
+    assert is_holiday(title, "", album) is holiday
+
+
+def test_a_spelling_last_fm_has_never_seen_is_not_a_deep_cut():
+    """Tidal prefixes the composer; Last.fm does not, and the famous
+    recordings were being cut for it."""
+    known = [
+        ("Symphony No. 5 in C Minor, Op. 67: I. Allegro con brio", 400_000),
+        ("Fur Elise", 300_000),
+    ]
+    songs, rank = _ranked(
+        [
+            "Beethoven: Symphony No. 5 in C Minor, Op. 67: I. Allegro con brio",
+            "Fur Elise",
+            "Sonata No. 32, Arietta",
+        ]
+    )
+    # The first is a top result whose spelling Last.fm does not carry, so
+    # it stays. The third is past the A-tracks and unknown, so it goes.
+    assert too_deep(songs, rank, known, 100_000, 2) == {"t:2"}
+
+
+def test_extra_spaces_are_collapsed():
+    """Stripping the brackets off a leading parenthetical leaves two."""
+    assert base_title("Hello  World") == "hello world"

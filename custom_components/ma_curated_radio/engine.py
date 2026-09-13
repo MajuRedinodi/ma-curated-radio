@@ -240,6 +240,14 @@ class CuratedRadioEngine:
         self._last_lead = str(data.get("last_lead") or "")
         self._alias = dict(data.get("alias") or {})
         self._lead_override = dict(data.get("lead_override") or {})
+        # What this integration queued, which is how a refill knows the
+        # music running out is its own. Without it every first refill after
+        # a restart read as somebody else's music and re-anchored the
+        # station to whichever neighbour happened to be playing, which is
+        # the exact failure the rest of this store exists to prevent.
+        self._queued = deque(
+            (str(uri) for uri in data.get("queued") or []), maxlen=QUEUED_MEMORY
+        )
         self._history.restore(data.get("history"))
         # The last batch too, so the dashboard shows the station that is
         # playing rather than "Unknown" until the next refill.
@@ -259,20 +267,31 @@ class CuratedRadioEngine:
                 self._last_lead or "nobody yet",
             )
 
+    def _station_dict(self) -> dict[str, Any]:
+        """The station in progress, as the store holds it."""
+        return {
+            "session": self._listening.as_dict(),
+            "last_pool": self._last_pool,
+            "last_lead": self._last_lead,
+            "alias": self._alias,
+            "lead_override": self._lead_override,
+            "queued": list(self._queued),
+            "history": self._history.as_list(),
+            "last_batch": asdict(self._last_batch) if self._last_batch else None,
+        }
+
     def _save_station(self) -> None:
         """Persist the station in progress, batched with other writes."""
-        self._store.async_delay_save(
-            lambda: {
-                "session": self._listening.as_dict(),
-                "last_pool": self._last_pool,
-                "last_lead": self._last_lead,
-                "alias": self._alias,
-                "lead_override": self._lead_override,
-                "history": self._history.as_list(),
-                "last_batch": asdict(self._last_batch) if self._last_batch else None,
-            },
-            STATION_SAVE_DELAY,
-        )
+        self._store.async_delay_save(self._station_dict, STATION_SAVE_DELAY)
+
+    async def async_flush(self) -> None:
+        """Write the station now rather than in ten seconds.
+
+        Called when the entry unloads, so a batch built moments before a
+        reload or a deletion is not still waiting in a timer that outlives
+        the objects that scheduled it.
+        """
+        await self._store.async_save(self._station_dict())
 
     @property
     def history(self) -> TitleHistory:
@@ -350,9 +369,12 @@ class CuratedRadioEngine:
 
         seed = queue.seed_artist
         # Settle which name Last.fm should be asked about, once, on the
-        # pick that starts the station. A duet that merely comes up later
-        # must not redefine it.
-        if mode != MODE_REFILL:
+        # song that starts the station. A duet that merely comes up later
+        # must not redefine it. A refill onto music that is not ours starts
+        # a station too, so it needs this as much as a pick does: without
+        # it, topping up a Sonny and Cher album asked Last.fm about "Sonny"
+        # and got Skrillex.
+        if mode != MODE_REFILL or not continuing:
             await self._async_resolve_alias(seed, queue.artists)
             # Put the picked song into repeat memory. Nothing else does:
             # the history records what this integration queues, and a pick
@@ -882,7 +904,7 @@ class CuratedRadioEngine:
     async def _async_tracks_for(
         self, artist: str, cache: dict[str, list[TrackInfo]] | None = None
     ) -> list[TrackInfo]:
-        """Get an artist's best-known tracks, natively if possible.
+        """Get an artist's best-known tracks, by relevance-ranked search.
 
         The optional cache is per playlist build. The same few artists
         recur in every round, and without it each recurrence costs a fresh
@@ -890,21 +912,18 @@ class CuratedRadioEngine:
         """
         if cache is not None and artist in cache:
             return cache[artist]
-        tracks: list[TrackInfo] = []
-        if not tracks:
-            # Native search first, purely so a limit can be passed. The
-            # service action returns five tracks and no more, which is less
-            # than one batch uses, so an artist reached on a refill had
-            # nothing left that had not just played.
-            searched = await self._async_search(artist)
-            if not searched and (plain := without_backing_band(artist)):
-                # The name decides what comes back, not just what is
-                # accepted. Last.fm writes a backing band in where a
-                # provider often does not, and searching the long form
-                # returns other people's records or nothing at all.
-                _LOGGER.debug("Nothing for %s; trying %s", artist, plain)
-                searched = await self._async_search(plain)
-            tracks = searched
+        # Native search first, purely so a limit can be passed. The service
+        # action returns five tracks and no more, which is less than one
+        # batch uses, so an artist reached on a refill had nothing left
+        # that had not just played.
+        tracks = await self._async_search(artist)
+        if not tracks and (plain := without_backing_band(artist)):
+            # The name decides what comes back, not just what is accepted.
+            # Last.fm writes a backing band in where a provider often does
+            # not, and searching the long form returns other people's
+            # records or nothing at all.
+            _LOGGER.debug("Nothing for %s; trying %s", artist, plain)
+            tracks = await self._async_search(plain)
         # One act per name: a namesake that the credit check cannot tell
         # apart is told apart by its provider ID instead.
         tracks = keep_one_act(tracks, artist)
@@ -994,7 +1013,6 @@ class CuratedRadioEngine:
                 excluded_uris=excluded_uris,
                 excluded_artists=excluded_artists,
                 limit=limit,
-                now=dt_util.utcnow(),
             )
         return select_tracks(
             tracks,
@@ -1004,7 +1022,6 @@ class CuratedRadioEngine:
             excluded_uris=excluded_uris,
             excluded_artists=excluded_artists,
             limit=limit,
-            now=dt_util.utcnow(),
         )
 
     async def _async_enqueue(self, uris: list[str], mode: str) -> list[str]:

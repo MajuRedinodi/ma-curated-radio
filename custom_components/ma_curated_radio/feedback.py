@@ -30,6 +30,8 @@ _LOGGER = logging.getLogger(__name__)
 
 STORAGE_VERSION = 1
 SECONDS_PER_DAY = 86400
+# Seconds to batch writes over, the same delay the station store uses.
+SAVE_DELAY = 10
 
 
 @dataclass(slots=True)
@@ -103,17 +105,28 @@ class SkipMemory:
         self._artist_labels = dict(data.get("artist_labels") or {})
         self._prune()
 
+    def _as_dict(self) -> dict[str, Any]:
+        """Everything worth keeping, as the store holds it."""
+        return {
+            "tracks": self._tracks,
+            "artists": self._artists,
+            "track_labels": self._track_labels,
+            "artist_labels": self._artist_labels,
+        }
+
     async def _async_save(self) -> None:
-        """Persist current state."""
-        self._store.async_delay_save(
-            lambda: {
-                "tracks": self._tracks,
-                "artists": self._artists,
-                "track_labels": self._track_labels,
-                "artist_labels": self._artist_labels,
-            },
-            10,
-        )
+        """Persist current state, batched with other writes."""
+        self._store.async_delay_save(self._as_dict, SAVE_DELAY)
+
+    async def async_flush(self) -> None:
+        """Write now rather than in ten seconds.
+
+        Called when the entry unloads. A delayed write outlives the objects
+        that scheduled it, so a skip recorded seconds before the player was
+        deleted used to land after its storage file had been removed, and
+        recreated the file this integration had just tidied away.
+        """
+        await self._store.async_save(self._as_dict())
 
     def _prune(self) -> None:
         """Drop entries whose suppression window has passed."""

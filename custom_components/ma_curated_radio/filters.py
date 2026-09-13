@@ -12,7 +12,6 @@ import random
 import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any, Final
 
 # Word boundaries for the live-version check: anything that is not a letter
@@ -68,15 +67,10 @@ HOLIDAY_TOKENS: Final = (
     "xmas",
     "yuletide",
     "navidad",
-    # "santa" on its own is the mistake this list warns about, made in the
-    # list itself: it took Everclear's "Santa Monica", Bon Jovi's "Santa
-    # Fe", and every track on an album called Santana.
-    "santa claus",
-    "santa baby",
-    "santa bring",
-    "santa tell me",
-    "here comes santa",
-    "dear santa",
+    # Santa is handled separately, below: as a bare substring it took
+    # Everclear's "Santa Monica" and every track on an album called
+    # Santana, and as a short list of phrases it missed The Killers'
+    # "Don't Shoot Me Santa" and Clarence Carter's "Back Door Santa".
     # Standards whose titles never say Christmas. Emeli Sandé's "Winter
     # Wonderland", on "The Best Man Holiday" soundtrack, reached a
     # September queue past every word above.
@@ -138,9 +132,9 @@ TIER_DEEP: Final = "D"
 # in the ear, then Secondary to recover.
 TIER_PATTERN: Final = [TIER_POWER, TIER_DEEP, TIER_SECONDARY]
 
-# Spoken-word and filler entries that a genuine top-tracks ranking will
-# surface because they are recent and getting plays, but which nobody
-# wants queued. Duration catches most of it; these catch the long ones.
+# Spoken-word and filler entries that search returns alongside the real
+# tracks, and that nobody wants queued. Duration catches most of it;
+# these catch the long ones.
 # Imitations, not covers. A real cover is welcome and often the best
 # thing in a batch, so nothing here matches on "cover" or "version":
 # these phrases appear only on records made to sound like someone else.
@@ -181,6 +175,32 @@ TEMPO_MARKINGS: Final = (
     "vivace",
 )
 
+# How a provider separates a song's name from a note about the recording.
+# Every common spelling, because they disagree: a hyphen, an en dash, an em
+# dash, round brackets, square brackets.
+_NOTE_SEPARATOR = re.compile(r"\s[-\u2013\u2014]\s")
+NOTE_BRACKETS: Final = ("(", "[", "{")
+
+# A title that opens this way is a recording, not a song: Led Zeppelin's
+# "Live at the Olympia - Paris, France (October 10, 1969) - Dazed and
+# Confused" says live before it says anything else, so nothing a provider
+# appends carries the marker.
+_LIVE_OPENING = re.compile(r"^(live|unplugged)\s+(at|from|in|on)\b", re.IGNORECASE)
+
+# Santa, but not the places named after him. Everclear's "Santa Monica",
+# Bon Jovi's "Santa Fe" and Santa Esmeralda are songs; "Santa's Coming for
+# Us" is not. Santana needs no exception: the word boundary excludes it.
+_SANTA = re.compile(
+    r"\bsanta\b(?!\s+(?:monica|fe|barbara|cruz|ana|clara|rosa|maria|"
+    r"lucia|marta|teresa|esmeralda|cecilia|catarina)\b)",
+    re.IGNORECASE,
+)
+
+# A remix a provider does not mark at all, beyond the last word: Tidal
+# writes "Savage Remix" and "Drunk in Love Remix" with no brackets, no
+# dash, and nothing in the version field.
+_TRAILING_REMIX = re.compile(r"\bremix(es)?\s*$", re.IGNORECASE)
+
 # Punctuation that carries no meaning in a title, so "No. 5" and "No 5"
 # are the same piece. Curly quotes are here too: the provider writes
 # "Don't Stop Believin'" and Last.fm writes it straight, and a title that
@@ -215,10 +235,11 @@ def base_title(name: str) -> str:
     provider and Last.fm disagree about both and a title that does not
     match Last.fm's is read as a song nobody knows.
     """
-    title = name.split(" - ", maxsplit=1)[0].split(" / ", maxsplit=1)[0]
-    if title.startswith("("):
-        title = title.replace("(", "", 1).replace(")", " ", 1)
-    title = title.split("(", maxsplit=1)[0]
+    title, _ = _split_note(name)
+    title = title.split(" / ", maxsplit=1)[0]
+    for opener, closer in (("(", ")"), ("[", "]")):
+        if title.startswith(opener):
+            title = title.replace(opener, "", 1).replace(closer, " ", 1)
     head, sep, tail = title.rpartition(",")
     if sep and tail.strip().lower().startswith(TEMPO_MARKINGS):
         title = head
@@ -241,19 +262,42 @@ def is_demo(name: str, version: str, album: str) -> bool:
     return bool(words & {"demo", "demos"}) or "rough mix" in text
 
 
-def _recording_note(name: str) -> str:
-    """The part of a title that describes the recording, lowercased.
+def _split_note(name: str) -> tuple[str, str]:
+    """Split a title into the song's own name and the provider's note.
 
-    Everything the base title throws away: what follows the first " - "
-    and whatever sits in brackets. A marker for a live or remixed version
-    lives there, never in the song's own name, and reading the whole title
-    condemned songs that are simply called what they are called. With live
-    filtering on, which is the default, "Live Wire", "Live to Tell", "Live
-    Forever" and "Live and Let Die" could none of them be queued.
+    The note is what a provider appends to say which recording this is:
+    after a dash, or inside brackets. Providers disagree about which
+    punctuation to use, so all the common spellings count: "Song - Live",
+    "Song (Live)", "Song [Live]", and the en dash and square brackets that
+    a first attempt at this missed, which quietly let live versions
+    through on the providers that use them.
+
+    A bracket that opens the title is part of the song's name, not a note,
+    so it is left in the name half: "(Don't Fear) The Reaper".
     """
-    _, _, tail = name.partition(" - ")
-    _, _, inner = name.partition("(")
-    return f"{tail} {inner}".lower()
+    head, note = name, ""
+    if split := _NOTE_SEPARATOR.search(head):
+        head, note = head[: split.start()], head[split.end() :]
+    for opener in NOTE_BRACKETS:
+        # From index 1, because a bracket that opens the title belongs to
+        # the name: OMD's "(Forever) Live And Die" is not a live recording.
+        at = head.find(opener, 1)
+        if at > 0:
+            note = f"{note} {head[at:]}"
+            head = head[:at]
+    return head, note
+
+
+def _recording_note(name: str) -> str:
+    """What the provider appended to a title, lowercased.
+
+    A marker for a live or remixed version lives here, never in the song's
+    own name, and reading the whole title condemned songs that are simply
+    called what they are called. With live filtering on, which is the
+    default, "Live Wire", "Live to Tell", "Live Forever" and "Live and Let
+    Die" could none of them be queued.
+    """
+    return _split_note(name)[1].lower()
 
 
 def is_remix(name: str, version: str) -> bool:
@@ -270,8 +314,10 @@ def is_remix(name: str, version: str) -> bool:
     haystack = version.lower()
     note = _recording_note(name)
     words = set(_WORDS.split(note))
-    if bool(words & {"remix", "rmx", "remixes"}) or any(
-        marker in haystack for marker in REMIX_MARKERS
+    if (
+        bool(words & {"remix", "rmx", "remixes"})
+        or any(marker in haystack for marker in REMIX_MARKERS)
+        or _TRAILING_REMIX.search(name)
     ):
         return True
     text = f"{note} {haystack}"
@@ -291,6 +337,8 @@ def is_live(name: str, version: str) -> bool:
     thing this filter exists to catch only got caught when the provider
     also populated the version field.
     """
+    if _LIVE_OPENING.match(name.strip()):
+        return True
     haystack = version.lower()
     words = set(_WORDS.split(_recording_note(name)))
     return any(
@@ -303,9 +351,17 @@ def is_holiday(name: str, version: str, album: str) -> bool:
 
     Checks title, version and album name together: a provider's popularity
     ranking will happily surface an artist's Christmas album in September.
+
+    Santa is a word rather than a phrase, with the places named after him
+    spelled out. A phrase list was tried and missed The Killers' "Don't
+    Shoot Me Santa", Clarence Carter's "Back Door Santa", Sia's "Santa's
+    Coming for Us" and Dylan's "Must Be Santa", none of which say
+    Christmas anywhere. The word boundary already excludes Santana.
     """
     haystack = f"{name} {version} {album}".lower()
-    return any(token in haystack for token in HOLIDAY_TOKENS)
+    if any(token in haystack for token in HOLIDAY_TOKENS):
+        return True
+    return bool(_SANTA.search(haystack))
 
 
 def clean_similar_artists(
@@ -514,8 +570,8 @@ def is_non_song(name: str, version: str) -> bool:
     """Return True for commentary and filler that runs long enough to pass.
 
     Taylor Swift's "Track by Track" entries are the motivating case: they
-    are her talking about each song, they chart alongside the songs, and a
-    real top-tracks ranking puts them right at the top.
+    are her talking about each song, they sit in the catalogue alongside
+    the songs, and a search for her returns them with everything else.
     """
     haystack = f"{name} {version}".lower()
     return any(
@@ -592,7 +648,6 @@ def select_fresh_first(
     excluded_uris: set[str] | None = None,
     excluded_artists: set[str] | None = None,
     limit: int = 0,
-    now: datetime | None = None,
 ) -> tuple[list[str], list[str]]:
     """Like select_tracks, but songs heard today wait their turn.
 
@@ -617,7 +672,6 @@ def select_fresh_first(
         excluded_uris=set(uris_out),
         excluded_artists=excluded_artists,
         limit=limit,
-        now=now,
     )
     if not limit or len(fresh) >= limit:
         return fresh, fresh_titles
@@ -629,7 +683,6 @@ def select_fresh_first(
         excluded_uris=uris_out | set(fresh),
         excluded_artists=excluded_artists,
         limit=0,
-        now=now,
     )
     oldest = sorted(range(len(rest)), key=lambda i: heard.get(rest_titles[i], 0.0))
     wanted = sorted(oldest[: limit - len(fresh)])
@@ -648,7 +701,6 @@ def select_tracks(
     excluded_uris: set[str] | None = None,
     excluded_artists: set[str] | None = None,
     limit: int = 0,
-    now: datetime | None = None,
 ) -> tuple[list[str], list[str]]:
     """Filter one artist's tracks down to this batch's picks.
 
@@ -670,7 +722,7 @@ def select_tracks(
 
     uris: list[str] = []
     titles: list[str] = []
-    for track in _ordered_for_selection(tracks, rules, now):
+    for track in _ordered_for_selection(tracks, rules):
         if limit and len(uris) >= limit:
             break
         if not track.uri or track.uri == current_uri or track.uri in uris_out:
@@ -689,8 +741,8 @@ def select_tracks(
             continue
         if not matches_provider(track.uri, rules.provider):
             continue
-        # Commentary, interludes and skits chart alongside the songs, so
-        # a genuine top-tracks ranking hands them straight over.
+        # Commentary, interludes and skits sit in the catalogue alongside
+        # the songs, so a search hands them over with everything else.
         if is_too_short(track.duration, rules.min_duration):
             continue
         if rules.clean_only and track.explicit:
@@ -715,9 +767,7 @@ def select_tracks(
     return uris, titles
 
 
-def _ordered_for_selection(
-    tracks: list[Any], rules: SelectionRules, now: datetime | None
-) -> list[Any]:
+def _ordered_for_selection(tracks: list[Any], rules: SelectionRules) -> list[Any]:
     """Apply every ordering preference before the batch is cut.
 
     Explicit preference is a sort rather than a filter because a clean
@@ -1074,10 +1124,20 @@ def too_deep(
     if not titles & set(listeners):
         return set()
     biggest = {base_title(title) for title, _ in known[:a_tracks]}
-    return {
-        track.uri
-        for track in tracks
-        if rank.get(track.uri) is not None
-        and base_title(track.name) not in biggest
-        and listeners.get(base_title(track.name), 0) < bar
-    }
+    cut: set[str] = set()
+    for track in tracks:
+        position = rank.get(track.uri)
+        title = base_title(track.name)
+        if position is None or title in biggest or listeners.get(title, 0) >= bar:
+            continue
+        if position < a_tracks and title not in listeners:
+            # A title Last.fm has never seen, high in the provider's own
+            # order, is usually the two services spelling one record
+            # differently rather than a song nobody knows. Tidal writes
+            # "Beethoven: Symphony No. 5 in C Minor, Op. 67: I. Allegro con
+            # brio" where Last.fm drops the composer, and cutting on that
+            # took the famous recordings. A title Last.fm does list, below
+            # the bar, is judged on its listeners as everything else is.
+            continue
+        cut.add(track.uri)
+    return cut

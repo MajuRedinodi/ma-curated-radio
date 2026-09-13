@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime
+from typing import Any
 
 from homeassistant.core import (
     CALLBACK_TYPE,
@@ -90,6 +91,7 @@ class CuratedRadioDetector:
         self._queue_items: int | None = None
         self._task: asyncio.Task[None] | None = None
         self._priming: asyncio.Task[None] | None = None
+        self._run: asyncio.Task[Any] | None = None
         # The track last heard playing. Track changes are judged against
         # this rather than against the update before, because some players
         # change the track and start playing it in two separate updates.
@@ -141,7 +143,7 @@ class CuratedRadioDetector:
         @callback
         def _stop() -> None:
             unsub()
-            for task in (self._task, self._priming):
+            for task in (self._task, self._priming, self._run):
                 if task is not None and not task.done():
                     task.cancel()
 
@@ -167,6 +169,11 @@ class CuratedRadioDetector:
             # No queue, or a track change beat us to it and already knows
             # better than this reading does.
             return
+        if self._playing_track is None:
+            # The player had no state to read at startup. Without this the
+            # song already playing looks like a change away from nothing,
+            # and a pick that never happened replaces the queue.
+            self._playing_track = queue.current_uri
         self._expected_next = queue.next_uri
         self._queue_items = queue.items
 
@@ -267,8 +274,16 @@ class CuratedRadioDetector:
         no repeat protection for the tracks that landed, and a reseed next
         time from the batch before. Shielded, the write finishes even
         though this decision has been abandoned.
+
+        The run is held rather than left anonymous, so that unloading the
+        entry still stops it. A shielded task nothing holds a reference to
+        outlives a reload, and the old engine then writes its station over
+        the one the new engine has already loaded.
         """
-        await asyncio.shield(self._engine.async_run(mode, continuing=continuing))
+        self._run = self._hass.async_create_task(
+            self._engine.async_run(mode, continuing=continuing)
+        )
+        await asyncio.shield(self._run)
 
     async def _async_record_feedback(self, outgoing: PlaybackSnapshot | None) -> None:
         """Record whether the track that just ended was skipped.

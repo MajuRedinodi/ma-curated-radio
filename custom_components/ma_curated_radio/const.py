@@ -284,9 +284,8 @@ SESSION_EXPIRY_HOURS: Final = 6
 CONF_MIN_DURATION: Final = "min_duration"
 
 # Seconds. Under this, a track is almost certainly commentary, an
-# interlude or a skit rather than a song. Genuine top-tracks rankings
-# surface those; relevance-ranked search did not, which is why this only
-# became necessary once the native lookup started working.
+# interlude or a skit rather than a song. Search returns them alongside
+# the real tracks, because they sit in the same catalogue.
 DEFAULT_MIN_DURATION: Final = 90
 
 # --- Familiarity -------------------------------------------------------------
