@@ -786,11 +786,15 @@ def test_a_mid_sized_act_stops_at_its_hits():
 
 
 def test_a_tracks_are_always_allowed_even_below_the_bar():
-    """A small act on a big station still gets its own biggest songs."""
-    small = [("Family Tradition", 38_000), ("A Country Boy Can Survive", 32_000)]
+    """A small act on a big station still gets its own two biggest songs."""
+    small = [
+        ("Family Tradition", 38_000),
+        ("A Country Boy Can Survive", 32_000),
+        ("Born to Boogie", 9_000),
+    ]
     songs, rank = _ranked(["Born to Boogie", "A Country Boy Can Survive", "Family Tradition"])
-    # The first two by the provider's order, the third by Last.fm's.
-    assert too_deep(songs, rank, small, 100_000, 2) == set()
+    # Last.fm decides which two, not the provider, so its third song goes.
+    assert too_deep(songs, rank, small, 100_000, 2) == {"t:0"}
 
 
 def test_nothing_is_cut_without_numbers():
@@ -823,3 +827,33 @@ def test_tracks_without_ids_are_kept():
     stray = _Song("s", "B", ["Act"], [])
     namesake = _Song("n", "C", ["Act"], ["id:2"])
     assert keep_one_act([*songs, stray, namesake], "Act") == [*songs, stray]
+
+
+def test_the_providers_first_result_is_not_an_a_track():
+    """A search for Sugar put a techno record by a different Sugar first.
+
+    Last.fm lists it 27th for Sugar at 8,664 listeners against 86,542 for
+    their biggest, so the bar catches it once the provider's order stops
+    waving the first results through.
+    """
+    sugar = [
+        ("If I Can't Change Your Mind", 86_542),
+        ("A Good Idea", 61_183),
+        ("Candy from Strangers", 8_664),
+    ]
+    songs, rank = _ranked(
+        ["Candy from Strangers", "If I Can't Change Your Mind", "A Good Idea"]
+    )
+    assert too_deep(songs, rank, sugar, 15_000, 2) == {"t:0"}
+
+
+def test_an_artist_last_fm_knows_under_another_name_is_left_alone():
+    """Classical, where the two services share no song titles at all."""
+    vivaldi = [("Spring", 400_000), ("Winter", 300_000)]
+    songs, rank = _ranked(
+        [
+            "The Four Seasons, Violin Concerto in E Major, Allegro",
+            "Concerto in G Minor",
+        ]
+    )
+    assert too_deep(songs, rank, vivaldi, 100_000, 2) == set()

@@ -1045,18 +1045,26 @@ def too_deep(
 ) -> set[str]:
     """The URIs of an artist's songs that are past what this station plays.
 
-    An artist's A-tracks are always allowed: the first ``a_tracks`` of
-    their own ordering, and their ``a_tracks`` biggest songs on Last.fm,
-    since the two do not always agree. Past those a song needs at least
-    ``bar`` Last.fm listeners, and a song Last.fm does not list among the
+    An artist's A-tracks are always allowed: their ``a_tracks`` biggest
+    songs on Last.fm, however small the artist is. Every other song needs
+    at least ``bar`` listeners, and a song Last.fm does not list among the
     artist's best known is taken to be short of it.
 
-    Nothing is cut when the numbers are missing (``known`` is None or
-    empty, or the bar is zero), because a Last.fm outage should not empty
-    the station.
+    The provider's own order deliberately confers nothing. It used to: the
+    first few results were treated as A-tracks too, and a search for Sugar
+    put a techno record called "Candy from Strangers" first, credited to a
+    different act of the same name. Last.fm lists it 27th for Sugar at
+    8,664 listeners against 86,542 for their biggest, so the bar would have
+    caught it had the provider's order not waved it through.
 
-    This is what stops a tight fence, refilling from the same artists, from
-    reaching further down each of them every time it comes back round.
+    Nothing is cut when the numbers are missing (``known`` is None or
+    empty, or the bar is zero), or when no song the provider returned
+    appears in the Last.fm list at all. That last case is a name the two
+    services do not share rather than an artist with no known songs, and
+    classical is full of them.
+
+    This is also what stops a tight fence, refilling from the same artists,
+    from reaching further down each of them every time it comes round.
     """
     if not known or bar <= 0:
         return set()
@@ -1064,14 +1072,14 @@ def too_deep(
     for title, count in known:
         key = base_title(title)
         listeners[key] = max(count, listeners.get(key, 0))
+    titles = {base_title(track.name) for track in tracks}
+    if not titles & set(listeners):
+        return set()
     biggest = {base_title(title) for title, _ in known[:a_tracks]}
-    cut: set[str] = set()
-    for track in tracks:
-        position = rank.get(track.uri)
-        if position is None or position < a_tracks:
-            continue
-        title = base_title(track.name)
-        if title in biggest or listeners.get(title, 0) >= bar:
-            continue
-        cut.add(track.uri)
-    return cut
+    return {
+        track.uri
+        for track in tracks
+        if rank.get(track.uri) is not None
+        and base_title(track.name) not in biggest
+        and listeners.get(base_title(track.name), 0) < bar
+    }
