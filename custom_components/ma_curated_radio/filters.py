@@ -66,9 +66,17 @@ HOLIDAY_TOKENS: Final = (
     # The obvious ones.
     "christmas",
     "xmas",
-    "santa",
     "yuletide",
     "navidad",
+    # "santa" on its own is the mistake this list warns about, made in the
+    # list itself: it took Everclear's "Santa Monica", Bon Jovi's "Santa
+    # Fe", and every track on an album called Santana.
+    "santa claus",
+    "santa baby",
+    "santa bring",
+    "santa tell me",
+    "here comes santa",
+    "dear santa",
     # Standards whose titles never say Christmas. Emeli Sandé's "Winter
     # Wonderland", on "The Best Man Holiday" soundtrack, reached a
     # September queue past every word above.
@@ -174,8 +182,10 @@ TEMPO_MARKINGS: Final = (
 )
 
 # Punctuation that carries no meaning in a title, so "No. 5" and "No 5"
-# are the same piece.
-_PUNCTUATION = re.compile(r"[.,;:'\"]")
+# are the same piece. Curly quotes are here too: the provider writes
+# "Don't Stop Believin'" and Last.fm writes it straight, and a title that
+# fails to match Last.fm's reads as a song nobody has heard of.
+_PUNCTUATION = re.compile("[.,;:'\"‘’“”]")
 
 
 def base_title(name: str) -> str:
@@ -192,16 +202,28 @@ def base_title(name: str) -> str:
     Also truncated at " / ", for the medley titles a provider gives the
     same record under. Chicago's "Hard to Say I'm Sorry / Get Away" and
     "Hard to Say I'm Sorry" are one song, and both played in one batch.
+
+    A parenthesis that opens the title is part of the song's name rather
+    than a note about the recording, so only its brackets are dropped.
+    Cutting there instead left nothing at all, and a song whose base title
+    is empty is discarded: "(Don't Fear) The Reaper", "(Sittin' On) The
+    Dock of the Bay" and "(I Can't Get No) Satisfaction" could never be
+    queued. Keeping the words also matches the provider's other spelling of
+    the same record, "Don't Fear the Reaper".
+
+    Curly quotes fold onto straight ones and "&" onto "and", because the
+    provider and Last.fm disagree about both and a title that does not
+    match Last.fm's is read as a song nobody knows.
     """
-    title = (
-        name.split(" - ", maxsplit=1)[0]
-        .split(" / ", maxsplit=1)[0]
-        .split("(", maxsplit=1)[0]
-    )
+    title = name.split(" - ", maxsplit=1)[0].split(" / ", maxsplit=1)[0]
+    if title.startswith("("):
+        title = title.replace("(", "", 1).replace(")", " ", 1)
+    title = title.split("(", maxsplit=1)[0]
     head, sep, tail = title.rpartition(",")
     if sep and tail.strip().lower().startswith(TEMPO_MARKINGS):
         title = head
-    return _PUNCTUATION.sub("", title).strip().lower()
+    title = title.replace(" & ", " and ")
+    return " ".join(_PUNCTUATION.sub("", title).lower().split())
 
 
 def is_demo(name: str, version: str, album: str) -> bool:
@@ -219,6 +241,21 @@ def is_demo(name: str, version: str, album: str) -> bool:
     return bool(words & {"demo", "demos"}) or "rough mix" in text
 
 
+def _recording_note(name: str) -> str:
+    """The part of a title that describes the recording, lowercased.
+
+    Everything the base title throws away: what follows the first " - "
+    and whatever sits in brackets. A marker for a live or remixed version
+    lives there, never in the song's own name, and reading the whole title
+    condemned songs that are simply called what they are called. With live
+    filtering on, which is the default, "Live Wire", "Live to Tell", "Live
+    Forever" and "Live and Let Die" could none of them be queued.
+    """
+    _, _, tail = name.partition(" - ")
+    _, _, inner = name.partition("(")
+    return f"{tail} {inner}".lower()
+
+
 def is_remix(name: str, version: str) -> bool:
     """Return True for remixes and club mixes.
 
@@ -231,20 +268,22 @@ def is_remix(name: str, version: str) -> bool:
     live versions are judged.
     """
     haystack = version.lower()
-    words = set(_WORDS.split(name.lower()))
+    note = _recording_note(name)
+    words = set(_WORDS.split(note))
     if bool(words & {"remix", "rmx", "remixes"}) or any(
         marker in haystack for marker in REMIX_MARKERS
     ):
         return True
-    text = f"{name} {version}".lower()
+    text = f"{note} {haystack}"
     return any(phrase in text for phrase in REMIX_PHRASES)
 
 
 def is_live(name: str, version: str) -> bool:
     """Return True for live recordings.
 
-    Substring match on the version field, standalone-word match on the title
-    so "Alive" and "Living on a Prayer" are left alone.
+    Substring match on the version field, standalone-word match on the
+    recording note, so "Song (Live at Wembley)" and "Song - Live" are
+    caught while "Alive" and "Living on a Prayer" are left alone.
 
     Tokenising on non-alphanumerics rather than whitespace is a deliberate
     departure from the YAML this replaces: splitting on spaces alone left
@@ -253,7 +292,7 @@ def is_live(name: str, version: str) -> bool:
     also populated the version field.
     """
     haystack = version.lower()
-    words = set(_WORDS.split(name.lower()))
+    words = set(_WORDS.split(_recording_note(name)))
     return any(
         marker in haystack or marker in words for marker in LIVE_MARKERS
     )
@@ -745,6 +784,11 @@ def freshness(released: datetime | None, window_days: int, now: datetime) -> flo
     """
     if released is None or window_days <= 0:
         return 0.0
+    if released.tzinfo is None:
+        # A provider that reports a date without a zone would otherwise
+        # raise here, inside the sort that orders a batch, and take the
+        # whole batch down with it.
+        released = released.replace(tzinfo=now.tzinfo)
     age_days = (now - released).days
     if age_days < 0 or age_days > window_days:
         return 0.0
@@ -930,7 +974,10 @@ def lead_among_credits(
     how that duo is known, which is what the share measures.
     """
     first_size = sizes.get(first, 0)
-    if not pair_size or first_size >= pair_size * FOOTNOTE_SHARE:
+    # An unknown audience is not evidence of a small one, here as
+    # everywhere else: without this, a first credit Last.fm has never heard
+    # of hands the station to whoever it shares the record with.
+    if not pair_size or not first_size or first_size >= pair_size * FOOTNOTE_SHARE:
         return first
     best = max(sizes.items(), key=lambda item: item[1], default=(first, 0))
     return best[0] if best[1] > first_size else first

@@ -57,10 +57,13 @@ def test_base_title_collapses_variants(raw, expected):
         ("Song", "Live at Wembley", True),
         ("Song (Live)", "", True),
         ("Song - Live", "", True),
-        # Known false positive, inherited from the YAML: the word is the
-        # title. Filtering it costs one song; matching loosely would let
-        # every live recording through.
-        ("Live and Let Die", "", True),
+        # Songs that are simply called what they are called. Judging the
+        # whole title condemned all of these while live filtering was on
+        # by default.
+        ("Live and Let Die", "", False),
+        ("Live Wire", "", False),
+        ("Live to Tell", "", False),
+        ("Live Forever", "", False),
         ("Alive", "", False),
         ("Living on a Prayer", "", False),
         ("Song", "Remastered", False),
@@ -857,3 +860,52 @@ def test_an_artist_last_fm_knows_under_another_name_is_left_alone():
         ]
     )
     assert too_deep(songs, rank, vivaldi, 100_000, 2) == set()
+
+
+def test_a_title_that_opens_with_a_parenthesis_survives():
+    """Blue Oyster Cult could never be queued: the title normalised to "".
+
+    A song with no base title is dropped as unusable, so "(Don't Fear) The
+    Reaper", "(Sittin' On) The Dock of the Bay" and "(I Can't Get No)
+    Satisfaction" were all unreachable.
+    """
+    assert base_title("(Don't Fear) The Reaper") == "dont fear the reaper"
+    assert base_title("(Sittin' On) The Dock of the Bay") == "sittin on the dock of the bay"
+    # And it matches the provider's other spelling of the same record.
+    assert base_title("Don't Fear the Reaper") == "dont fear the reaper"
+
+
+def test_a_trailing_parenthesis_is_still_a_note_about_the_recording():
+    assert base_title("Song (Radio Edit)") == "song"
+    assert base_title("Cold Heart (PNAU Remix)") == "cold heart"
+
+
+def test_curly_and_straight_quotes_are_the_same_title():
+    """The provider writes one, Last.fm writes the other, and a title that
+    misses the Last.fm list is read as a song nobody knows."""
+    assert base_title("Don’t Stop Believin’") == base_title("Don't Stop Believin'")
+
+
+def test_an_ampersand_is_the_word_and():
+    assert base_title("Rock & Roll") == base_title("Rock and Roll")
+
+
+def test_santana_is_not_a_christmas_album():
+    """"santa" as a substring took every track on an album called Santana,
+    plus Santa Monica and Santa Fe."""
+    assert not is_holiday("Black Magic Woman", "", "Santana")
+    assert not is_holiday("Evil Ways", "", "Santana III")
+    assert not is_holiday("Santa Monica", "", "")
+    assert not is_holiday("Santa Fe", "", "")
+    assert is_holiday("Santa Claus Is Coming to Town", "", "")
+    assert is_holiday("Santa Baby", "", "")
+
+
+def test_an_unknown_first_credit_keeps_the_lead():
+    """A lookup miss is not evidence of being small, here as everywhere."""
+    assert lead_among_credits("Sonny", {"sonny": 0, "cher": 900_000}, 2_000_000) == "Sonny"
+
+
+def test_a_release_date_without_a_timezone_does_not_kill_the_batch():
+    now = datetime(2026, 9, 13, tzinfo=UTC)
+    assert freshness(datetime(2026, 9, 1), 30, now) > 0

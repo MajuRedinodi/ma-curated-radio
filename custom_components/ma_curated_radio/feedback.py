@@ -17,11 +17,14 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
+
+if TYPE_CHECKING:
+    from .settings import Settings
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -72,6 +75,10 @@ class SkipMemory:
         self._artist_days = artist_days
         self._strike_limit = strike_limit
         self._tracks: dict[str, float] = {}
+        # Note: apply_settings keeps the three above current. They were
+        # copied once at construction and never refreshed, so changing how
+        # long a song stays away, or how many skips mute an artist, did
+        # nothing at all until Home Assistant was restarted.
         self._artists: dict[str, float] = {}
         # Keys are normalised for matching, which makes them unreadable.
         # These carry the name a person would recognise, so the lists can
@@ -223,6 +230,17 @@ class SkipMemory:
             _LOGGER.info("Unmuted %s artist(s)", count)
         return count
 
+    def apply_settings(self, settings: Settings) -> None:
+        """Adopt changed settings in place, the way everything else does.
+
+        What is already remembered keeps the expiry it was given, since
+        those dates are stored rather than recomputed. The new values
+        govern everything remembered from here on.
+        """
+        self._track_days = settings.track_suppress_days
+        self._artist_days = settings.artist_mute_days
+        self._strike_limit = settings.artist_strike_limit
+
     async def async_record_played(self) -> None:
         """Note that a track finished, which breaks any skip run."""
         self._streak.reset()
@@ -245,7 +263,12 @@ class SkipMemory:
             self._track_labels[title] = label or title
 
         muted: str | None = None
-        if artist and self._streak.register(artist) >= self._strike_limit:
+        # Zero means muting is off, which is what the setting promises.
+        # Without the first test a run of one always reaches a limit of
+        # zero, so the gentlest possible setting muted on every skip.
+        if artist and self._strike_limit > 0 and (
+            self._streak.register(artist) >= self._strike_limit
+        ):
             self._artists[artist.lower()] = now + self._artist_days * SECONDS_PER_DAY
             self._artist_labels[artist.lower()] = artist
             self._streak.reset()

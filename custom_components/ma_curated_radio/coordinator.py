@@ -89,6 +89,7 @@ class CuratedRadioDetector:
         self._last_manual_pick: datetime | None = None
         self._queue_items: int | None = None
         self._task: asyncio.Task[None] | None = None
+        self._priming: asyncio.Task[None] | None = None
         # The track last heard playing. Track changes are judged against
         # this rather than against the update before, because some players
         # change the track and start playing it in two separate updates.
@@ -135,14 +136,39 @@ class CuratedRadioDetector:
         unsub = async_track_state_change_event(
             self._hass, [self._settings.player], self._handle_state_event
         )
+        self._priming = self._hass.async_create_task(self._async_prime())
 
         @callback
         def _stop() -> None:
             unsub()
-            if self._task is not None and not self._task.done():
-                self._task.cancel()
+            for task in (self._task, self._priming):
+                if task is not None and not task.done():
+                    task.cancel()
 
         return _stop
+
+    async def _async_prime(self) -> None:
+        """Read the queue once at startup, so the first pick is a pick.
+
+        Nothing can be a manual pick until there is an expectation to
+        break, and the expectation used to start empty after every restart.
+        The station itself survives a restart, so the first song picked
+        afterwards was read as an ordinary refill and continued the station
+        that was already there: pick Metallica in the morning and the queue
+        fills with last night's neighbours. The queue survives too, so its
+        next track is a sound expectation to start from.
+        """
+        try:
+            queue = await async_get_queue(self._hass, self._settings.player)
+        except Exception:  # noqa: BLE001 - priming is best effort
+            _LOGGER.debug("Could not read the queue at startup", exc_info=True)
+            return
+        if queue is None or self._expected_next:
+            # No queue, or a track change beat us to it and already knows
+            # better than this reading does.
+            return
+        self._expected_next = queue.next_uri
+        self._queue_items = queue.items
 
     @callback
     def _handle_state_event(self, event: Event[EventStateChangedData]) -> None:
@@ -235,8 +261,15 @@ class CuratedRadioDetector:
         queue produces a run of them that says nothing about any of the
         songs passed over. Observed at one in the morning with a house full
         of kids: two songs were suppressed for a month by somebody holding
-        the next button. So a skip is held back until a song is allowed to
-        play, and a second skip arriving first throws both away.
+        the next button. So a skip is held back until the listener's next
+        verdict, and a second skip seconds later throws both away.
+
+        A second skip that is not part of a run confirms the one before it
+        rather than replacing it. Skipping three songs over a quarter of an
+        hour is three verdicts, and muting an artist depends on counting
+        them: holding each skip until the next track played through, with
+        nothing to commit them in between, left the run permanently at one
+        and made muting unreachable.
         """
         if outgoing is None:
             return
@@ -260,6 +293,7 @@ class CuratedRadioDetector:
             )
             self._pending_skip = None
             return
+        await self._async_commit_skip()
         self._pending_skip = outgoing
 
     async def _async_commit_skip(self) -> None:

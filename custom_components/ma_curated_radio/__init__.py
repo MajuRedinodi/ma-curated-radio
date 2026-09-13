@@ -124,6 +124,7 @@ class RuntimeData:
         self.settings = settings
         self.engine.apply_settings(settings)
         self.detector.apply_settings(settings)
+        self.skips.apply_settings(settings)
 
 
 type MaCuratedRadioConfigEntry = ConfigEntry[RuntimeData]
