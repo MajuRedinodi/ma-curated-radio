@@ -450,6 +450,27 @@ and `ma_curated_radio.allow_track` releases one held-back song, either by
 the name shown on the dashboard or by its stored key.
 `ma_curated_radio.forget_feedback` wipes every remembered skip and mute.
 
+## Starting a station by voice
+
+Nothing here needs configuring. Music Assistant implements Home Assistant's
+Search and Play intent, so Assist can start a song, and a song started that
+way is a manual pick like any other.
+
+> Play Everybody Hurts on the Family Room Stereo
+
+Measured end to end: the pick was detected in three seconds and eighteen
+tracks were queued twenty-three seconds later, built around R.E.M. and
+their neighbours. The search returned five versions of the song, two of
+them live, and the filters took the album version.
+
+This needs Assist, which means a Home Assistant Voice device, an Assist
+satellite, or the Home Assistant app. It deliberately does not mean Alexa
+or Google. Both route music requests only to their own partner services, so
+neither will hand a song to Music Assistant however it is exposed, and
+Amazon's smart-home API offers a media player nothing but transport
+control. Exposing a player to Alexa still gets you "pause the family room
+stereo", which is worth having; it just cannot start anything.
+
 ## Taking it with you
 
 Two ways, and the first one is live: the station builds as you drive,
