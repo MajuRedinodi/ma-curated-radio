@@ -16,6 +16,7 @@ from filters import (
     credits_artist,
     depth_bar,
     drop_outliers,
+    is_demo,
     is_holiday,
     is_live,
     is_non_song,
@@ -33,6 +34,7 @@ from filters import (
     tier_of,
     too_deep,
     weighted_sample,
+    without_backing_band,
 )
 
 
@@ -65,7 +67,26 @@ def test_base_title_collapses_variants(raw, expected):
         ("Live Forever", "", False),
         ("Alive", "", False),
         ("Living on a Prayer", "", False),
+        ("(Forever) Live And Die", "", False),
         ("Song", "Remastered", False),
+        # A venue that opens a title is a concert only when the song's
+        # own name follows it. Requiring nothing after it read ordinary
+        # titles as recordings, and Portugal. The Man's second biggest
+        # song could not be queued at all.
+        (
+            "Live at the Olympia - Paris, France (October 10, 1969) - Dazed",
+            "",
+            True,
+        ),
+        ("Live at Tomorrowland 2026 (Freedom Stage) - Some Song", "", True),
+        ("Live in the Moment", "", False),
+        ("Live On Forever", "", False),
+        ("Live in the Sky", "", False),
+        ("Live From Space", "", False),
+        # Live in the languages the catalogue is not in English.
+        ("Cancion (En Vivo)", "", True),
+        ("Musica - Ao Vivo", "", True),
+        ("Cancion", "En Directo", True),
     ],
 )
 def test_is_live(name, version, expected):
@@ -81,6 +102,49 @@ def test_is_live(name, version, expected):
         ("The First Noel", "", "", True),
         ("Jingle Bell Rock", "", "", True),
         ("Ordinary Song", "", "Ordinary Album", False),
+        # Records that sit near the top of an artist's provider results
+        # and say nothing about the season. All four opened a station in
+        # September.
+        ("Fairytale of New York", "", "If I Should Fall from Grace", True),
+        ("Underneath the Tree", "", "Wrapped In Red", True),
+        ("It's the Most Wonderful Time of the Year", "", "Andy Williams", True),
+        ("Happy Holiday / The Holiday Season", "", "Andy Williams", True),
+        ("Little Saint Nick", "", "", True),
+        ("Mele Kalikimaka", "", "", True),
+        ("Grandma Got Run Over by a Reindeer", "", "", True),
+        ("Stille Nacht", "", "Weihnachten", True),
+        ("O Tannenbaum", "", "Weihnachten", True),
+        # Punctuation the two services spell differently. Each of these
+        # was caught only when the album name happened to say Christmas.
+        ("Baby, It's Cold Outside", "", "The Merriest Time Of The Year", True),
+        ("Hark! The Herald Angels Sing", "", "Sinatra", True),
+        ("O Come, All Ye Faithful", "", "Carols", True),
+        ("The First Noël", "", "Carols", True),
+        # Says Christmas, is not Christmas. Sakamoto's is the piece he is
+        # best known for and it was suppressed in every month of the year.
+        ("Merry Christmas Mr. Lawrence", "", "1996", False),
+        ("Merry Christmas Mr. Lawrence", "", "Merry Christmas Mr. Lawrence", False),
+        ("Merry Christmas Mr. Lawrence - Remastered", "", "1996", False),
+        ("Christmas", "", "Tommy", False),
+        ("Christmas in February", "", "New York", False),
+        # A carol that really is called Christmas, on a Christmas record.
+        ("Christmas", "", "A Christmas Album", True),
+        # Noel is a first name before it is a carol.
+        ("AKA... What a Life!", "", "Noel Gallagher's High Flying Birds", False),
+        ("If I Had a Gun...", "", "Noel Gallagher", False),
+        # Santa in Spanish is an adjective, and it is not about him.
+        ("Santa Monica", "", "Sparkle and Fade", False),
+        ("Santa Fe", "", "", False),
+        ("Santa María", "", "", False),
+        ("Santa Lucía", "", "", False),
+        ("Semana Santa", "", "", False),
+        ("Tierra Santa", "", "", False),
+        ("Oye Como Va", "", "Santana", False),
+        # Santa where it is about him, including the possessive, which
+        # loses its apostrophe to the folding.
+        ("Santa's Coming for Us", "", "", True),
+        ("Back Door Santa", "", "", True),
+        ("Must Be Santa", "", "", True),
     ],
 )
 def test_is_holiday_ignores_season(name, version, album, expected):
@@ -96,9 +160,46 @@ def test_clean_similar_artists_drops_collabs_and_seed():
         ("", 0.5),
         ("Bruno Mars", 0.4),
     ]
+    # Simon & Garfunkel stays. The ampersand is not what marks a
+    # collaboration credit; being made of artists the list already knows
+    # separately is, and this list knows neither Simon nor Garfunkel.
     assert [name for name, _ in clean_similar_artists(names, "Lady Gaga")] == [
-        "Bruno Mars"
+        "Bruno Mars",
+        "Simon & Garfunkel",
     ]
+
+
+@pytest.mark.parametrize(
+    "act",
+    [
+        "Simon & Garfunkel",
+        "Crosby, Stills & Nash",
+        "Peter, Paul and Mary",
+        "Hall & Oates",
+        "Earth, Wind & Fire",
+        "Kool & The Gang",
+        "Bob Seger & The Silver Bullet Band",
+        "Angus & Julia Stone",
+        "Iron & Wine",
+        "Big & Rich",
+    ],
+)
+def test_clean_similar_artists_keeps_real_acts(act):
+    """Punctuation in a name is not evidence of anything.
+
+    Dropping on it cost a James Taylor seed most of its obvious
+    neighbours and a Huey Lewis seed most of its own, which showed up as
+    a station that would never play the duos everybody expects.
+    """
+    names = [(act, 0.9), ("Fleetwood Mac", 0.8)]
+    assert act in [name for name, _ in clean_similar_artists(names, "James Taylor")]
+
+
+def test_clean_similar_artists_drops_the_seeds_own_band():
+    names = [("Bruce Springsteen & The E Street Band", 0.9), ("Tom Petty", 0.8)]
+    assert [
+        name for name, _ in clean_similar_artists(names, "Bruce Springsteen")
+    ] == ["Tom Petty"]
 
 
 @pytest.mark.parametrize(
@@ -268,6 +369,16 @@ def test_floor_leaves_a_small_pool_alone():
     assert drop_outliers(tiny, 10) == (["A", "B"], [])
 
 
+def test_floor_still_applies_to_the_artist_styles_three_neighbours():
+    """The Artist seed style draws exactly three, and a minimum of four
+    switched the floor off for the whole style, which brought back the
+    one defect the rule was written for."""
+    pool = [("Fleetwood Mac", 2103659), ("Stevie Nicks", 715395), ("Christine McVie", 28061)]
+    keep, dropped = drop_outliers(pool, 10)
+    assert keep == ["Fleetwood Mac", "Stevie Nicks"]
+    assert dropped == [("Christine McVie", 28061)]
+
+
 def test_floor_never_drops_an_artist_of_unknown_size():
     """A Last.fm miss should cost variety, not silently narrow the pool."""
     pool = [("A", 100000), ("B", 90000), ("C", 80000), ("Unknown", 0)]
@@ -408,6 +519,56 @@ def test_a_backing_band_may_be_present_or_absent():
     assert credits_artist(["Tom Petty"], "Tom Petty and The Heartbreakers")
     assert credits_artist(["Tom Petty and The Heartbreakers"], "Tom Petty")
     assert credits_artist(["Stevie Nicks", "Tom Petty"], "Tom Petty & The Heartbreakers")
+
+
+@pytest.mark.parametrize(
+    ("one", "other"),
+    [
+        ("Bill Haley and His Comets", "Bill Haley & His Comets"),
+        ("Crosby, Stills and Nash", "Crosby, Stills & Nash"),
+        ("Earth Wind & Fire", "Earth, Wind & Fire"),
+        ("Mike + The Mechanics", "Mike & The Mechanics"),
+        ("Bruce Springsteen & The E Street Band", "Bruce Springsteen"),
+    ],
+)
+def test_spelling_disagreements_are_the_same_act(one, other):
+    """An ampersand against "and" is not a question worth an answer."""
+    assert credits_artist([one], other)
+    assert credits_artist([other], one)
+
+
+@pytest.mark.parametrize(
+    ("full", "short"),
+    [
+        ("Tom Petty and The Heartbreakers", "Tom Petty"),
+        ("Bill Haley and His Comets", "Bill Haley"),
+        ("Bruce Springsteen & The E Street Band", "Bruce Springsteen"),
+        ("Katrina and the Waves", "Katrina"),
+    ],
+)
+def test_a_backing_band_can_be_stripped_for_a_second_search(full, short):
+    """The retry that searches under the short name has to actually fire.
+
+    It did not. The pattern was case sensitive and required a lowercase
+    "the", which no service writes, so the fallback was dead for every
+    real name and a Tom Petty station kept searching Tidal under the long
+    one, where the results are four Stevie Nicks collaborations and a
+    karaoke record.
+    """
+    assert without_backing_band(full) == short
+
+
+def test_nothing_to_strip_reports_nothing_to_strip():
+    assert without_backing_band("Fleetwood Mac") == ""
+
+
+def test_an_album_called_rough_mix_is_not_a_rough_mix():
+    """Townshend and Lane's 1977 record is called Rough Mix, and every
+    track on it was being thrown away as an unfinished recording."""
+    assert not is_demo("Let My Love Open the Door", "", "Rough Mix")
+    assert is_demo("Song", "Rough Mix", "Album")
+    assert is_demo("F2D", "", "Demo 2")
+    assert not is_demo("Demolition Man", "", "Ghost in the Machine")
 
 
 def test_two_acts_sharing_a_prefix_are_still_different_acts():

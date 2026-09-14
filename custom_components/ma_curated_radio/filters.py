@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import random
 import re
+import unicodedata
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Final
@@ -85,12 +86,26 @@ HOLIDAY_TOKENS: Final = (
     "holly jolly",
     "mistletoe",
     "auld lang syne",
-    "baby it's cold outside",
     "baby its cold outside",
+    "reindeer",
+    "saint nick",
+    "mele kalikimaka",
+    "wintersong",
+    # "Holiday" alone is Madonna, Green Day and "Holiday Road", but these
+    # three phrases are only ever the season. Andy Williams' two biggest
+    # results are "It's the Most Wonderful Time of the Year" and "Happy
+    # Holiday / The Holiday Season", and neither says Christmas anywhere.
+    "most wonderful time of the year",
+    "happy holiday",
+    "holiday season",
+    # Songs everybody knows and nobody titles with the season.
+    "fairytale of new york",
+    "underneath the tree",
     # Carols.
     "silent night",
     "holy night",
-    "the first noel",
+    "stille nacht",
+    "tannenbaum",
     "deck the hall",
     "drummer boy",
     "away in a manger",
@@ -108,14 +123,63 @@ HOLIDAY_TOKENS: Final = (
     "greensleeves",
 )
 
+# Records that say Christmas and are not Christmas records. Checked
+# against the song's own name before anything else, because "christmas"
+# as a substring is otherwise exactly the right rule and these are the
+# whole of its cost. Ryuichi Sakamoto's "Merry Christmas Mr. Lawrence" is
+# the piece he is best known for, and it was suppressed in every month of
+# the year, on its own album and on the soundtrack both.
+NOT_HOLIDAY: Final = (
+    "merry christmas mr lawrence",
+    "christmas in february",
+    "christmas card from a hooker in minneapolis",
+)
+
+# The same, for titles too generic to exempt outright. A song called
+# "Christmas" is The Who on Tommy, unless it is sitting on a Christmas
+# record, in which case it is what it says it is.
+NOT_HOLIDAY_OFF_SEASON: Final = ("christmas",)
+
+# "Noel" cannot be matched as a word, let alone a substring: it is a
+# first name, and the word boundary still takes every record Noel
+# Gallagher has made. Only the two forms that are always the carol.
+# Accent folding is what brings "The First Noël" within reach of either.
+NOEL_PHRASE: Final = "first noel"
+NOEL_ALBUM: Final = "noel"
+
 # Last.fm returns collaboration credits as if they were standalone artists
 # ("Lady Gaga, Bruno Mars"). Searching those mostly yields cover/live/piano
 # versions of the one collab song rather than real additional variety.
-COLLAB_MARKERS: Final = (",", " & ")
+#
+# What marks one is NOT its punctuation, which is what a first attempt at
+# this got wrong. A comma or an ampersand in a name is overwhelmingly an
+# ordinary act, and dropping on the punctuation alone silently cost the
+# stations that most want them: a James Taylor seed lost Simon &
+# Garfunkel, Crosby, Stills & Nash and Peter, Paul and Mary; a Huey Lewis
+# seed lost Hall & Oates, Kool & The Gang and Earth, Wind & Fire; a Tom
+# Petty seed lost Bruce Springsteen & The E Street Band.
+#
+# What marks one is that every part of it is an artist the list already
+# knows on its own. "Lady Gaga, Bruno Mars" arrives in a list that also
+# holds Lady Gaga and Bruno Mars separately; "Simon & Garfunkel" arrives
+# in a list holding neither Simon nor Garfunkel. Requiring *every* part
+# to be known keeps the failure on the safe side: an unrecognised part
+# means the name is kept, which at worst wastes one neighbour slot.
+_COLLAB_SPLIT = re.compile(r"\s*,\s*|\s+&\s+")
 
-# Below this many artists a pool has no meaningful median, and dropping
-# one of three neighbours costs more than the outlier does.
-MIN_POOL_FOR_FLOOR: Final = 4
+# It takes two to be a collaboration.
+MIN_COLLAB_PARTS: Final = 2
+
+# Below this many artists a pool has no meaningful median.
+#
+# Four was the first guess, on the reasoning that dropping one of three
+# neighbours costs more than the outlier does. It does not: the Artist
+# seed style draws exactly three neighbours, so the floor was switched
+# off for the whole style, and the very defect the rule was written for
+# came back. Christine McVie at 4% of a three-artist median is kept at
+# four and dropped at three. A median of three can only ever put one
+# artist below the bar, so the cost is bounded at one neighbour.
+MIN_POOL_FOR_FLOOR: Final = 3
 
 # Tier labels. Defined here rather than in const.py because this module
 # deliberately imports nothing from Home Assistant or from the rest of
@@ -185,14 +249,38 @@ NOTE_BRACKETS: Final = ("(", "[", "{")
 # "Live at the Olympia - Paris, France (October 10, 1969) - Dazed and
 # Confused" says live before it says anything else, so nothing a provider
 # appends carries the marker.
+#
+# Only counts when the title goes on to append something, which is the
+# whole reason the rule exists: the venue is a prefix and the song's name
+# follows it after a dash or a bracket. Without that requirement the rule
+# read ordinary song titles as concerts, and Portugal. The Man's "Live in
+# the Moment" could not be queued at all. "Live On Forever", "Live in the
+# Sky" and "Live From Space" went the same way.
 _LIVE_OPENING = re.compile(r"^(live|unplugged)\s+(at|from|in|on)\b", re.IGNORECASE)
 
-# Santa, but not the places named after him. Everclear's "Santa Monica",
-# Bon Jovi's "Santa Fe" and Santa Esmeralda are songs; "Santa's Coming for
-# Us" is not. Santana needs no exception: the word boundary excludes it.
+# Live, in the languages a Latin or Brazilian catalogue marks it in.
+# Phrases rather than words, checked against the note and the version:
+# "vivo" on its own is an ordinary word in both languages.
+LIVE_PHRASES: Final = ("en vivo", "en directo", "ao vivo")
+
+# Santa, but not the places and saints named after him. Everclear's
+# "Santa Monica", Bon Jovi's "Santa Fe" and Santa Esmeralda are songs;
+# "Santa's Coming for Us" is not. Santana needs no exception: the word
+# boundary excludes it.
+#
+# The Spanish adjective is the awkward part, since it is the same word
+# and it follows its noun as often as it precedes one. The lookbehinds
+# cover the constructions a title actually uses. Matched against
+# accent-folded text, which is what brings "Santa María" and "Santa
+# Lucía" within reach of the list below at all.
 _SANTA = re.compile(
-    r"\bsanta\b(?!\s+(?:monica|fe|barbara|cruz|ana|clara|rosa|maria|"
-    r"lucia|marta|teresa|esmeralda|cecilia|catarina)\b)",
+    r"(?<!\bsemana\s)(?<!\btierra\s)(?<!\bnoche\s)(?<!\bcasa\s)"
+    # "santas" as well as "santa", because the possessive loses its
+    # apostrophe to the folding and "Santa's Coming for Us" then had no
+    # word boundary where the pattern expected one.
+    r"\bsantas?\b(?!\s+(?:monica|fe|barbara|cruz|ana|clara|rosa|maria|"
+    r"lucia|marta|teresa|esmeralda|cecilia|catarina|muerte|sangre|"
+    r"misa|iglesia)\b)",
     re.IGNORECASE,
 )
 
@@ -206,6 +294,26 @@ _TRAILING_REMIX = re.compile(r"\bremix(es)?\s*$", re.IGNORECASE)
 # "Don't Stop Believin'" and Last.fm writes it straight, and a title that
 # fails to match Last.fm's reads as a song nobody has heard of.
 _PUNCTUATION = re.compile("[.,;:'\"‘’“”]")
+
+# The same idea one step further, for comparing a phrase against a title
+# rather than a title against a title. Exclamation and question marks are
+# included because a carol is written "Hark! The Herald Angels Sing" by
+# one service and without the bang by another, and accents are folded
+# away because "The First Noël" and "Noel" are the same record. Both
+# defeated the holiday list until they were folded here.
+_LOOSE_PUNCTUATION = re.compile("[.,;:!?'\"‘’“”]")
+
+
+def _folded(text: str) -> str:
+    """Lowercased, accent-folded, and stripped of decorative punctuation.
+
+    So that one service's spelling of a phrase matches another's. Used
+    where a fixed list of phrases is matched against provider text, which
+    is the case that suffers: the list can only ever hold one spelling.
+    """
+    decomposed = unicodedata.normalize("NFKD", text.lower())
+    bare = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+    return _LOOSE_PUNCTUATION.sub("", bare)
 
 
 def base_title(name: str) -> str:
@@ -256,10 +364,14 @@ def is_demo(name: str, version: str, album: str) -> bool:
 
     Whole words only, in the title, version and album, so "Demolition
     Man" and "Democracy" are left alone.
+
+    "Rough mix" is read in the title and version but not the album,
+    because Pete Townshend and Ronnie Lane's 1977 record is called Rough
+    Mix and every track on it was being thrown away as an unfinished one.
     """
     text = " ".join((name, version, album)).lower()
     words = set(_WORDS.split(text))
-    return bool(words & {"demo", "demos"}) or "rough mix" in text
+    return bool(words & {"demo", "demos"}) or "rough mix" in f"{name} {version}".lower()
 
 
 def _split_note(name: str) -> tuple[str, str]:
@@ -337,12 +449,23 @@ def is_live(name: str, version: str) -> bool:
     thing this filter exists to catch only got caught when the provider
     also populated the version field.
     """
-    if _LIVE_OPENING.match(name.strip()):
+    stripped = name.strip()
+    if _LIVE_OPENING.match(stripped) and _appends_a_note(stripped):
         return True
     haystack = version.lower()
-    words = set(_WORDS.split(_recording_note(name)))
+    note = _recording_note(name)
+    if any(phrase in note or phrase in haystack for phrase in LIVE_PHRASES):
+        return True
+    words = set(_WORDS.split(note))
     return any(
         marker in haystack or marker in words for marker in LIVE_MARKERS
+    )
+
+
+def _appends_a_note(name: str) -> bool:
+    """Whether a title carries anything after the song's own name."""
+    return bool(_NOTE_SEPARATOR.search(name)) or any(
+        name.find(opener, 1) > 0 for opener in NOTE_BRACKETS
     )
 
 
@@ -357,9 +480,24 @@ def is_holiday(name: str, version: str, album: str) -> bool:
     Shoot Me Santa", Clarence Carter's "Back Door Santa", Sia's "Santa's
     Coming for Us" and Dylan's "Must Be Santa", none of which say
     Christmas anywhere. The word boundary already excludes Santana.
+
+    Everything is compared accent-folded and stripped of punctuation,
+    because a fixed list of phrases can only hold one spelling and the
+    services do not agree on which: "Baby, It's Cold Outside" carries the
+    comma on one and not the other, "Hark! The Herald Angels Sing" the
+    exclamation mark, "The First Noël" the diaeresis. All three used to
+    be caught only when the album name happened to say Christmas too.
     """
-    haystack = f"{name} {version} {album}".lower()
+    title = _folded(base_title(name))
+    record = _folded(album)
+    if title in NOT_HOLIDAY:
+        return False
+    if title in NOT_HOLIDAY_OFF_SEASON and "christmas" not in record:
+        return False
+    haystack = _folded(f"{name} {version} {album}")
     if any(token in haystack for token in HOLIDAY_TOKENS):
+        return True
+    if NOEL_PHRASE in haystack or record == NOEL_ALBUM:
         return True
     return bool(_SANTA.search(haystack))
 
@@ -371,14 +509,27 @@ def clean_similar_artists(
 
     Takes and returns (name, match) pairs so the ranking survives to the
     point where artists are actually chosen.
+
+    The seed comparison goes through ``_same_artist`` rather than ``==``
+    so that Last.fm returning "Bruce Springsteen & The E Street Band"
+    alongside a Bruce Springsteen seed is recognised as the same act. It
+    is one of the few places the two spellings reliably both appear, and
+    an exact comparison spent a neighbour slot on a second pool for the
+    artist already playing.
     """
+    known = {
+        name.strip().lower()
+        for name, _ in candidates
+        if name and not _COLLAB_SPLIT.search(name)
+    }
+    known.add(seed_artist.strip().lower())
     seen: set[str] = set()
     cleaned: list[tuple[str, float]] = []
     for name, match in candidates:
         candidate = (name or "").strip()
-        if not candidate or candidate == seed_artist:
+        if not candidate or _same_artist(candidate, seed_artist):
             continue
-        if any(marker in candidate for marker in COLLAB_MARKERS):
+        if _is_collab_credit(candidate, known):
             continue
         key = candidate.lower()
         if key in seen:
@@ -386,6 +537,14 @@ def clean_similar_artists(
         seen.add(key)
         cleaned.append((candidate, match))
     return cleaned
+
+
+def _is_collab_credit(name: str, known: set[str]) -> bool:
+    """Whether a name is several artists the list already knows apart."""
+    parts = [part.strip().lower() for part in _COLLAB_SPLIT.split(name)]
+    if len(parts) < MIN_COLLAB_PARTS or not all(parts):
+        return False
+    return all(part in known for part in parts)
 
 
 def matches_provider(uri: str, provider_filter: str) -> bool:
@@ -818,19 +977,43 @@ def weighted_sample(
 # frequently disagree about whether to include one: Last.fm returns "Tom
 # Petty and The Heartbreakers" where Tidal credits plain "Tom Petty",
 # and an exact comparison then rejects every track that artist has.
-_BACKING_BAND = re.compile(r"\s+(?:and|with|&|feat\.?|featuring)\s+the\s+.+$")
+# Case-insensitive, which it was not. Every service capitalises the
+# article, so the pattern only ever matched a name that had already been
+# lowercased. _same_artist lowercases first and so worked; the search
+# retry in without_backing_band does not, and quietly never fired at all:
+# a station seeded on "Tom Petty and The Heartbreakers" kept searching
+# Tidal under the long name and taking the karaoke record it returns.
+_BACKING_BAND = re.compile(
+    r"\s+(?:and|with|&|feat\.?|featuring)\s+(?:the|his|her)\s+.+$", re.IGNORECASE
+)
+
+# The three ways a service writes the same joining word. Folded to one so
+# that "Crosby, Stills and Nash" and "Crosby, Stills & Nash" are one act,
+# and so are "Mike + The Mechanics" and "Mike & The Mechanics".
+_CONJUNCTION = re.compile(r"\s*(?:&|\+|\band\b)\s*")
+
+
+def _normalised_artist(name: str) -> str:
+    """An artist's name reduced to what two services can agree on."""
+    return _CONJUNCTION.sub(" & ", _folded(name)).strip()
 
 
 def _same_artist(a: str, b: str) -> bool:
     """Whether two artist names are the same act.
 
-    Deliberately narrow. Matching on a prefix would be the obvious
-    generalisation and is wrong: "The Band" is a prefix of "The Band
-    Perry" at a word boundary, and they share nothing. Only a trailing
-    backing band is stripped, which is the disagreement that actually
-    occurs.
+    Deliberately narrow on the structure of a name. Matching on a prefix
+    would be the obvious generalisation and is wrong: "The Band" is a
+    prefix of "The Band Perry" at a word boundary, and they share
+    nothing. Only a trailing backing band is stripped, which is the
+    disagreement that actually occurs.
+
+    Generous about spelling, though, because that disagreement is pure
+    noise: an ampersand against "and", a plus sign, a comma, an accent.
+    "Bill Haley and His Comets" against "Bill Haley & His Comets" is not
+    a question anyone needs the answer to. "His" and "her" are read as
+    backing bands alongside "the" for the same reason.
     """
-    first, second = a.strip().lower(), b.strip().lower()
+    first, second = _normalised_artist(a), _normalised_artist(b)
     if first == second:
         return True
     return _BACKING_BAND.sub("", first) == _BACKING_BAND.sub("", second)
