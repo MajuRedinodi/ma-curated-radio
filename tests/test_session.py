@@ -118,3 +118,15 @@ def test_nothing_usable_saved_means_no_session():
     assert not ListeningSession.from_dict(None).active
     assert not ListeningSession.from_dict({}).active
     assert not ListeningSession.from_dict({"origin": "ABBA"}).active
+
+
+def test_a_cap_of_zero_admits_nobody_but_the_origin():
+    """Which is why Artist radio is unfenced rather than capped at zero.
+
+    Artist radio leads and reseeds from the origin every time, so its
+    pool is always the origin's own neighbours. Capping it at zero left
+    the station playing one artist and nobody else.
+    """
+    session = ListeningSession.start("Don Henley")
+    assert session.eligible("Don Henley", ["Eagles", "Jackson Browne"], 0) == []
+    assert session.eligible("Don Henley", ["Eagles"], None) == ["Eagles"]

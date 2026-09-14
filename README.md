@@ -7,8 +7,8 @@ off into deep cuts nobody in the room has heard of, this keeps playback in
 familiar, recognisable songs in the same lane, pulled in small batches and
 topped up automatically as the queue runs down.
 
-Install it through HACS, point it at a player, and there is nothing else to
-set up. No helpers, no `rest_command`, no YAML.
+Install it through HACS, point it at a player, paste a free Last.fm key, and
+there is nothing else to set up. No helpers, no `rest_command`, no YAML.
 
 > This is not Music Assistant's built-in radio mode, and it does not modify
 > it. Music Assistant's own radio mode is left switched off on everything
@@ -63,8 +63,9 @@ set up. No helpers, no `rest_command`, no YAML.
   albums I happened to rip". Developed and tested against Tidal.
 - **A free [Last.fm API key](https://www.last.fm/api/account/create).** Only
   the API key is needed, not the shared secret; every lookup is anonymous
-  and read-only. Without one there are no similar artists at all and every
-  batch is the seed artist alone.
+  and read-only. It is asked for during setup and validated there, because
+  without it there are no similar artists at all and every batch would be
+  the seed artist alone.
 
 Nothing else. No MCP server, no external service beyond Last.fm, and
 `requirements` in the manifest is empty: every import is either the
@@ -100,6 +101,22 @@ wrong instance.
 
 Add the integration once per player you want this behaviour on.
 
+## What it creates
+
+One service device per player, carrying everything below. Nothing is
+created outside that device, and nothing is written to your configuration.
+
+| Kind | Entities |
+|---|---|
+| Switches | Curated radio (the master switch), Skip live recordings, Skip remixes, Skip holiday tracks |
+| Sensors | Last batch seed, Last batch built, Last manual pick, Muted artists, Version |
+| Numbers | Similar artists per batch, Tracks per artist, Tracks per batch, Drop artists below, Degrees of separation, Most in a row from one artist, Refill threshold, Skips before muting an artist |
+| Selects | Station style, Familiarity, Explicit content, Muted artist to release, Song to release |
+| Buttons | Build a batch now, Build a playlist, Unmute selected artist, Unmute all artists, Allow selected song |
+
+The rest of the settings live behind **Configure**, because they are set
+once and forgotten rather than reached for.
+
 ## Options
 
 Most of this is tunable afterwards from the integration's **Configure**
@@ -115,17 +132,19 @@ whichever style is selected, so tuning one cannot quietly retune another.
 |---|---|
 | Similar artists per batch | How many Last.fm-similar artists join the seed artist. Zero keeps every batch to the seed artist alone. Per station style: 3 for Artist radio, 8 for the others. Set from its own entity, not from Configure. |
 | Tracks per artist | How many tracks to draw from each artist. The seed draws more, by the station style's multiplier. Per station style: 3 everywhere. Set from its own entity, not from Configure. |
-| Tracks per batch | How many of the drawn tracks actually play, which is what lets a batch reach deeper without getting longer. Zero plays everything drawn. Per station style: 19 for Balanced and Discovery, 0 for Artist radio. |
-| Drop artists below [10%] | Drop a similar artist whose audience is below this share of the pool's own median. Catches a neighbour whose whole catalogue is obscure without penalising a genre Last.fm undercounts. Zero disables it. |
+| Tracks per batch | How many of the drawn tracks actually play, which is what lets a batch reach deeper without getting longer. Zero plays everything drawn. Per station style: 19 for Balanced and Discovery, 0 for Artist radio. Set from its own entity, not from Configure. |
+| Drop artists below [10%] | Drop a similar artist whose audience is below this share of the pool's own median. Catches a neighbour whose whole catalogue is obscure without penalising a genre Last.fm undercounts. Zero disables it. Set from its own entity, not from Configure. |
 | Station style [balanced] | **Artist radio** always builds from the artist you picked and never wanders. **Balanced** wanders but stays inside the degree fence below. **Discovery** wanders without limit, which is the point of it. |
 | Degrees of separation [3] | How far a session may travel from the artist that started it. Ignored by Artist radio and Discovery. |
+| Familiarity [familiar] | How strongly the artist draw leans on Last.fm's match score, which tracks how recognisable an artist is. **Familiar** crowds selection to the top of that ranking, **Adventurous** ignores it, **Balanced** sits between. Familiar is what makes this feel like radio rather than a shuffle. |
+| Shortest track [90 s] | Anything shorter is treated as commentary, an interlude or a skit rather than a song, because search returns those alongside the real tracks. Zero accepts everything. |
 | Most in a row from one artist [2] | How many tracks by the same artist may play back to back. Two lets an artist station feel like an artist station without anyone monopolising the hour. |
 | Skipped song stays away for [30 days] | Skip a song and it will not be queued again for this long. |
 | Skips in a row before muting an artist [3] | Skip this many of one artist's tracks consecutively and they stop being suggested. Zero switches muting off. |
 | Muted artist stays away for [30 days] | How long a muted artist stays out of the similar-artist pool. |
 | Refill threshold [2] | Top the queue up once this many tracks or fewer remain after the one playing. |
-| Bulk load size [3 tracks] | A manual pick is one track; a playlist or album is many. If the queue holds at least this many tracks we did not choose, and nothing after them is ours either, it is left alone. Judged on queue size rather than growth, because loading a playlist usually replaces the queue rather than adding to it. |
-| Repeat memory [120 min] | How long a title stays excluded from new batches. Zero disables repeat memory. |
+| Bulk load size [3 tracks] | A manual pick is one track; a playlist or album is many. A queue is left alone when it holds at least this many tracks nobody here chose, nothing after them is ours either, AND its size moved by at least this much. Both tests are needed: loading a playlist usually replaces the queue rather than adding to it, so growth alone misses it, while size alone cannot see a song picked from within a playlist, which barely moves the count and is still a pick. |
+| Repeat memory [120 min] | How long a title cannot play again at all. Zero disables that window. Separately, and not adjustable, a song heard in the last eight hours waits until its artist has nothing fresh left, so a returning artist plays their other hits first. |
 | Settle delay [3 s] | How long to wait after a manual pick before rewriting the queue. |
 | Cooldown script or automation | Mostly unnecessary now that bulk loads are detected on their own. Point it at another routine that rebuilds this player's queue if you want belt and braces. |
 | Cooldown window [120 s] | How long after that routine runs to skip detection entirely. |
@@ -428,10 +447,9 @@ views:
 The release dropdowns and the unmute buttons hide themselves when there is
 nothing to release, so a fresh install shows a shorter third section than
 the one above until it has learned something. Degrees of separation hides
-unless station style is Balanced, since nothing else uses it. The car
-section assumes Tidal, so change `provider` or drop the section.
+unless station style is Balanced, since nothing else uses it.
 
-## Action
+## Actions
 
 `ma_curated_radio.run_batch` builds a batch immediately, seeded from
 whatever is playing. Useful on a dashboard button or as a voice intent for
@@ -458,6 +476,7 @@ can use to offer songs to start a station from.
 action: ma_curated_radio.search
 data:
   query: boys of summer
+  artist: don henley   # optional; narrows the search to one artist
   limit: 20
 response_variable: found
 ```
@@ -640,11 +659,11 @@ median reach 580,807, weakest 106,212, tiers {'P': 7, 'D': 6, 'S': 6}
 ```
 
 **Led by** is the artist the batch is built around, and **neighbours from**
-is where its similar artists were drawn. Since 0.31 they are the same
-artist: the one picked, or on a refill the one chosen from the batch
-before. Before 0.31 a refill was led by whoever happened to be playing,
-so in an older log the two can differ, and the neighbours are the name
-that explains where a station went. On the sensor, the state is the lead
+is where its similar artists were drawn. They are normally the same artist:
+the one picked, or on a refill the one chosen from the batch before. They
+differ when a pick credits two artists and one of them is only a footnote
+beside the other, where the station is led by the bigger name and the
+neighbours still come from the pair. On the sensor, the state is the lead
 and the `neighbours_from` attribute is the other.
 
 **Median reach** is the useful one. Each track scores its artist's audience
@@ -732,8 +751,8 @@ settings, and the reported reach tells the two apart. See
   which returns the provider's relevance ranking.
 - **Music Assistant's `get_artist_tracks` is not a top-tracks call**, whatever
   the name suggests. It returns an artist's catalogue, so selecting from the
-  front of it gives album tracks and commentary rather than hits. Relevance-ranked
-  search is the better source, and is what this uses by default.
+  front of it gives album tracks and commentary rather than hits. This uses
+  relevance-ranked search instead, which is the only source it has.
 - **Search matches loosely**, so asking for Madonna can return "Madonna Madonna"
   by someone else entirely. Results are checked against the credited artists.
 - **Refill only knows what is literally queued when the Music Assistant
@@ -815,8 +834,7 @@ settings, and the reported reach tells the two apart. See
 ## Relationship to the blueprint version
 
 This started life as a Home Assistant script plus automation, then as a pair
-of blueprints. Those still work and are published separately. The
-integration exists because the YAML version had to fight Home Assistant's
+of blueprints. The integration exists because the YAML version had to fight Home Assistant's
 template engine: Music Assistant's service responses carry `Enum` fields
 nested inside their dicts, and Home Assistant's Jinja renderer silently
 stringifies the entire result of a templated `variables:` expression when

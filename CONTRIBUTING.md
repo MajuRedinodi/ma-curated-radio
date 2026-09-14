@@ -58,11 +58,12 @@ a real example beats a mix of styles.
 
 The dashboard on the maintainer's own instance also carries a search box
 that starts a station: an `input_text`, an `input_select` of results, and
-two scripts driving `music_assistant.search`. None of that is in the
-README, and it must not be, because none of it is created by the
-integration. A card referencing a helper the reader does not have is the
-error card this rule exists to prevent.
+scripts to drive them. The integration provides the hard half of that as
+the `ma_curated_radio.search` action, but the helpers and scripts are not
+created by the integration, so the cards that use them stay out of the
+README. A card referencing a helper the reader does not have is the error
+card this rule exists to prevent.
 
-The right fix is to move that feature into the integration as a `text`
-entity plus a couple of buttons. Until then the divergence is deliberate,
-and this note is here so the next person does not helpfully "fix" it.
+Moving the rest in, as a `text` entity plus a button, would close the gap.
+Until then the divergence is deliberate, and this note is here so the next
+person does not helpfully "fix" it.

@@ -1228,8 +1228,16 @@ class CuratedRadioEngine:
 
     @property
     def _degree_cap(self) -> int | None:
-        """How far this station style lets a session wander, or None."""
-        if self._settings.seed_lean == SEED_LEAN_DISCOVERY:
+        """How far this station style lets a session wander, or None.
+
+        Artist radio has nothing to fence: it leads and reseeds from the
+        origin every time, so every pool is the origin's own neighbours.
+        Applying the cap anyway meant a setting of zero rejected all of
+        them and left the station playing one artist and nobody else,
+        which is not what "zero" should mean and not what the fence is
+        for. Discovery is unfenced by design.
+        """
+        if self._settings.seed_lean in (SEED_LEAN_ARTIST, SEED_LEAN_DISCOVERY):
             return None
         return max(0, self._settings.degrees)
 
