@@ -12,7 +12,7 @@ returns a decision; the caller does the reading and the acting.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
@@ -129,6 +129,43 @@ def starts_station(*, refilling: bool, continuing: bool) -> bool:
     goes into repeat memory.
     """
     return not refilling or not continuing
+
+
+@dataclass(slots=True)
+class PlaybackSnapshot:
+    """Enough of a media_player state to judge whether a track was skipped."""
+
+    uri: str = ""
+    title: str = ""
+    artist: str = ""
+    # The credits as the provider lists them. Home Assistant joins them
+    # into one string for display, and that string is not an artist: a
+    # skipped duet keyed on "Dan Seals/Marie Osmond" matched no Last.fm
+    # name, so muting never fired, and it counted as a different artist
+    # from Dan Seals, which reset the run of skips that muting counts.
+    credits: list[str] = field(default_factory=list)
+    duration: float = 0.0
+    elapsed: float = 0.0
+
+    @property
+    def credited(self) -> str:
+        """The artist to judge, which is the first credit.
+
+        Falls back to the string Home Assistant displays where the credits
+        are unknown, which is any player whose queue could not be read.
+        Splitting that string instead would be wrong for AC/DC.
+        """
+        return self.credits[0] if self.credits else self.artist
+
+    def was_skipped(self, grace_seconds: float) -> bool:
+        """True if the track was cut short rather than allowed to finish.
+
+        Without a duration there is nothing to compare against, so the
+        benefit of the doubt goes to "played".
+        """
+        if self.duration <= 0:
+            return False
+        return self.elapsed < self.duration - grace_seconds
 
 
 @dataclass(slots=True)

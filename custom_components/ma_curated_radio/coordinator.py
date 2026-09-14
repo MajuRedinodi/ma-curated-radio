@@ -32,6 +32,7 @@ from .const import (
 )
 from .decide import (
     Decision,
+    PlaybackSnapshot,
     QueueFacts,
     SkipLedger,
     decide,
@@ -39,7 +40,7 @@ from .decide import (
     track_started,
 )
 from .engine import CuratedRadioEngine
-from .feedback import PlaybackSnapshot, SkipMemory
+from .feedback import SkipMemory
 from .filters import base_title
 from .ma import async_get_queue
 from .settings import Settings
@@ -47,7 +48,9 @@ from .settings import Settings
 _LOGGER = logging.getLogger(__name__)
 
 
-def _snapshot(state: State | None) -> PlaybackSnapshot | None:
+def _snapshot(
+    state: State | None, credits: list[str] | None = None
+) -> PlaybackSnapshot | None:
     """Capture what was playing, and how far into it we got.
 
     ``media_position`` only updates on seek and track change, so the real
@@ -66,6 +69,7 @@ def _snapshot(state: State | None) -> PlaybackSnapshot | None:
         uri=str(attrs.get("media_content_id") or ""),
         title=str(attrs.get("media_title") or ""),
         artist=str(attrs.get("media_artist") or ""),
+        credits=list(credits or ()),
         duration=duration,
         elapsed=min(elapsed, duration) if duration else elapsed,
     )
@@ -99,6 +103,10 @@ class CuratedRadioDetector:
         # Which skips are verdicts and which are somebody hunting through
         # the queue. The rules live in decide.py, where they can be tested.
         self._ledger = SkipLedger()
+        # Who the song now playing is credited to, as the provider lists
+        # them, read from the queue rather than from the joined string
+        # Home Assistant shows.
+        self._playing_credits: list[str] = []
 
     def apply_settings(self, settings: Settings) -> None:
         """Adopt changed settings without rebuilding the detector."""
@@ -192,7 +200,7 @@ class CuratedRadioDetector:
             self._expected_next = ""
             return
 
-        outgoing = _snapshot(old_state)
+        outgoing = _snapshot(old_state, self._playing_credits)
 
         # Restart semantics: a rapid skip supersedes the decision in flight
         # rather than stacking a second one behind it.
@@ -257,6 +265,7 @@ class CuratedRadioDetector:
             post = await async_get_queue(self._hass, self._settings.player)
             self._expected_next = post.next_uri if post else ""
             self._queue_items = post.items if post else queue.items
+            self._playing_credits = post.artists if post else queue.artists
         except asyncio.CancelledError:
             raise
         except Exception:  # noqa: BLE001 - the listener has to survive anything
@@ -330,7 +339,7 @@ class CuratedRadioDetector:
         )
         muted = await self._skips.async_record_skip(
             base_title(outgoing.title),
-            outgoing.artist,
+            outgoing.credited,
             label=" by ".join(p for p in (outgoing.title, outgoing.artist) if p),
         )
         if muted:

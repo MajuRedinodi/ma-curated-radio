@@ -306,23 +306,3 @@ class SkipMemory:
         await self._async_save()
 
 
-@dataclass(slots=True)
-class PlaybackSnapshot:
-    """Enough of a media_player state to judge whether a track was skipped."""
-
-    uri: str = ""
-    title: str = ""
-    artist: str = ""
-    duration: float = 0.0
-    elapsed: float = 0.0
-    extras: dict[str, Any] = field(default_factory=dict)
-
-    def was_skipped(self, grace_seconds: float) -> bool:
-        """True if the track was cut short rather than allowed to finish.
-
-        Without a duration there is nothing to compare against, so the
-        benefit of the doubt goes to "played".
-        """
-        if self.duration <= 0:
-            return False
-        return self.elapsed < self.duration - grace_seconds

@@ -159,13 +159,18 @@ async def async_get_queue(hass: HomeAssistant, player: str) -> QueueSnapshot | N
 
     if not response:
         return None
-    queue_id = next(iter(response), "")
-    queue = response[queue_id]
+    # The response is keyed by entity_id, and the queue's own id is inside
+    # it. Reading the key instead meant every "is this already queued?"
+    # lookup asked Music Assistant about a queue called
+    # "media_player.something", got nothing, and quietly returned nothing,
+    # so that check has never once run.
+    key = next(iter(response), "")
+    queue = response[key]
 
     current = _media_item(field_of(queue, "current_item"))
     artists = _artist_names(current)
     return QueueSnapshot(
-        queue_id=str(queue_id),
+        queue_id=text_of(queue, "queue_id") or str(key),
         current_uri=text_of(current, "uri"),
         current_title=text_of(current, "name"),
         next_uri=text_of(_media_item(field_of(queue, "next_item")), "uri"),

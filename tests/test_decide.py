@@ -8,6 +8,7 @@ produced rather than to an abstraction of it.
 import pytest
 from decide import (
     Decision,
+    PlaybackSnapshot,
     QueueFacts,
     SkipLedger,
     decide,
@@ -298,3 +299,30 @@ def test_playing_through_twice_records_nothing_the_second_time():
     ledger.skipped("a", now=0.0, window=30.0)
     assert ledger.played() == ["a"]
     assert ledger.played() == []
+
+
+def test_a_duet_is_judged_on_its_first_credit():
+    """Home Assistant shows one joined string for a multi-credit song.
+
+    Keyed on that, a skipped duet matched no artist Last.fm ever returns,
+    so muting could not fire, and it counted as a different artist from
+    the same singer solo, which reset the run that muting counts.
+    """
+    duet = PlaybackSnapshot(
+        title="Meet Me in Montana",
+        artist="Dan Seals/Marie Osmond",
+        credits=["Dan Seals", "Marie Osmond"],
+    )
+    assert duet.credited == "Dan Seals"
+
+
+def test_an_artist_whose_name_contains_a_slash_is_left_alone():
+    """Which is why this reads the credits rather than splitting the
+    string Home Assistant displays."""
+    solo = PlaybackSnapshot(title="Back in Black", artist="AC/DC", credits=["AC/DC"])
+    assert solo.credited == "AC/DC"
+
+
+def test_without_credits_the_displayed_artist_is_used():
+    unknown = PlaybackSnapshot(title="Something", artist="Someone")
+    assert unknown.credited == "Someone"
