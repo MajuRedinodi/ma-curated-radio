@@ -145,9 +145,11 @@ class BuildPlaylistButton(CuratedRadioEntity, ButtonEntity):
     async def async_press(self) -> None:
         """Refresh the playlist, leaving playback alone.
 
-        Takes minutes rather than seconds, so it deliberately does not
-        block: the result is reported by raising, which Home Assistant
-        surfaces as a toast on the dashboard that pressed it.
+        Takes minutes rather than seconds, and deliberately blocks for
+        all of them. Blocking is what makes the result reportable: the
+        outcome is raised, and Home Assistant turns that into a toast on
+        the dashboard that pressed the button. Returning early would mean
+        the press always looked like it worked.
         """
         result = await self.runtime.engine.async_build_playlist(
             name=DEFAULT_PLAYLIST_NAME,

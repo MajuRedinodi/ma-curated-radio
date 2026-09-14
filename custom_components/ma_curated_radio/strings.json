@@ -15,6 +15,7 @@
       }
     },
     "error": {
+      "cannot_connect": "Could not reach Last.fm to check the key. The key may well be fine; try again in a moment.",
       "invalid_api_key": "Last.fm rejected that API key.",
       "not_music_assistant": "That entity does not belong to a Music Assistant config entry."
     },
@@ -37,8 +38,8 @@
           "artist_strike_limit": "Skips in a row before muting an artist",
           "artist_mute_days": "Muted artist stays away for (days)",
           "refill_threshold": "Refill threshold",
-          "bulk_tracks": "A manual pick is one track; a playlist or album is many. A queue is left alone when it holds at least this many tracks nobody here chose, nothing after them is ours either, and its size moved by at least this much. Both tests are needed: loading a playlist usually replaces the queue rather than adding to it, so growth alone misses it, while size alone cannot see a song picked from within a playlist, which barely moves the count and is still a pick.",
-          "history_minutes": "How long a title cannot play again at all. Zero disables that window. Separately, and not adjustable, a song heard in the last eight hours waits until its artist has nothing fresh left, so a returning artist plays their other hits first.",
+          "bulk_tracks": "Leave a foreign queue alone at (tracks)",
+          "history_minutes": "Repeat window (minutes)",
           "settle_seconds": "Settle delay (seconds)",
           "cooldown_entity": "Cooldown script or automation",
           "cooldown_seconds": "Cooldown window (seconds)",
@@ -58,8 +59,8 @@
           "artist_strike_limit": "Skip this many of one artist's tracks in a row and the artist stops being suggested. Consecutive is the point: unlucky picks spread across an evening mean nothing, three in a row means the artist is wrong for the room. Zero disables muting.",
           "artist_mute_days": "How long a muted artist stays out of the similar-artist pool. The artist you pick yourself is never muted.",
           "refill_threshold": "Top the queue up once this many tracks or fewer remain after the one playing.",
-          "history_minutes": "How long a track title stays excluded from new batches. Zero disables repeat memory.",
-          "bulk_tracks": "A manual pick is one track; a playlist or album is many. If the queue holds at least this many tracks that this integration did not choose, and nothing queued after them is ours either, it is treated as a deliberate choice to hear that playlist and left alone. Three is deliberately low, so a five-track playlist is protected as well as a five-hundred-track one. Zero disables the check.",
+          "history_minutes": "How long a title cannot play again at all. Zero disables that window. Separately, and not adjustable, a song heard in the last eight hours waits until its artist has nothing fresh left, so a returning artist plays their other hits first.",
+          "bulk_tracks": "A manual pick is one track; a playlist or album is many. A queue is left alone when it holds at least this many tracks nobody here chose, nothing after them is ours either, and its size moved by at least this much. Both tests are needed: loading a playlist usually replaces the queue rather than adding to it, so growth alone misses it, while size alone cannot see a song picked from within a playlist, which barely moves the count and is still a pick. Three is deliberately low, so a five-track playlist is protected as well as a five-hundred-track one. Zero disables the check.",
           "settle_seconds": "How long to wait after a manual pick before rewriting the queue, so the player has time to settle.",
           "cooldown_entity": "If another routine also rebuilds this player's queue on a schedule, point this at it so its rebuild is never mistaken for a manual pick. Leave empty if nothing else touches the queue.",
           "cooldown_seconds": "How long after that routine runs to skip detection entirely.",
@@ -309,7 +310,7 @@
       "message": "No loaded Music Assistant Curated Radio configuration with ID {entry_id}."
     },
     "entry_required": {
-      "message": "More than one player is configured, so config_entry_id is required."
+      "message": "No single player could be chosen for you: either more than one is set up, or none of them is loaded. Name one with config_entry_id."
     },
     "not_muted": {
       "message": "{artist} is not currently muted."

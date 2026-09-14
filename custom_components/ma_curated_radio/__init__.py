@@ -17,7 +17,11 @@ from homeassistant.core import (
     SupportsResponse,
     callback,
 )
-from homeassistant.exceptions import ConfigEntryNotReady, ServiceValidationError
+from homeassistant.exceptions import (
+    ConfigEntryError,
+    ConfigEntryNotReady,
+    ServiceValidationError,
+)
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -37,12 +41,15 @@ from .const import (
     ATTR_QUERY,
     ATTR_SEED_ARTIST,
     ATTR_TRACK,
+    CONF_MA_CONFIG_ENTRY_ID,
     CONF_PLAYER,
     CONF_PLAYER_REGISTRY_ID,
+    CONF_SEED_LEAN,
     DEFAULT_PLAYLIST_LENGTH,
     DEFAULT_PLAYLIST_NAME,
     DEFAULT_SEARCH_RESULTS,
     DOMAIN,
+    LEGACY_SEED_LEANS,
     MODE_REPLACE,
     MODES,
     SERVICE_ALLOW_TRACK,
@@ -187,13 +194,33 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 async def async_setup_entry(
     hass: HomeAssistant, entry: MaCuratedRadioConfigEntry
 ) -> bool:
-    """Set up one player from a config entry."""
+    """Set up one player from a config entry.
+
+    Music Assistant is checked before the player is resolved, because
+    only one of these two is worth retrying and the retryable one has to
+    get its answer in first.
+    """
+    _retire_legacy_style(hass, entry)
+
+    ma_entry = hass.config_entries.async_get_entry(
+        entry.data.get(CONF_MA_CONFIG_ENTRY_ID, "")
+    )
+    if ma_entry is None:
+        # Not the same thing as "not loaded yet", and retrying will never
+        # fix it. Music Assistant was removed and re-added, which gives it
+        # a new entry id, and this one points at an entry that no longer
+        # exists. Retried as NotReady it sat there saying it was waiting
+        # for Music Assistant to load, forever, while Music Assistant was
+        # loaded the whole time.
+        raise ConfigEntryError(
+            "The Music Assistant entry this player was set up against no "
+            "longer exists. Remove this player and add it again."
+        )
+    if ma_entry.state is not ConfigEntryState.LOADED:
+        raise ConfigEntryNotReady("Music Assistant is not loaded yet")
+
     _keep_player_current(hass, entry)
     settings = Settings.from_entry(entry)
-
-    ma_entry = hass.config_entries.async_get_entry(settings.ma_config_entry_id)
-    if ma_entry is None or ma_entry.state is not ConfigEntryState.LOADED:
-        raise ConfigEntryNotReady("Music Assistant is not loaded yet")
 
     skips = SkipMemory(
         hass,
@@ -256,6 +283,30 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
 
 @callback
+def _retire_legacy_style(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Rewrite an old station style to its current name, once.
+
+    Settings normalises the old name on the way past, so the engine has
+    always run the right style. Nothing else did: the dropdown fell back
+    to Balanced, the per-style numbers under it showed one style's values
+    while another was in force, and the options dialog seeded its own
+    selector with a value that selector rejects, so opening Configure and
+    pressing Submit failed on a form the user had not touched.
+
+    One normalisation is better than four, so the stored value is brought
+    up to date here and everything downstream reads something current.
+    """
+    style = entry.options.get(CONF_SEED_LEAN)
+    if style not in LEGACY_SEED_LEANS:
+        return
+    current = LEGACY_SEED_LEANS[style]
+    _LOGGER.info("Station style %s is now called %s", style, current)
+    hass.config_entries.async_update_entry(
+        entry, options={**entry.options, CONF_SEED_LEAN: current}
+    )
+
+
+@callback
 def _keep_player_current(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Point the entry at wherever the configured player is now.
 
@@ -277,12 +328,13 @@ def _keep_player_current(hass: HomeAssistant, entry: ConfigEntry) -> None:
         by_name=lambda name: entry.id if (entry := known(name)) else None,
     )
     if stored is None:
-        # Nothing in the registry answers to that name. Setting up anyway
-        # is how this used to fail silently, so say so.
-        _LOGGER.warning(
-            "No player called %s exists any more, so nothing will be "
-            "queued for it. Remove this entry and add the player again.",
-            player,
+        # Nothing in the registry answers to that name. A warning in the
+        # log was not enough: the entry still went green, brought up all
+        # its entities, showed its switch on, and would never queue
+        # anything. Failing is the only version of this a person sees.
+        raise ConfigEntryError(
+            f"No player called {player} exists any more. Remove this "
+            "entry and add the player again."
         )
     if current == player and stored == entry.data.get(CONF_PLAYER_REGISTRY_ID):
         return
@@ -451,6 +503,14 @@ def _make_build_playlist(hass: HomeAssistant):
             length=call.data[ATTR_LENGTH],
             provider=call.data[ATTR_PROVIDER],
         )
+        # Same three cases the button distinguishes. Folding the first
+        # into the catch-all told somebody whose build was already
+        # running to check that something was playing, which is both
+        # wrong and unactionable.
+        if result.error == "already_running":
+            raise ServiceValidationError(
+                translation_domain=DOMAIN, translation_key="playlist_running"
+            )
         if result.error == "playlists_unsupported":
             raise ServiceValidationError(
                 translation_domain=DOMAIN, translation_key="playlists_unsupported"

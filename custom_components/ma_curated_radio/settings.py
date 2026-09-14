@@ -102,7 +102,7 @@ class Settings:
         merged = {**entry.data, **entry.options}
         # Batch shape is per style, so the style has to be resolved before
         # anything that depends on it is read.
-        style = _seed_lean(merged.get(CONF_SEED_LEAN, DEFAULT_SEED_LEAN))
+        style = seed_lean(merged.get(CONF_SEED_LEAN, DEFAULT_SEED_LEAN))
         return cls(
             player=str(merged.get(CONF_PLAYER, "")),
             enabled=bool(merged.get(CONF_ENABLED, DEFAULT_ENABLED)),
@@ -154,8 +154,15 @@ class Settings:
         )
 
 
-def _seed_lean(value: object) -> str:
-    """Normalise a station style, carrying old names forward."""
+def seed_lean(value: object) -> str:
+    """Normalise a station style, carrying old names forward.
+
+    Public because more than one place has to answer this question, and
+    when they answered it separately they disagreed: this one carried
+    "format" forward to Discovery, while the entity and the options form
+    each fell back to Balanced instead. The dropdown said Balanced, the
+    numbers under it showed Discovery's, and the engine ran Discovery.
+    """
     name = str(value or "")
     name = LEGACY_SEED_LEANS.get(name, name)
     return name if name in SEED_LEANS else DEFAULT_SEED_LEAN

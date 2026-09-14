@@ -65,6 +65,7 @@ from .const import (
 )
 from .entry_data import merge_options
 from .lastfm import async_validate_api_key
+from .settings import seed_lean
 
 STEP_USER_SCHEMA = vol.Schema(
     {
@@ -100,8 +101,13 @@ def _options_schema(current: dict[str, Any]) -> vol.Schema:
     return vol.Schema(
         {
             vol.Required(
+                # Normalised, because the selector below rejects anything
+                # not in its own option list. Seeded with a retired style
+                # name, the form failed validation on a field nobody had
+                # touched: opening Configure and pressing Submit was an
+                # error the user could not act on.
                 CONF_SEED_LEAN,
-                default=value(CONF_SEED_LEAN, DEFAULT_SEED_LEAN),
+                default=seed_lean(value(CONF_SEED_LEAN, DEFAULT_SEED_LEAN)),
             ): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=SEED_LEANS,
@@ -241,11 +247,18 @@ class MaCuratedRadioConfigFlow(ConfigFlow, domain=DOMAIN):
             ma_entry_id = self._music_assistant_entry_id(user_input[CONF_PLAYER])
             session = async_get_clientsession(self.hass)
 
+            accepted = await async_validate_api_key(
+                session, user_input[CONF_LASTFM_API_KEY]
+            )
             if ma_entry_id is None:
                 errors[CONF_PLAYER] = "not_music_assistant"
-            elif not await async_validate_api_key(
-                session, user_input[CONF_LASTFM_API_KEY]
-            ):
+            elif accepted is None:
+                # Last.fm could not be reached at all, which is not the
+                # same as a key it refused. Reported as a bad key, this
+                # sent people off to generate a second key that failed
+                # in exactly the same way.
+                errors["base"] = "cannot_connect"
+            elif not accepted:
                 errors[CONF_LASTFM_API_KEY] = "invalid_api_key"
             else:
                 player = self.hass.states.get(user_input[CONF_PLAYER])

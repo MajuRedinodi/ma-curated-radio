@@ -95,7 +95,14 @@ class CuratedRadioDetector:
         self._queue_items: int | None = None
         self._task: asyncio.Task[None] | None = None
         self._priming: asyncio.Task[None] | None = None
-        self._run: asyncio.Task[Any] | None = None
+        # Every shielded run in flight, not just the newest. A single
+        # slot looked sufficient because runs are meant to be one at a
+        # time, but a pick arriving while a refill is still enqueuing
+        # overwrote the reference to the refill, and unloading could then
+        # only cancel the one it happened to be holding. The other went
+        # on writing its station over the new engine's, which is the one
+        # thing holding a reference was supposed to prevent.
+        self._runs: set[asyncio.Task[Any]] = set()
         # The track last heard playing. Track changes are judged against
         # this rather than against the update before, because some players
         # change the track and start playing it in two separate updates.
@@ -149,7 +156,7 @@ class CuratedRadioDetector:
         @callback
         def _stop() -> None:
             unsub()
-            for task in (self._task, self._priming, self._run):
+            for task in (self._task, self._priming, *self._runs):
                 if task is not None and not task.done():
                     task.cancel()
 
@@ -282,15 +289,21 @@ class CuratedRadioDetector:
         time from the batch before. Shielded, the write finishes even
         though this decision has been abandoned.
 
-        The run is held rather than left anonymous, so that unloading the
-        entry still stops it. A shielded task nothing holds a reference to
-        outlives a reload, and the old engine then writes its station over
-        the one the new engine has already loaded.
+        Every run is held rather than left anonymous, so that unloading
+        the entry still stops it. A shielded task nothing holds a
+        reference to outlives a reload, and the old engine then writes
+        its station over the one the new engine has already loaded.
+
+        All of them, not the newest: two can overlap when a pick arrives
+        while a refill is still enqueuing, and keeping one slot meant the
+        first was quietly forgotten by the second.
         """
-        self._run = self._hass.async_create_task(
+        run = self._hass.async_create_task(
             self._engine.async_run(mode, continuing=continuing)
         )
-        await asyncio.shield(self._run)
+        self._runs.add(run)
+        run.add_done_callback(self._runs.discard)
+        await asyncio.shield(run)
 
     async def _async_record_feedback(self, outgoing: PlaybackSnapshot | None) -> None:
         """Record whether the track that just ended was skipped.

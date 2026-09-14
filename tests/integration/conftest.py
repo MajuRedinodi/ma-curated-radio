@@ -72,14 +72,10 @@ def entry(hass, music_assistant, player):
     return entry
 
 
-@pytest.fixture(autouse=True)
-def verify_cleanup():
-    """Skip the framework's own leak check.
-
-    It asserts that Home Assistant left no threads behind, and it fails on
-    Home Assistant's import executor for every test here, including the
-    ones that pass. That is a complaint about Home Assistant's own
-    shutdown inside the test harness rather than about this integration,
-    and it buries the real failures.
-    """
-    yield
+# There was a verify_cleanup override here that skipped the framework's
+# lingering task, timer and thread check. It was added when that check
+# failed on Home Assistant's own import executor for every test in this
+# directory. It no longer does, on the pinned version, so the override
+# has been removed: shadowing it cost the one thing that would notice a
+# task or timer this integration leaves behind on unload, which is
+# exactly the class of bug these tests exist to find.

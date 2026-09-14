@@ -17,6 +17,11 @@ _LOGGER = logging.getLogger(__name__)
 API_URL = "https://ws.audioscrobbler.com/2.0/"
 TIMEOUT = aiohttp.ClientTimeout(total=10)
 
+# Last.fm's own numbering for the two things that mean "this key is no
+# good". Everything else it reports is temporary or about the request.
+INVALID_KEY_ERROR = 10
+KEY_SUSPENDED_ERROR = 26
+
 
 async def async_get_similar_artists(
     session: aiohttp.ClientSession,
@@ -88,13 +93,36 @@ async def async_get_similar_artists(
 
 async def async_validate_api_key(
     session: aiohttp.ClientSession, api_key: str
-) -> bool:
-    """Return True if the key is accepted by Last.fm.
+) -> bool | None:
+    """Whether Last.fm accepts the key. None if Last.fm could not be asked.
 
     Uses a well-known artist so a legitimate key cannot fail on an unknown
     name. An empty result for Cher means the key was rejected.
+
+    The third answer matters. Every transport failure ends up as an empty
+    result too, so an outage, a DNS failure or a firewall in the way all
+    read as a rejected key, and the person setting this up is told their
+    key is wrong and goes off to generate another one that will fail the
+    same way. This asks separately so the flow can say which it was.
     """
-    return bool(await async_get_similar_artists(session, api_key, "Cher", 1))
+    params = {"method": "artist.getinfo", "artist": "Cher", "api_key": api_key,
+              "format": "json"}
+    try:
+        async with session.get(API_URL, params=params, timeout=TIMEOUT) as response:
+            if response.status != HTTPStatus.OK:
+                return None
+            payload = await response.json(content_type=None)
+    except (aiohttp.ClientError, TimeoutError, ValueError) as err:
+        _LOGGER.debug("Could not reach Last.fm to check the key: %s", err)
+        return None
+    if not isinstance(payload, dict):
+        return None
+    # Last.fm reports an API-level error with HTTP 200, and a bad key is
+    # one of those. Anything else in that field is Last.fm's problem
+    # rather than the key's.
+    if (error := payload.get("error")) is not None:
+        return error not in (INVALID_KEY_ERROR, KEY_SUSPENDED_ERROR)
+    return "artist" in payload
 
 
 async def async_get_artist_listeners(

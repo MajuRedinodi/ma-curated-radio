@@ -14,9 +14,12 @@ from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN  # noqa: E402
 from homeassistant.helpers import entity_registry as er  # noqa: E402
 
 from custom_components.ma_curated_radio.const import (  # noqa: E402
+    CONF_MA_CONFIG_ENTRY_ID,
     CONF_PLAYER,
     CONF_PLAYER_REGISTRY_ID,
+    CONF_SEED_LEAN,
     DOMAIN,
+    SEED_LEAN_DISCOVERY,
 )
 
 
@@ -87,6 +90,63 @@ async def test_a_skip_recorded_moments_before_unload_still_lands(
 
     stored = hass_storage[f"{DOMAIN}.{entry.entry_id}"]["data"]
     assert "some song" in stored["tracks"]
+
+
+async def test_a_retired_style_name_is_brought_up_to_date(hass, entry):
+    """One style had two names, and four places disagreed about which.
+
+    Settings carried the old name forward, so the engine ran the right
+    style. Nothing else did: the dropdown fell back to Balanced, the
+    per-style numbers under it showed the values of a style that was not
+    in force, and the options form seeded its own selector with a value
+    that selector rejects, so pressing Submit failed on an untouched
+    field. Rewriting the stored value once leaves one answer.
+    """
+    hass.config_entries.async_update_entry(entry, options={CONF_SEED_LEAN: "format"})
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert entry.options[CONF_SEED_LEAN] == SEED_LEAN_DISCOVERY
+    assert entry.runtime_data.settings.seed_lean == SEED_LEAN_DISCOVERY
+    style = hass.states.get("select.family_room_stereo_station_style")
+    assert style.state == SEED_LEAN_DISCOVERY
+
+
+async def test_a_player_that_no_longer_exists_fails_instead_of_pretending(
+    hass, entry, player, entity_registry
+):
+    """Green and dead was the worst of both.
+
+    A warning in the log was the only sign: the entry loaded, brought up
+    every entity, showed its switch on, and would never queue anything.
+    """
+    entity_registry.async_remove(player.entity_id)
+
+    assert not await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert entry.state is ConfigEntryState.SETUP_ERROR
+
+
+async def test_a_music_assistant_entry_that_is_gone_is_not_worth_retrying(
+    hass, entry
+):
+    """Removed and re-added, Music Assistant gets a new entry id, and the
+    one recorded here names an entry that no longer exists.
+
+    Treated as "not loaded yet" this retried for ever, reporting that it
+    was waiting for Music Assistant, while Music Assistant sat there
+    loaded the whole time. Retrying cannot fix a stale id.
+    """
+    hass.config_entries.async_update_entry(
+        entry, data={**entry.data, CONF_MA_CONFIG_ENTRY_ID: "no-such-entry"}
+    )
+
+    assert not await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert entry.state is ConfigEntryState.SETUP_ERROR
 
 
 async def test_setup_records_the_players_registry_id(hass, entry, player):

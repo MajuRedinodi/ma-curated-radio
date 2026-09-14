@@ -22,6 +22,7 @@ from .const import (
     SEED_LEANS,
 )
 from .entity import CuratedRadioEntity
+from .settings import seed_lean
 
 if TYPE_CHECKING:
     from . import MaCuratedRadioConfigEntry
@@ -108,9 +109,8 @@ class StationStyleSelect(CuratedRadioEntity, SelectEntity):
 
     @property
     def current_option(self) -> str:
-        """Configured station style."""
-        value = str(self._option(CONF_SEED_LEAN, DEFAULT_SEED_LEAN))
-        return value if value in SEED_LEANS else DEFAULT_SEED_LEAN
+        """Configured station style, under its current name."""
+        return seed_lean(self._option(CONF_SEED_LEAN, DEFAULT_SEED_LEAN))
 
     async def async_select_option(self, option: str) -> None:
         """Change the station style."""
