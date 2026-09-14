@@ -119,7 +119,62 @@ def test_a_full_queue_is_left_alone():
 
 def test_a_pick_wins_over_a_refill():
     """Both conditions hold on a pick, since the new queue is one track."""
-    assert call() is Decision.PICKED
+    assert call(QueueFacts(current_uri="track/new", items=1, remaining=0)) is (
+        Decision.PICKED
+    )
+
+
+def test_a_big_foreign_queue_right_after_a_restart_is_not_a_pick():
+    """The central case of the bulk-load rule, and it was untested.
+
+    No previous count is the state immediately after a restart, so size
+    has to stand alone and a large unfamiliar queue is left alone. Read
+    as a pick instead, somebody's three hundred track playlist is thrown
+    away and replaced the moment Home Assistant comes back.
+    """
+    playlist = QueueFacts(current_uri="track/new", items=300, remaining=299)
+    assert (
+        decide(
+            playlist,
+            expected_uri="track/expected",
+            current_is_ours=False,
+            next_is_ours=False,
+            previous_items=None,
+            bulk_threshold=3,
+            refill_threshold=2,
+        )
+        is Decision.NOTHING
+    )
+
+
+def test_a_new_track_while_paused_has_not_started():
+    assert not track_started("paused", "track/new", "track/old")
+
+
+def test_a_song_that_ran_into_its_fade_out_was_played_not_skipped():
+    """Nothing referenced was_skipped at all, and it is the input to both
+    feedback rules: a false skip pushes a song off for thirty days and
+    three of them mute the artist."""
+    assert not PlaybackSnapshot(duration=240.0, elapsed=230.0).was_skipped(15.0)
+    assert PlaybackSnapshot(duration=240.0, elapsed=100.0).was_skipped(15.0)
+
+
+def test_without_a_duration_the_benefit_of_the_doubt_goes_to_played():
+    assert not PlaybackSnapshot(duration=0.0, elapsed=5.0).was_skipped(15.0)
+
+
+def test_skips_a_little_under_the_window_apart_stay_a_run():
+    """Each skip has to move the clock on, not just the first.
+
+    Leaving the mark where the run began makes the third skip of a slow
+    hunt look like a considered verdict, which is how a kid holding the
+    button suppresses a song for a month.
+    """
+    ledger = SkipLedger()
+    ledger.skipped("a", now=0.0, window=30.0)
+    ledger.skipped("b", now=25.0, window=30.0)
+    assert ledger.skipped("c", now=50.0, window=30.0) == []
+    assert ledger.played() == []
 
 
 @pytest.mark.parametrize(

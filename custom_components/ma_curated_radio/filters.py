@@ -116,6 +116,10 @@ HOLIDAY_TOKENS: Final = (
     "good king wenceslas",
     "carol of the bells",
     "what child is this",
+    # Not bare "boy child", which is a Scott Walker song.
+    "marys boy child",
+    "angels we have heard",
+    "do you hear what i hear",
     "ding dong merrily",
     "twelve days of",
     "we three kings",

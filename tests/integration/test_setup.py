@@ -11,6 +11,7 @@ pytest.importorskip("pytest_homeassistant_custom_component")
 
 from homeassistant.config_entries import ConfigEntryState  # noqa: E402
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN  # noqa: E402
+from homeassistant.helpers import entity_registry as er  # noqa: E402
 
 from custom_components.ma_curated_radio.const import (  # noqa: E402
     CONF_PLAYER,
@@ -33,6 +34,59 @@ async def test_an_entry_sets_up_and_brings_its_entities(hass, entry):
     assert hass.states.get("sensor.family_room_stereo_last_batch_built").state == (
         STATE_UNKNOWN
     )
+
+
+async def test_every_platform_brings_an_entity(hass, entry, entity_registry):
+    """The test above promises buttons in its docstring and checks a
+    switch and two sensors, so three of the five platforms could stop
+    loading entirely without a failure. The dashboard in the README
+    renders an error card for every entity that does not arrive."""
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    domains = {
+        e.domain
+        for e in er.async_entries_for_config_entry(entity_registry, entry.entry_id)
+    }
+    assert {"button", "number", "select", "sensor", "switch"} <= domains
+
+
+async def test_setup_retries_until_music_assistant_is_loaded(
+    hass, entry, music_assistant
+):
+    """The restart race, which sets up dead if it is not retried.
+
+    Both integrations come back at once and there is no ordering between
+    them. Refusing without asking to be retried leaves an entry that
+    loaded, shows its entities, and will never build anything until
+    somebody reloads it by hand.
+    """
+    music_assistant.mock_state(hass, ConfigEntryState.NOT_LOADED)
+
+    assert not await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert entry.state is ConfigEntryState.SETUP_RETRY
+
+
+async def test_a_skip_recorded_moments_before_unload_still_lands(
+    hass, entry, hass_storage
+):
+    """Writes are batched over ten seconds, and unloading does not wait.
+
+    So the last skip before a reload was lost, and the same delayed write
+    landing after a removal recreated the storage file that removal had
+    just tidied away.
+    """
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    await entry.runtime_data.skips.async_record_skip("some song", "Some Artist")
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    stored = hass_storage[f"{DOMAIN}.{entry.entry_id}"]["data"]
+    assert "some song" in stored["tracks"]
 
 
 async def test_setup_records_the_players_registry_id(hass, entry, player):

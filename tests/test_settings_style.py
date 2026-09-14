@@ -44,6 +44,15 @@ def test_writing_a_style_does_not_mutate_the_options_passed_in():
     assert options[CONF_STYLE_SETTINGS] == {SEED_LEAN_ARTIST: {CONF_MAX_ARTISTS: 3}}
 
 
+def test_writing_a_style_that_is_already_there_does_not_mutate_it_either():
+    """The case above writes a style the options do not yet hold, which a
+    shallow copy survives. Overwriting one that is already there is what
+    actually reaches into the caller's dictionary."""
+    options = {CONF_STYLE_SETTINGS: {SEED_LEAN_ARTIST: {CONF_MAX_ARTISTS: 3}}}
+    with_style_value(options, SEED_LEAN_ARTIST, CONF_MAX_ARTISTS, 5)
+    assert options[CONF_STYLE_SETTINGS] == {SEED_LEAN_ARTIST: {CONF_MAX_ARTISTS: 3}}
+
+
 def test_both_styles_can_be_set_independently():
     options: dict = {}
     options = with_style_value(options, SEED_LEAN_ARTIST, CONF_TRACKS_PER_ARTIST, 3)

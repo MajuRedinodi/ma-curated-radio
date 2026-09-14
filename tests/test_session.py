@@ -114,6 +114,40 @@ def test_a_restored_session_keeps_its_age():
     assert restored.is_stale(12)
 
 
+def test_an_hour_old_session_is_not_stale():
+    """The other side of the same rule, and the side that matters more.
+
+    Only the stale side was pinned, so the window could be read in
+    minutes instead of hours without a test failing. Measured in minutes
+    every station is stale within the hour, which re-anchors the drift
+    fence on every refill: precisely the ratchet the fence exists to
+    stop, arriving through the test that was meant to guard it.
+    """
+    session = ListeningSession.start("ABBA")
+    session.last_active -= timedelta(hours=1)
+    assert not session.is_stale(6)
+
+
+def test_touching_a_session_keeps_it_alive():
+    session = ListeningSession.start("ABBA")
+    session.last_active -= timedelta(hours=30)
+    session.touch()
+    assert not session.is_stale(6)
+
+
+def test_an_artist_at_the_cap_is_still_eligible_from_the_frontier():
+    """Otherwise the walk dead-ends at the fence instead of circulating.
+
+    An artist admitted at the cap is inside it. Reading "at the cap" as
+    "outside" leaves the last ring of the neighbourhood unreachable from
+    itself, so a long session runs out of anywhere to go.
+    """
+    session = ListeningSession.start("Taylor Swift")
+    session.admit("Katy Perry", 3)
+    session.admit("Lorde", 3)
+    assert session.eligible("Katy Perry", ["Lorde"], 3) == ["Lorde"]
+
+
 def test_nothing_usable_saved_means_no_session():
     assert not ListeningSession.from_dict(None).active
     assert not ListeningSession.from_dict({}).active

@@ -114,6 +114,11 @@ def test_is_live(name, version, expected):
         ("Grandma Got Run Over by a Reindeer", "", "", True),
         ("Stille Nacht", "", "Weihnachten", True),
         ("O Tannenbaum", "", "Weihnachten", True),
+        ("Mary's Boy Child / Oh My Lord", "", "Boney M.", True),
+        ("Angels We Have Heard on High", "", "Carols", True),
+        ("Do You Hear What I Hear?", "", "Carols", True),
+        # But not Scott Walker, which is why the token is not "boy child".
+        ("Boy Child", "", "Scott 4", False),
         # Punctuation the two services spell differently. Each of these
         # was caught only when the album name happened to say Christmas.
         ("Baby, It's Cold Outside", "", "The Merriest Time Of The Year", True),
@@ -149,6 +154,109 @@ def test_is_live(name, version, expected):
 )
 def test_is_holiday_ignores_season(name, version, album, expected):
     assert is_holiday(name, version, album) is expected
+
+
+# One real record per entry in the holiday list. A mutation sweep found
+# that most of the list could be deleted without a single test failing,
+# which is the wrong way round for a list whose entire purpose is to be
+# long: a token nobody has pinned is a token somebody tidies away.
+@pytest.mark.parametrize(
+    ("name", "album"),
+    [
+        ("White Christmas", ""),
+        ("Merry Xmas Everybody", ""),
+        ("Feliz Navidad", ""),
+        ("Winter Wonderland", ""),
+        ("Let It Snow! Let It Snow! Let It Snow!", ""),
+        ("Sleigh Ride", ""),
+        ("Jingle Bell Rock", ""),
+        ("Silver Bells", ""),
+        ("Frosty the Snowman", ""),
+        ("Rudolph the Red-Nosed Reindeer", ""),
+        ("A Holly Jolly Christmas", ""),
+        ("Mistletoe", ""),
+        ("Auld Lang Syne", ""),
+        ("Baby, It's Cold Outside", ""),
+        ("Little Saint Nick", ""),
+        ("Mele Kalikimaka", ""),
+        ("Wintersong", ""),
+        ("It's the Most Wonderful Time of the Year", ""),
+        ("Happy Holiday", ""),
+        ("The Holiday Season", ""),
+        ("Fairytale of New York", ""),
+        ("Underneath the Tree", ""),
+        ("Silent Night", ""),
+        ("O Holy Night", ""),
+        ("Stille Nacht", ""),
+        ("O Tannenbaum", ""),
+        ("Deck the Halls", ""),
+        ("The Little Drummer Boy", ""),
+        ("Away in a Manger", ""),
+        ("O Come, All Ye Faithful", ""),
+        ("Hark! The Herald Angels Sing", ""),
+        ("God Rest Ye Merry, Gentlemen", ""),
+        ("God Rest You Merry, Gentlemen", ""),
+        ("Good King Wenceslas", ""),
+        ("Carol of the Bells", ""),
+        ("What Child Is This", ""),
+        ("Ding Dong Merrily on High", ""),
+        ("The Twelve Days of Christmas", ""),
+        ("We Three Kings", ""),
+        ("O Christmas Tree", ""),
+        ("Greensleeves", ""),
+        ("Mary's Boy Child", ""),
+        ("Angels We Have Heard on High", ""),
+        ("Do You Hear What I Hear?", ""),
+        ("The First Noël", ""),
+        ("Must Be Santa", ""),
+        # Two the list carries for the album rather than the title.
+        ("Some Song", "Yuletide Favourites"),
+        ("Some Song", "Sleigh Bells and Carols"),
+    ],
+)
+def test_every_holiday_token_catches_a_real_record(name, album):
+    assert is_holiday(name, "", album)
+
+
+@pytest.mark.parametrize(
+    "version",
+    ["Club Mix", "Dance Mix", "Extended Mix", "Dub Mix", "House Mix", '12" Mix'],
+)
+def test_every_club_reworking_counts_as_a_remix(version):
+    """Only "club mix" was pinned, so the other five could go quietly."""
+    assert is_remix("Blue Monday", version)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "Free Fallin' (Karaoke Version)",
+        "Free Fallin' (Made Popular By Tom Petty)",
+        "Free Fallin' (In the Style of Tom Petty)",
+        "Free Fallin' (Originally Performed By Tom Petty)",
+        "Free Fallin' (A Tribute to Tom Petty)",
+        "Free Fallin' (Backing Track)",
+    ],
+)
+def test_every_imitation_marker_is_caught(name):
+    """These are credited to the artist they imitate, so the title marker
+    is the only thing that can reject them."""
+    assert is_non_song(name, "")
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "Track by Track: Song One",
+        "Commentary on the Album",
+        "Interlude",
+        "Skit",
+        "Voice Memo",
+        "Spoken Word",
+    ],
+)
+def test_every_non_song_marker_is_caught(name):
+    assert is_non_song(name, "")
 
 
 def test_clean_similar_artists_drops_collabs_and_seed():
@@ -415,6 +523,23 @@ def test_tiered_order_spreads_the_big_tracks_across_the_hour():
     assert tiers[out[0]] == "P"
 
 
+def test_the_second_slot_takes_the_deep_track_the_pattern_asks_for():
+    """The test above cannot fail, and that took a while to notice.
+
+    Opening on Power is what the fullest-pool rule does anyway, so
+    asserting it proves nothing about the pattern: ignoring tiers
+    entirely, or never advancing past the first one, both pass it. What
+    the pattern is for is the shape of the whole hour, so this asks for
+    the slot the pattern alone can fill, and that the hour does not open
+    with every big record in a row.
+    """
+    lists = [["aP", "aD", "aS"], ["bP", "bD", "bS"], ["cP", "cD", "cS"]]
+    tiers = {uri: uri[1] for pool in lists for uri in pool}
+    out = sequence_tiered(lists, tiers, ["P", "D", "S"])
+    assert tiers[out[1]] == "D"
+    assert [tiers[u] for u in out[:3]] != ["P", "P", "P"]
+
+
 def test_tiered_order_still_honours_the_seam_and_the_run_cap():
     lists = [["a1", "a2", "a3"], ["b1"], ["c1"]]
     tiers = dict.fromkeys(("a1", "a2", "a3", "b1", "c1"), "P")
@@ -615,11 +740,18 @@ def test_a_comma_in_a_pop_title_is_left_alone():
 
 
 def test_the_run_cap_can_be_tightened_to_one():
-    """Ported from the round-robin sequencer this replaced."""
+    """Ported from the round-robin sequencer this replaced.
+
+    Compares the pool each track came from, not the track. Comparing the
+    tracks asserted that adjacent URIs differ, which is true of any
+    ordering of distinct tracks whatever the cap does, so the cap could
+    be ignored outright and this still passed.
+    """
     pools = [["s1", "s2", "s3"], ["a1", "a2", "a3"]]
     tiers = dict.fromkeys(("s1", "s2", "s3", "a1", "a2", "a3"), "P")
     ordered = sequence_tiered(pools, tiers, ["P"], max_consecutive=1)
-    assert all(ordered[i] != ordered[i + 1] for i in range(len(ordered) - 1))
+    whose = [uri[0] for uri in ordered]
+    assert all(whose[i] != whose[i + 1] for i in range(len(whose) - 1))
     assert sorted(ordered) == ["a1", "a2", "a3", "s1", "s2", "s3"]
 
 
@@ -879,7 +1011,11 @@ class _Song:
 def test_the_depth_bar_follows_the_station():
     """A share of the typical artist, so country is not held to rock's numbers."""
     rock = {"REO Speedwagon": 1_287_000, "Pat Benatar": 1_488_000, "Loverboy": 703_000}
+    country = {"The Highwaymen": 380_679, "David Allan Coe": 136_180, "Johnny Paycheck": 128_366}
     assert depth_bar(rock) == 64_350
+    # The point of the rule, which the fixed number above does not say:
+    # country is not held to rock's figures.
+    assert depth_bar(country) < depth_bar(rock)
     assert depth_bar({"Unknown": 0}) == 0
 
 
@@ -953,6 +1089,21 @@ def test_tracks_without_ids_are_kept():
     assert keep_one_act([*songs, stray, namesake], "Act") == [*songs, stray]
 
 
+def test_a_duet_where_the_artist_is_the_second_credit_is_kept():
+    """Keying on the first credit whoever was asked for throws duets away.
+
+    A Stevie Nicks and Tom Petty duet lists her first, so on a Tom Petty
+    station it carries her artist id, looks like a different act under
+    the same name, and is dropped as a namesake.
+    """
+    real = [_Song(f"r:{i}", f"Hit {i}", ["Tom Petty"], ["id:petty"]) for i in range(5)]
+    duet = _Song(
+        "d", "Stop Draggin' My Heart Around",
+        ["Stevie Nicks", "Tom Petty"], ["id:nicks", "id:petty"],
+    )
+    assert keep_one_act([*real, duet], "Tom Petty") == [*real, duet]
+
+
 def test_the_providers_first_result_is_not_an_a_track():
     """A search for Sugar put a techno record by a different Sugar first.
 
@@ -981,6 +1132,51 @@ def test_an_artist_last_fm_knows_under_another_name_is_left_alone():
         ]
     )
     assert too_deep(songs, rank, vivaldi, 100_000, 2) == set()
+
+
+def test_an_artist_with_no_shared_titles_keeps_its_third_song_too():
+    """The case above has two songs and allows two A-tracks, so the
+    exemption covers both and the no-overlap guard is never load-bearing.
+    A third song is what actually needs the guard."""
+    vivaldi = [("Spring", 400_000), ("Winter", 300_000)]
+    songs, rank = _ranked(["Concerto in E", "Concerto in G", "Concerto in F"])
+    assert too_deep(songs, rank, vivaldi, 100_000, 2) == set()
+
+
+def test_a_last_fm_title_with_different_punctuation_still_matches():
+    """The two services disagree about curly quotes, and a title that
+    fails to match reads as a song nobody has heard of."""
+    known = [("A", 500_000), ("B", 400_000), ("Don't Stop Believin'", 300_000)]
+    songs, rank = _ranked(["A", "B", "Don’t Stop Believin’"])
+    assert too_deep(songs, rank, known, 100_000, 2) == set()
+
+
+def test_an_a_track_last_fm_lists_as_a_remaster_is_still_an_a_track():
+    small = [
+        ("Family Tradition - Remastered", 38_000),
+        ("Country Boy", 32_000),
+        ("Born", 9_000),
+    ]
+    songs, rank = _ranked(["Family Tradition", "Country Boy", "Born"])
+    assert too_deep(songs, rank, small, 100_000, 2) == {"t:2"}
+
+
+def test_a_song_listed_twice_on_last_fm_is_judged_on_its_bigger_count():
+    known = [("A", 500_000), ("B", 400_000), ("B - Remastered", 10_000)]
+    songs, rank = _ranked(["A", "B"])
+    assert too_deep(songs, rank, known, 100_000, 1) == set()
+
+
+def test_the_depth_bar_ignores_artists_of_unknown_size():
+    """A Last.fm miss counted as zero drags the median down, which lets
+    deeper cuts through on any station where one lookup failed."""
+    assert depth_bar({"A": 1_000_000, "B": 500_000, "Unknown": 0}) == 50_000
+
+
+def test_a_tempo_after_an_opus_number_is_stripped():
+    assert base_title("Symphony No. 9, Op. 125, Allegro") == base_title(
+        "Symphony No. 9, Op. 125"
+    )
 
 
 def test_a_title_that_opens_with_a_parenthesis_survives():

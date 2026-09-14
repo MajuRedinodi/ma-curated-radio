@@ -119,12 +119,17 @@ def test_a_limit_cuts_the_list():
 
 
 def test_karaoke_is_not_music():
-    """Tidal surfaces these. Searching for Tom Petty returned one."""
+    """Tidal surfaces these. Searching for Tom Petty returned one.
+
+    The imitation act is credited to the artist it imitates, so only the
+    title marker can reject it. Crediting the karaoke act as well let the
+    artist check do the work and left the marker untested.
+    """
     tracks = [
         Track(
             "t1",
             "Mary Jane's Last Dance (Made Popular By Tom Petty)",
-            artists=["Party Tyme Karaoke"],
+            artists=["Tom Petty"],
         ),
         Track("t2", "Mary Jane's Last Dance", artists=["Tom Petty"]),
     ]
@@ -208,6 +213,38 @@ def test_repeats_start_with_whatever_was_heard_longest_ago():
         "all she wants to do is dance": 300.0,
     }
     assert fresh(_HENLEY, heard, limit=2) == ["t2", "t3"]
+
+
+def test_fill_ins_keep_the_providers_order_among_themselves():
+    """Which repeats to use is one question, what order to play them another.
+
+    Age picks them: the two heard longest ago are the third and second
+    tracks, in that order. The provider's ranking then lays them out, so
+    they come back second-then-third. The existing age test cannot see
+    the difference, because there its two answers agree.
+    """
+    heard = {
+        "the boys of summer": 300.0,
+        "dirty laundry": 200.0,
+        "the end of the innocence": 100.0,
+        "all she wants to do is dance": 400.0,
+    }
+    assert fresh(_HENLEY, heard, limit=2) == ["t2", "t3"]
+
+
+def test_the_fill_in_pass_does_not_repeat_a_fresh_title_under_another_uri():
+    """A remaster is the same song, and it must not come back as a fill-in.
+
+    The fresh pass takes the song; the fill-in pass, working on URIs,
+    could then take the remaster of it and put the same record in one
+    batch twice.
+    """
+    tracks = [
+        Track("t1", "Song"),
+        Track("t2", "Song - Remastered"),
+        Track("t3", "Other"),
+    ]
+    assert fresh(tracks, {"other": 1.0}, limit=2) == ["t1", "t3"]
 
 
 def test_a_medley_title_is_the_same_song():
