@@ -17,6 +17,7 @@ from decide import (
     is_transitional,
     leading_pool,
     starts_station,
+    track_restarted,
     track_started,
     was_replaced,
 )
@@ -341,6 +342,75 @@ def test_a_pick_reported_in_two_steps_is_still_a_pick():
 
 def test_pause_and_resume_is_not_a_change():
     assert not track_started("playing", "track/a", "track/a")
+
+
+def restart(state="playing", track="track/a", last="track/a", now=0.0, before=45.0):
+    """Did the song playing begin again? Defaults describe a real restart."""
+    return track_restarted(
+        state, track, last, elapsed=now, previous_elapsed=before, tolerance=3.0
+    )
+
+
+def test_re_picking_the_song_already_playing_restarts_it():
+    """Jeff's three attempts on 15 September, all of which did nothing.
+
+    Re-picking the song that is playing is the one pick that changes no
+    track, so nothing here looked like an event and no decision ran. The
+    queue had collapsed to that single song, and the station went silent
+    as soon as it ended.
+    """
+    assert restart()
+
+
+def test_a_song_playing_on_has_not_restarted():
+    """The case that must stay quiet: elapsed time going the right way."""
+    assert not restart(now=48.0, before=45.0)
+
+
+def test_a_song_re_picked_in_its_opening_seconds_is_below_the_tolerance():
+    """Known and accepted. Two seconds in there is nothing to tell a
+    restart from noise, and the pick is lost rather than guessed at."""
+    assert not restart(now=0.0, before=2.0)
+
+
+def test_a_restart_while_paused_is_not_one():
+    assert not restart(state="paused")
+
+
+def test_a_different_track_is_not_a_restart():
+    """track_started already owns that case; this must not double-count it."""
+    assert not restart(track="track/b", last="track/a")
+
+
+def test_re_picking_the_song_already_playing_is_a_pick():
+    """The other half of the fix, and the reason was_replaced exists.
+
+    The reading is taken because the song restarted rather than because a
+    new one did, so no track changed. What makes it a pick is the queue:
+    twenty tracks a moment ago, one now, which is what enqueue: replace
+    leaves behind and which nothing this integration does produces.
+    """
+    replaced = QueueFacts(current_uri="track/ours", items=1, remaining=0)
+    assert (
+        call(replaced, current_is_ours=True, track_changed=False) is Decision.PICKED
+    )
+
+
+def test_seeking_backwards_neither_refills_nor_judges_the_song():
+    """Same signal as a restart, and it must cost nothing.
+
+    Going back in a song looks identical to a restart from the outside,
+    and the queue is what tells them apart. Without the guard this would
+    have refilled early and recorded the song somebody had just gone back
+    to as a skip, suppressing it for a month.
+    """
+    intact = QueueFacts(
+        current_uri="track/ours", next_uri="track/next", items=19, remaining=0
+    )
+    assert call(intact, current_is_ours=True, track_changed=False) is Decision.NOTHING
+    # The same reading on an ordinary track change is a refill, which is
+    # what proves the guard is doing the work rather than the queue shape.
+    assert call(intact, current_is_ours=True) is Decision.REFILL
 
 
 def test_a_player_flapping_between_idle_and_playing_is_not_a_change():

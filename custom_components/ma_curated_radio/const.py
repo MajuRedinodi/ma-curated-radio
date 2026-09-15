@@ -220,6 +220,13 @@ SKIP_GRACE_SECONDS: Final = 15.0
 # full of kids, suppressed two songs for a month.
 SKIP_BURST_SECONDS: Final = 30.0
 
+# How far the elapsed time has to jump backwards before the song counts as
+# having started again rather than drifted. Small, because the figure is
+# worked out from the position and its timestamp and is accurate to well
+# under a second; it only has to clear the case of a song re-picked in its
+# own opening moments, where there is nothing to tell a restart from noise.
+RESTART_TOLERANCE_SECONDS: Final = 3.0
+
 # --- Entities ----------------------------------------------------------------
 
 CONF_ENABLED: Final = "enabled"

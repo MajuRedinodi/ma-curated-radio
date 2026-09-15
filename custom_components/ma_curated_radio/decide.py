@@ -142,6 +142,41 @@ def track_started(state: str, track: str | None, last_playing: str | None) -> bo
     return state == "playing" and track != last_playing
 
 
+def track_restarted(
+    state: str,
+    track: str | None,
+    last_playing: str | None,
+    *,
+    elapsed: float,
+    previous_elapsed: float,
+    tolerance: float,
+) -> bool:
+    """True when the song already playing began again from the top.
+
+    Re-picking the song that is playing is the one pick that changes no
+    track, so ``track_started`` cannot see it and no decision was made at
+    all: the queue collapsed to that single song and the station went
+    silent once it ended. Hit three times in a row on 15 September, and
+    from the listener's chair it looks like the integration is ignoring
+    the remote.
+
+    The queue size is the real evidence and a state update does not carry
+    it, so this decides only whether the queue is worth reading. What the
+    reading means is still ``decide``'s answer, which is why a backward
+    seek costs nothing: it looks identical here, and then turns out to
+    have left the queue intact.
+
+    ``media_position`` is not a counter. It holds the position as of
+    ``media_position_updated_at``, so a song playing normally reports the
+    same figure the whole way through and the elapsed time has to be
+    worked out from the pair. A restart shows up as that figure jumping
+    backwards.
+    """
+    if state != "playing" or track is None or track != last_playing:
+        return False
+    return previous_elapsed - elapsed > tolerance
+
+
 def starts_station(*, refilling: bool, continuing: bool) -> bool:
     """True when this batch begins a station rather than continuing one.
 
@@ -259,6 +294,7 @@ def decide(
     bulk_threshold: int,
     refill_threshold: int,
     in_cooldown: bool = False,
+    track_changed: bool = True,
 ) -> Decision:
     """Work out what a track change means.
 
@@ -273,6 +309,11 @@ def decide(
     ``expected_uri`` is empty before anything has been observed, which is
     the state immediately after a restart. Nothing can be called a pick
     then, because there is no expectation to have been broken.
+
+    ``track_changed`` is false for a reading taken because the song
+    playing started again rather than because a new one did. Nothing
+    ended, so such a reading can only mean a replace: see the guard
+    below.
     """
     if in_cooldown or is_transitional(queue):
         return Decision.NOTHING
@@ -294,6 +335,12 @@ def decide(
     )
     if picked:
         return Decision.PICKED
+    if not track_changed:
+        # No track ended, so there is nothing to top up for and nothing to
+        # judge. Without this, seeking backwards near the end of a batch
+        # would refill early and record the song being seeked as a skip,
+        # suppressing for a month the song somebody had just gone back to.
+        return Decision.NOTHING
     if queue.remaining <= refill_threshold:
         return Decision.REFILL
     return Decision.NOTHING

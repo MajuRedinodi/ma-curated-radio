@@ -272,6 +272,24 @@ views:
               - type: select-options
             grid_options: {columns: full}
           - type: tile
+            entity: select.family_room_stereo_familiarity
+            name: Familiarity
+            color: blue
+            hide_state: true
+            features:
+              - type: select-options
+            grid_options: {columns: full}
+          - type: tile
+            # Which version of a song, rather than which songs, so it
+            # changes with who is in the room rather than with the station.
+            entity: select.family_room_stereo_explicit_content
+            name: Explicit content
+            color: blue
+            hide_state: true
+            features:
+              - type: select-options
+            grid_options: {columns: full}
+          - type: tile
             entity: number.family_room_stereo_degrees_of_separation
             name: Degrees of separation
             icon: mdi:vector-polyline

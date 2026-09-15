@@ -27,6 +27,7 @@ from homeassistant.util import dt as dt_util
 from .const import (
     MODE_REFILL,
     MODE_REPLACE,
+    RESTART_TOLERANCE_SECONDS,
     SKIP_BURST_SECONDS,
     SKIP_GRACE_SECONDS,
 )
@@ -37,6 +38,7 @@ from .decide import (
     SkipLedger,
     decide,
     is_transitional,
+    track_restarted,
     track_started,
 )
 from .engine import CuratedRadioEngine
@@ -48,23 +50,34 @@ from .settings import Settings
 _LOGGER = logging.getLogger(__name__)
 
 
-def _snapshot(
-    state: State | None, credits: list[str] | None = None
-) -> PlaybackSnapshot | None:
-    """Capture what was playing, and how far into it we got.
+def _elapsed(state: State | None) -> float:
+    """How far into the track the player has got, in seconds.
 
     ``media_position`` only updates on seek and track change, so the real
     elapsed time is that value plus however long it has been reporting it.
+    A song playing normally therefore reports the same position the whole
+    way through, which is why a restart cannot be spotted from the
+    position alone.
     """
+    if state is None:
+        return 0.0
+    attrs = state.attributes
+    elapsed = float(attrs.get("media_position") or 0)
+    updated_at = attrs.get("media_position_updated_at")
+    if isinstance(updated_at, datetime):
+        elapsed += max(0.0, (dt_util.utcnow() - updated_at).total_seconds())
+    return elapsed
+
+
+def _snapshot(
+    state: State | None, credits: list[str] | None = None
+) -> PlaybackSnapshot | None:
+    """Capture what was playing, and how far into it we got."""
     if state is None or state.state != "playing":
         return None
     attrs = state.attributes
     duration = float(attrs.get("media_duration") or 0)
-    position = float(attrs.get("media_position") or 0)
-    updated_at = attrs.get("media_position_updated_at")
-    elapsed = position
-    if isinstance(updated_at, datetime):
-        elapsed += max(0.0, (dt_util.utcnow() - updated_at).total_seconds())
+    elapsed = _elapsed(state)
     return PlaybackSnapshot(
         uri=str(attrs.get("media_content_id") or ""),
         title=str(attrs.get("media_title") or ""),
@@ -192,13 +205,29 @@ class CuratedRadioDetector:
 
     @callback
     def _handle_state_event(self, event: Event[EventStateChangedData]) -> None:
-        """Queue up a decision when the playing track actually changes."""
+        """Queue up a decision when the queue is worth reading.
+
+        Two reasons to read it: a different track started, or the one
+        already playing began again. The second is how somebody re-picking
+        the song that is playing shows up, and it used to be discarded
+        here, so that pick never reached a decision at all.
+        """
         new_state = event.data["new_state"]
         old_state = event.data["old_state"]
         if new_state is None:
             return
         new_track = new_state.attributes.get("media_content_id")
-        if not track_started(new_state.state, new_track, self._playing_track):
+        changed = track_started(new_state.state, new_track, self._playing_track)
+        if not changed and not track_restarted(
+            new_state.state,
+            new_track,
+            self._playing_track,
+            elapsed=_elapsed(new_state),
+            previous_elapsed=_elapsed(old_state),
+            tolerance=RESTART_TOLERANCE_SECONDS,
+        ):
+            # Not a new track, and the one playing did not begin again, so
+            # there is nothing to read the queue for.
             return
         self._playing_track = new_track
         if not self._settings.enabled:
@@ -207,15 +236,22 @@ class CuratedRadioDetector:
             self._expected_next = ""
             return
 
-        outgoing = _snapshot(old_state, self._playing_credits)
+        # Nothing ended when a song merely started again, so there is no
+        # outgoing track to judge. Passing one would let a backward seek
+        # record the song somebody had just gone back to as a skip.
+        outgoing = _snapshot(old_state, self._playing_credits) if changed else None
 
         # Restart semantics: a rapid skip supersedes the decision in flight
         # rather than stacking a second one behind it.
         if self._task is not None and not self._task.done():
             self._task.cancel()
-        self._task = self._hass.async_create_task(self._async_decide(outgoing))
+        self._task = self._hass.async_create_task(
+            self._async_decide(outgoing, track_changed=changed)
+        )
 
-    async def _async_decide(self, outgoing: PlaybackSnapshot | None) -> None:
+    async def _async_decide(
+        self, outgoing: PlaybackSnapshot | None, *, track_changed: bool = True
+    ) -> None:
         """Read the queue, act on the decision, record the new expectation."""
         try:
             queue = await async_get_queue(self._hass, self._settings.player)
@@ -249,6 +285,7 @@ class CuratedRadioDetector:
                 bulk_threshold=self._settings.bulk_tracks,
                 refill_threshold=self._settings.refill_threshold,
                 in_cooldown=cooling,
+                track_changed=track_changed,
             )
 
             if verdict is Decision.PICKED:
