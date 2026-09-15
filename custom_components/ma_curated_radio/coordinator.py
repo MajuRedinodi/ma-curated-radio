@@ -233,7 +233,13 @@ class CuratedRadioDetector:
                 # expected before the blank rather than against the blank.
                 return
 
-            cooling = self._in_cooldown()
+            # A batch of ours still being written owns the queue, and a
+            # queue read halfway through one is not a decision to make.
+            # It genuinely has been replaced down to a single track at
+            # that moment, by us, which is exactly what the new
+            # replaced-to-one rule below is looking for. Left unguarded
+            # it would read our own write as a pick and start another.
+            cooling = self._in_cooldown() or bool(self._runs)
             verdict = decide(
                 facts,
                 expected_uri=self._expected_next,

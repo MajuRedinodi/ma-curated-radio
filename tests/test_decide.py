@@ -18,6 +18,7 @@ from decide import (
     leading_pool,
     starts_station,
     track_started,
+    was_replaced,
 )
 
 # A pick lands on a track the integration did not queue, breaking the
@@ -49,8 +50,14 @@ def test_our_own_track_is_never_a_pick():
     track that would not play, a queue rewrite landing mid change. Each
     false positive re-anchored the drift fence to wherever the music had
     already reached, so the fence only ever constrained one hop.
+
+    Every one of those happens *inside* a populated queue, which is the
+    shape this now uses. It used to run against a queue of one, which
+    none of them produce and which is the signature of a deliberate
+    replace, so it was quietly asserting the opposite case.
     """
-    assert call(current_is_ours=True) is not Decision.PICKED
+    within_our_batch = QueueFacts(current_uri="track/ours", items=20, remaining=8)
+    assert call(within_our_batch, current_is_ours=True) is not Decision.PICKED
 
 
 def test_nothing_is_a_pick_before_anything_has_been_observed():
@@ -122,6 +129,68 @@ def test_a_pick_wins_over_a_refill():
     assert call(QueueFacts(current_uri="track/new", items=1, remaining=0)) is (
         Decision.PICKED
     )
+
+
+def test_picking_a_song_the_station_already_played_is_still_a_pick():
+    """The afternoon this rule was written for.
+
+    The dashboard search plays with enqueue: replace, so the queue
+    collapses to one track. That track was a crooner, and the station had
+    been playing crooners for hours, so it was already in the list of
+    tracks we had queued. "We queued it" beat everything else, no pick
+    was ever registered, and every attempt rebuilt the station from
+    whatever was playing: seven batches in a row seeded on Michael Bublé
+    no matter what was chosen.
+    """
+    replaced = QueueFacts(current_uri="track/ours", items=1, remaining=0)
+    assert (
+        decide(
+            replaced,
+            expected_uri="track/expected",
+            current_is_ours=True,
+            next_is_ours=False,
+            previous_items=20,
+            bulk_threshold=3,
+            refill_threshold=2,
+        )
+        is Decision.PICKED
+    )
+
+
+def test_our_own_queue_playing_through_is_still_not_a_pick():
+    """The rule the one above has to not break. Normal progression leaves
+    the rest of the batch in place, so the queue never collapses."""
+    progressing = QueueFacts(current_uri="track/ours", items=20, remaining=8)
+    assert (
+        decide(
+            progressing,
+            expected_uri="track/expected",
+            current_is_ours=True,
+            next_is_ours=True,
+            previous_items=20,
+            bulk_threshold=3,
+            refill_threshold=2,
+        )
+        is Decision.NOTHING
+    )
+
+
+@pytest.mark.parametrize(
+    ("items", "previous", "expected"),
+    [
+        (1, 20, True),
+        (1, 2, True),
+        # Already a queue of one, so nothing collapsed.
+        (1, 1, False),
+        # Nothing to compare against, immediately after a restart.
+        (1, None, False),
+        (2, 20, False),
+        (20, 20, False),
+    ],
+)
+def test_a_queue_collapsing_to_one_track_is_a_replace(items, previous, expected):
+    queue = QueueFacts(current_uri="track/new", items=items, remaining=0)
+    assert was_replaced(queue, previous) is expected
 
 
 def test_a_big_foreign_queue_right_after_a_restart_is_not_a_pick():

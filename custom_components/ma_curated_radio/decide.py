@@ -85,6 +85,31 @@ def is_bulk_load(
     return abs(queue.items - previous_items) >= threshold
 
 
+def was_replaced(queue: QueueFacts, previous_items: int | None) -> bool:
+    """True when a queue of several tracks collapsed to a single one.
+
+    Nothing this integration does leaves a queue of one. A batch is
+    written whole, and playing through it leaves the tracks behind the
+    current one in place. A queue that held twenty tracks a moment ago
+    and holds one now was replaced, deliberately, by somebody choosing a
+    song. That is what ``enqueue: replace`` does, and it is what the
+    search box on the dashboard sends.
+
+    This has to outrank the "we queued it" test, which is what got the
+    ordinary case wrong. Picking a song the station had played earlier in
+    the evening was read as our own music progressing, so no pick was
+    ever registered and the station rebuilt itself from whatever happened
+    to be playing rather than from the song that was chosen. Observed
+    over a whole afternoon: every pick came back seeded on Michael Bublé
+    because the Bublé batch before it was still what was playing.
+
+    Having played a track earlier says nothing about whether somebody
+    just chose it on purpose, and choosing a song you already know is the
+    normal way to use a radio.
+    """
+    return queue.items == 1 and previous_items is not None and previous_items > 1
+
+
 def is_transitional(queue: QueueFacts) -> bool:
     """True while a queue is between tracks and says nothing yet.
 
@@ -255,7 +280,11 @@ def decide(
     picked = (
         bool(expected_uri)
         and queue.current_uri != expected_uri
-        and not current_is_ours
+        # A replace outranks "we queued it". See was_replaced: a track
+        # being one we played earlier says nothing about whether somebody
+        # has just chosen it, and choosing a song you already know is the
+        # ordinary way to use a radio.
+        and (was_replaced(queue, previous_items) or not current_is_ours)
         and not is_bulk_load(
             queue,
             previous_items=previous_items,
