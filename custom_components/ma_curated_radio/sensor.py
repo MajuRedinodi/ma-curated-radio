@@ -118,6 +118,16 @@ class LastBatchSensor(CuratedRadioEntity, SensorEntity):
             "reach_median": result.reach_median,
             "reach_low": result.reach_low,
             "tiers": result.tiers,
+            # The era the batch covers, and how many of its records that
+            # is drawn from. Read together: a tight span over three known
+            # years says very little. This is the only way to see whether
+            # the era rule is holding, since a debug log line does not
+            # survive a restart.
+            "year_span": result.year_span or None,
+            "years_known": result.years_known,
+            # How many records anything is known about at all, which
+            # should climb across an evening and hold over a restart.
+            "records_known": self.runtime.engine.facts_known,
             # The real time the batch was built. The sensor's own
             # timestamps restart with Home Assistant; this does not.
             "built_at": result.built_at or None,

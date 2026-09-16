@@ -11,7 +11,7 @@ from __future__ import annotations
 import random
 import re
 import unicodedata
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Final
 
@@ -1613,6 +1613,27 @@ _WIKI_REF = re.compile(r"<ref[^>]*>.*?</ref>|<ref[^>]*/>", re.S)
 _CITATION = re.compile(
     r"\{\{\s*(?:sfn|sfnp|harv\w*|cite\w*|r|efn|refn|ref\w*)\b[^{}]*\}\}", re.I
 )
+
+
+def year_span(years: Iterable[int]) -> str:
+    """The era a batch actually covers, as a person would write it.
+
+    The one number that says whether the era rule is holding. A batch
+    reading 1971-1989 is a station; the same batch reading 1951-2016 is
+    the drift this was all built to stop.
+
+    Deliberately the span of what is *known* rather than of the batch.
+    Years are missing for plenty of records and a missing year has to
+    mean unknown, so the count of how many are known is reported beside
+    this and the two are read together: a tight span over three tracks
+    says very little.
+    """
+    found = sorted({int(year) for year in years if year})
+    if not found:
+        return ""
+    if found[0] == found[-1]:
+        return str(found[0])
+    return f"{found[0]}-{found[-1]}"
 
 
 def infobox_genres(wikitext: str) -> set[str]:

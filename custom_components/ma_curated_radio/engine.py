@@ -90,6 +90,7 @@ from .filters import (
     usable_songs,
     weighted_sample,
     without_backing_band,
+    year_span,
 )
 from .history import TitleHistory
 from .lastfm import (
@@ -171,6 +172,12 @@ class BatchResult:
     reach_median: int = 0
     reach_low: int = 0
     tiers: dict[str, int] = field(default_factory=dict)
+    # The era the batch actually covers, as "1971-1989", and how many of
+    # its records that span is drawn from. Read together: a tight span
+    # over three known years says very little, and the two apart are
+    # misleading in opposite directions.
+    year_span: str = ""
+    years_known: int = 0
     # When the batch was queued, as ISO time. Kept because the sensor's own
     # timestamps restart with Home Assistant, and a restored batch would
     # otherwise look as though it had just been built.
@@ -609,6 +616,9 @@ class CuratedRadioEngine:
             self._last_pool = list(pool_artists)
             self._last_lead = lead
             self._remember(enqueued, pool_artists, per_artist, title_by_uri, tiers)
+        years = await self._async_years(
+            enqueued, pool_artists, per_artist, title_by_uri
+        )
 
         _LOGGER.debug(
             "Queued %s track(s) in %s mode, led by %s, neighbours from %s, via %s; "
@@ -629,11 +639,13 @@ class CuratedRadioEngine:
             artists=artists,
             queued=len(enqueued),
             tracks=self._listed(
-                enqueued, pool_artists, per_artist, title_by_uri, tiers
+                enqueued, pool_artists, per_artist, title_by_uri, tiers, years
             ),
             reach_median=reach_median,
             reach_low=reach_low,
             tiers=counts,
+            year_span=year_span(years.values()),
+            years_known=len(years),
             built_at=dt_util.utcnow().isoformat() if enqueued else "",
         )
 
@@ -1098,6 +1110,7 @@ class CuratedRadioEngine:
         per_artist: list[list[str]],
         title_by_uri: dict[str, str],
         tiers: dict[str, str],
+        years: dict[str, int] | None = None,
     ) -> list[str]:
         """The batch as a person would read it, in playing order.
 
@@ -1106,6 +1119,12 @@ class CuratedRadioEngine:
         it was filling: a record that would be a poor Power track is
         exactly what a Deep slot is for. Without it every line reads as
         a claim that this song is a hit.
+
+        And its year where one is known, because the era rule is the
+        thing hardest to judge by ear: a record that sounds wrong in an
+        hour usually sounds wrong because of when it was made, and that
+        is invisible until it is written down. A line with no year is a
+        record nothing has told us about, never a modern one.
 
         The artist is the one whose pool the track came from rather than
         the credits on the record, which is deliberate: it says which
@@ -1122,7 +1141,10 @@ class CuratedRadioEngine:
             title = title_by_uri.get(uri, "")
             who = artist_of.get(uri)
             label = tiers.get(uri, "?")
-            listed.append(f"[{label}] {who} - {title}" if who else f"[{label}] {title}")
+            line = f"[{label}] {who} - {title}" if who else f"[{label}] {title}"
+            if year := (years or {}).get(uri):
+                line = f"{line} ({year})"
+            listed.append(line)
         return listed
 
     def _remember(
@@ -1441,24 +1463,23 @@ class CuratedRadioEngine:
         self._lookups_left -= 1
         return await self._async_learn(artist, title, base)
 
-    async def _async_learn(self, artist: str, title: str, base: str) -> Fact:
-        """Ask Wikipedia about one record and write down what it said.
+    def _write_fact(
+        self,
+        artist: str,
+        base: str,
+        article: str,
+        detail: tuple[int | None, tuple[str, ...]] | None,
+    ) -> Fact:
+        """File what one article said about one record.
 
         A failure is recorded as carefully as a success, because the two
         kinds want different fixes and an undifferentiated pile of misses
-        is no use as a work list. No article found means the search needs
-        help; an article with no date is the right page and a thin
-        infobox.
+        is no use as a work list. Reaching here at all means the article
+        was found, so the only failure left is a thin infobox.
         """
-        article = await async_find_article(self._session, artist, title)
-        if not article:
-            return self._facts.remember(artist, base, miss=MISS_NO_ARTICLE)
-        detail = (await async_get_facts(self._session, [article])).get(article)
         year, genres = detail if detail else (None, ())
         if year is not None:
-            _LOGGER.debug(
-                "%s by %s is a %s record, from %s", title, artist, year, article
-            )
+            _LOGGER.debug("%s by %s is a %s record, from %s", base, artist, year, article)
         return self._facts.remember(
             artist,
             base,
@@ -1467,6 +1488,95 @@ class CuratedRadioEngine:
             article=article,
             miss="" if year is not None else MISS_NO_DATE,
         )
+
+    async def _async_learn(self, artist: str, title: str, base: str) -> Fact:
+        """Ask Wikipedia about one record and write down what it said."""
+        article = await async_find_article(self._session, artist, title)
+        if not article:
+            return self._facts.remember(artist, base, miss=MISS_NO_ARTICLE)
+        detail = (await async_get_facts(self._session, [article])).get(article)
+        return self._write_fact(artist, base, article, detail)
+
+    async def _async_years(
+        self,
+        enqueued: list[str],
+        pool_artists: list[str],
+        per_artist: list[list[str]],
+        title_by_uri: dict[str, str],
+    ) -> dict[str, int]:
+        """When each queued record was made, looking up what is not known.
+
+        One search per record, then a single content fetch covering every
+        article found, which is what the fifty-article ceiling is for.
+        Asking per record instead would double the traffic for the same
+        answers.
+
+        Done after the batch is chosen rather than during selection, so
+        the requests are spent on records that will actually play instead
+        of on candidates that were considered and dropped. Selection only
+        ever looks one record up per artist, which is enough to place that
+        artist in a lane and nowhere near enough to say what era an hour
+        is.
+
+        Records are filed under the artist whose pool the track came from,
+        which is the same name the lane check used, so the two agree.
+        Anything still unknown afterwards is simply absent rather than
+        present with a guess.
+        """
+        artist_of = {
+            uri: artist
+            for artist, uris in zip(pool_artists, per_artist, strict=True)
+            for uri in uris
+        }
+        queued = [
+            (who, title_by_uri.get(uri, ""), uri)
+            for uri in enqueued
+            if (who := artist_of.get(uri))
+        ]
+        await self._async_learn_all(
+            [(who, title) for who, title, _ in queued]
+        )
+        years: dict[str, int] = {}
+        for who, title, uri in queued:
+            fact = self._facts.get(who, base_title(title))
+            if fact is not None and fact.year is not None:
+                years[uri] = fact.year
+        return years
+
+    async def _async_learn_all(self, pairs: list[tuple[str, str]]) -> None:
+        """Ask Wikipedia about several records in as few requests as it
+        can be done in."""
+        wanted: list[tuple[str, str, str]] = []
+        for artist, title in pairs:
+            base = base_title(title)
+            if not self._facts.needs_lookup(artist, base):
+                self._facts.touch(artist, base)
+                continue
+            if self._lookups_left <= 0:
+                break
+            self._lookups_left -= 1
+            wanted.append((artist, title, base))
+        found: list[tuple[str, str, str]] = []
+        for artist, title, base in wanted:
+            article = await async_find_article(self._session, artist, title)
+            if article:
+                found.append((artist, base, article))
+            else:
+                self._facts.remember(artist, base, miss=MISS_NO_ARTICLE)
+        if not found:
+            return
+        # Two records can resolve to one article, so the fetch is asked
+        # for the distinct names and the answers are handed back out.
+        details = await async_get_facts(
+            self._session, sorted({article for _, _, article in found})
+        )
+        for artist, base, article in found:
+            self._write_fact(artist, base, article, details.get(article))
+
+    @property
+    def facts_known(self) -> int:
+        """How many records anything at all is known about."""
+        return len(self._facts)
 
     async def _async_lookup_similar(self, seed: str) -> list[tuple[str, float]]:
         """Ask Last.fm about a seed, under its resolved name if it has one."""

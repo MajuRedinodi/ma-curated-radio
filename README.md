@@ -270,8 +270,12 @@ views:
             entity_id:
               - sensor.family_room_stereo_last_batch_seed
             content: >-
-              {% set t = state_attr('sensor.family_room_stereo_last_batch_seed','tracks')
-              %}{% if t %}{% for s in t %}{{ loop.index }}. {{ s }}
+              {% set b = 'sensor.family_room_stereo_last_batch_seed' %}{% set t =
+              state_attr(b,'tracks') %}{% set span = state_attr(b,'year_span') %}{%
+              if t %}{% if span %}**{{ span }}** · {{ state_attr(b,'years_known') }}
+              of {{ t | count }} dated
+
+              {% endif %}{% for s in t %}{{ loop.index }}. {{ s }}
 
               {% endfor %}{% else %}Nothing queued yet.{% endif %}
             grid_options: {columns: full}
@@ -700,14 +704,26 @@ median reach 580,807, weakest 106,212, tiers {'P': 7, 'D': 6, 'S': 6}
 ```
 
 The `tracks` attribute lists what it queued, in order, as
-`Artist - Title`. It is what the dashboard's **In this batch** card
-renders, and it is the quickest way to judge an hour without waiting to
-hear it. Two things it is not: it is the batch **as built**, so it does
-not shrink as songs play, and it knows nothing about anything added by
-hand. Music Assistant's own panel is where the live queue lives. The
-artist shown is the one whose slot the track filled rather than the
+`[tier] Artist - Title (year)`. It is what the dashboard's **In this
+batch** card renders, and it is the quickest way to judge an hour without
+waiting to hear it. Two things it is not: it is the batch **as built**, so
+it does not shrink as songs play, and it knows nothing about anything
+added by hand. Music Assistant's own panel is where the live queue lives.
+The artist shown is the one whose slot the track filled rather than the
 credits on the record, which is deliberate: it makes a batch that has
 quietly become one act under three names obvious at a glance.
+
+**The year** is when the record was made, from Wikipedia, and a line
+without one is a record nothing has told us about rather than a modern
+one. `year_span` gives the era the batch covers, as `1971-1989`, and
+`years_known` says how many records that span was drawn from. Read the
+two together: a tight span over three known years says very little.
+`records_known` is how many records anything is known about at all, which
+climbs as you listen and survives a restart.
+
+The span is the one number that says whether the era rule is holding. A
+batch reading 1971-1989 is a station; the same batch reading 1951-2016 is
+the drift this was built to stop.
 
 **Led by** is the artist the batch is built around, and **neighbours from**
 is where its similar artists were drawn. They are normally the same artist:

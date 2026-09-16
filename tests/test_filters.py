@@ -51,6 +51,7 @@ from filters import (
     usable_songs,
     weighted_sample,
     without_backing_band,
+    year_span,
 )
 
 
@@ -1859,3 +1860,25 @@ def test_a_spelling_last_fm_has_never_seen_is_not_a_deep_cut():
 def test_extra_spaces_are_collapsed():
     """Stripping the brackets off a leading parenthetical leaves two."""
     assert base_title("Hello  World") == "hello world"
+
+
+# --- The era a batch covers ---------------------------------------------
+
+
+def test_year_span_reads_as_a_person_would_write_it():
+    assert year_span([1971, 1989, 1983]) == "1971-1989"
+
+
+def test_year_span_of_one_year_is_that_year():
+    """Not "1985-1985", which reads as a range that happens to be flat."""
+    assert year_span([1985, 1985]) == "1985"
+
+
+def test_year_span_of_nothing_known_is_empty():
+    """Never a guess, and never a range with one end invented."""
+    assert year_span([]) == ""
+
+
+def test_year_span_ignores_a_missing_year():
+    """A zero is the absence of a year, not the year zero."""
+    assert year_span([0, 1974, 0, 1978]) == "1974-1978"
