@@ -83,6 +83,9 @@
       "filter_remix": {
         "name": "Skip remixes"
       },
+      "seed_from_song": {
+        "name": "Seed from the song"
+      },
       "filter_holiday": {
         "name": "Skip holiday tracks"
       }

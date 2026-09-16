@@ -23,6 +23,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    CROWD_SIZE,
     DEFAULT_PLAYLIST_LENGTH,
     DEPTH_TOP_TRACKS,
     EXPLICIT_CLEAN,
@@ -58,6 +59,7 @@ from .filters import (
     clean_similar_artists,
     close_to_home,
     credits_artist,
+    crowd_pool,
     depth_bar,
     drop_outliers,
     keep_one_act,
@@ -66,6 +68,7 @@ from .filters import (
     matches_provider,
     move_on,
     neighbourhood_strength,
+    prefer_titles,
     reach_of,
     select_fresh_first,
     select_tracks,
@@ -81,6 +84,7 @@ from .history import TitleHistory
 from .lastfm import (
     async_get_artist_listeners,
     async_get_similar_artists,
+    async_get_similar_tracks,
     async_get_top_tracks,
 )
 from .ma import (
@@ -422,7 +426,24 @@ class CuratedRadioEngine:
         # And a credited name that is a footnote to its pair hands the lead
         # to the star, while the neighbours still come from the pair.
         lead = self._led_by(pool_from if refilling else self._lead_artist(seed))
-        artists = [lead, *await self._async_similar_artists(pool_from)]
+        # Which records the pool wants from each artist, when the pool came
+        # from the song's crowd rather than the artist's neighbours. Empty
+        # otherwise, which leaves selection exactly as it was.
+        wanted: dict[str, list[str]] = {}
+        # Only where a station starts. A refill has no picked song to ask
+        # about, and reseeding the crowd from a track of ours is its own
+        # piece of work rather than a free extension of this one.
+        crowd_of = (
+            queue.current_title
+            if starting and self._settings.seed_from_song
+            else ""
+        )
+        artists = [
+            lead,
+            *await self._async_similar_artists(
+                pool_from, crowd_of=crowd_of, wanted=wanted
+            ),
+        ]
 
         # On a refill the tail of the queue is still populated, so avoid
         # re-adding anything already sitting there. Native-only; an empty
@@ -447,6 +468,7 @@ class CuratedRadioEngine:
             recent_titles=recent_titles,
             already_queued=already_queued,
             heard=self._history.heard(),
+            wanted=wanted,
         )
         bar = depth_bar(await self._async_sizes(artists))
         pools = await gather(bar=bar)
@@ -548,8 +570,16 @@ class CuratedRadioEngine:
         cache: dict[str, list[TrackInfo]] | None = None,
         provider: str = "",
         heard: Mapping[str, float] | None = None,
+        wanted: Mapping[str, list[str]] | None = None,
     ) -> _Pools:
         """Each artist's picks for one batch or playlist round, unordered.
+
+        ``wanted`` names the records a song's crowd asked for from each
+        artist. They go to the front of that artist's list before anything
+        is chosen, so the crowd decides which record plays where the
+        provider's relevance ranking used to. It is a reordering, not a
+        filter: a record the provider does not carry must not leave the
+        artist contributing nothing.
 
         ``bar`` is the depth limit's listener threshold; zero lifts it.
         ``provider``, if given, keeps only that provider's tracks.
@@ -562,6 +592,8 @@ class CuratedRadioEngine:
         known = await self._async_top_tracks(artists) if bar else {}
         for index, artist in enumerate(artists):
             tracks = await self._async_tracks_for(artist, cache)
+            if wanted:
+                tracks = prefer_titles(tracks, wanted.get(artist, ()))
             artist_rank = self._rank(tracks, covered)
             pools.rank.update(artist_rank)
             cap = self._track_cap(is_seed=index == 0)
@@ -646,8 +678,16 @@ class CuratedRadioEngine:
         seed: str,
         cache: dict[str, list[tuple[str, float]]] | None = None,
         session: ListeningSession | None = None,
+        *,
+        crowd_of: str = "",
+        wanted: dict[str, list[str]] | None = None,
     ) -> list[str]:
-        """Pick a capped set of Last.fm-similar artists.
+        """Pick a capped set of similar artists.
+
+        ``crowd_of`` is the song to draw the pool from, when there is one
+        and the setting allows it, in place of the seed's artist
+        neighbours. ``wanted`` is filled in with the records that crowd
+        asked for from each artist, which is what selection later prefers.
 
         The pool is deliberately much larger than the cap, because the goal
         is what a station playing the seed artist would also play rather
@@ -658,12 +698,23 @@ class CuratedRadioEngine:
         settings = self._settings
         if settings.max_artists <= 0 or not settings.lastfm_api_key:
             return []
-        if cache is not None and seed in cache:
-            names = cache[seed]
-        else:
-            names = await self._async_lookup_similar(seed)
-            if cache is not None:
-                cache[seed] = names
+        names: list[tuple[str, float]] = []
+        if crowd_of:
+            # The song's own crowd, where there is one. Falls through to
+            # the artist graph on an obscure pick that has no crowd, which
+            # is the case that would otherwise build nothing at all.
+            names, titles = await self._async_song_crowd(seed, crowd_of)
+            if wanted is not None:
+                wanted.update(titles)
+            if not names:
+                _LOGGER.debug("No crowd for %s; using the artist graph", crowd_of)
+        if not names:
+            if cache is not None and seed in cache:
+                names = cache[seed]
+            else:
+                names = await self._async_lookup_similar(seed)
+                if cache is not None:
+                    cache[seed] = names
         candidates = clean_similar_artists(names, seed)
         muted = self._skips.muted_artists
         candidates = [pair for pair in candidates if pair[0].lower() not in muted]
@@ -885,6 +936,42 @@ class CuratedRadioEngine:
     def _led_by(self, artist: str) -> str:
         """The artist a station built from this one is actually led by."""
         return self._lead_override.get(artist.lower(), artist)
+
+    async def _async_song_crowd(
+        self, artist: str, title: str
+    ) -> tuple[list[tuple[str, float]], dict[str, list[str]]]:
+        """The artists a song's own crowd suggests, and the records it wants.
+
+        Asked about the song rather than its artist, which is the only way
+        to learn *which* record by a neighbour belongs next to this one.
+        The artist graph answers with a name and leaves the provider's
+        relevance ranking to choose the song, and that ranking is what put
+        "Summer Madness" on a Michael Jackson station instead of
+        "Cherish".
+
+        Empty on any failure, including an obscure pick that simply has no
+        crowd, which the caller reads as "use the artist graph".
+        """
+        if not title:
+            return [], {}
+        crowd = await async_get_similar_tracks(
+            self._session,
+            self._settings.lastfm_api_key,
+            self._alias.get(artist.lower(), artist),
+            base_title(title),
+            CROWD_SIZE,
+        )
+        if not crowd:
+            return [], {}
+        names, wanted = crowd_pool(crowd, artist, 0)
+        _LOGGER.debug(
+            "Song crowd for %s by %s: %d artists, %d records",
+            title,
+            artist,
+            len(names),
+            sum(len(titles) for titles in wanted.values()),
+        )
+        return names, wanted
 
     async def _async_lookup_similar(self, seed: str) -> list[tuple[str, float]]:
         """Ask Last.fm about a seed, under its resolved name if it has one."""

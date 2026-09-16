@@ -91,6 +91,87 @@ async def async_get_similar_artists(
     return results
 
 
+async def async_get_similar_tracks(
+    session: aiohttp.ClientSession,
+    api_key: str,
+    artist: str,
+    track: str,
+    limit: int,
+) -> list[tuple[str, str, float]]:
+    """Songs people play alongside this one, as (artist, title, match).
+
+    The crowd a song keeps, rather than the crowd its artist keeps. It
+    answers a question artist similarity structurally cannot: *which*
+    record by a neighbouring artist belongs next to this one. Asking the
+    artist graph instead returns a name, and the provider's own relevance
+    ranking then picks the song, which is how a Michael Jackson station
+    came to play Kool & the Gang's "Summer Madness" rather than "Cherish"
+    and Stevie Wonder's "As" rather than "Part-Time Lover".
+
+    Measured on 2026-09-15: "Man in the Mirror" returns a crowd whose
+    top twenty are Somebody's Watching Me, We Are the World, I Wanna
+    Dance with Somebody, Purple Rain, Take on Me, Careless Whisper and
+    the like, and which offers the right record for each of the three
+    artists the artist graph got wrong.
+
+    Never raises, and an empty list is the caller's signal to fall back
+    to the artist graph: an obscure pick may have no crowd at all.
+    """
+    params = {
+        "method": "track.getsimilar",
+        "artist": artist,
+        "track": track,
+        "api_key": api_key,
+        "format": "json",
+        "autocorrect": "1",
+        "limit": str(limit),
+    }
+    try:
+        async with session.get(API_URL, params=params, timeout=TIMEOUT) as response:
+            if response.status != HTTPStatus.OK:
+                _LOGGER.debug(
+                    "Last.fm returned HTTP %s for track %s by %s",
+                    response.status,
+                    track,
+                    artist,
+                )
+                return []
+            payload = await response.json(content_type=None)
+    except (aiohttp.ClientError, TimeoutError, ValueError) as err:
+        _LOGGER.debug("Last.fm track lookup failed for %s by %s: %s", track, artist, err)
+        return []
+
+    if not isinstance(payload, dict):
+        return []
+    if "error" in payload:
+        _LOGGER.debug(
+            "Last.fm error %s for %s by %s: %s",
+            payload.get("error"),
+            track,
+            artist,
+            payload.get("message"),
+        )
+        return []
+
+    entries = (payload.get("similartracks") or {}).get("track") or []
+    if isinstance(entries, dict):
+        entries = [entries]
+    results: list[tuple[str, str, float]] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        title = str(entry.get("name") or "")
+        who = str(((entry.get("artist") or {}) or {}).get("name") or "")
+        if not title or not who:
+            continue
+        try:
+            match = float(entry.get("match") or 0.0)
+        except (TypeError, ValueError):
+            match = 0.0
+        results.append((who, title, match))
+    return results
+
+
 async def async_validate_api_key(
     session: aiohttp.ClientSession, api_key: str
 ) -> bool | None:

@@ -15,10 +15,12 @@ from .const import (
     CONF_FILTER_HOLIDAY,
     CONF_FILTER_LIVE,
     CONF_FILTER_REMIX,
+    CONF_SEED_FROM_SONG,
     DEFAULT_ENABLED,
     DEFAULT_FILTER_HOLIDAY,
     DEFAULT_FILTER_LIVE,
     DEFAULT_FILTER_REMIX,
+    DEFAULT_SEED_FROM_SONG,
 )
 from .entity import CuratedRadioEntity
 
@@ -41,6 +43,14 @@ SWITCHES: tuple[CuratedRadioSwitchDescription, ...] = (
         icon="mdi:radio",
         option_key=CONF_ENABLED,
         default=DEFAULT_ENABLED,
+    ),
+    CuratedRadioSwitchDescription(
+        key="seed_from_song",
+        translation_key="seed_from_song",
+        icon="mdi:music-note-plus",
+        entity_category=EntityCategory.CONFIG,
+        option_key=CONF_SEED_FROM_SONG,
+        default=DEFAULT_SEED_FROM_SONG,
     ),
     CuratedRadioSwitchDescription(
         key="filter_live",

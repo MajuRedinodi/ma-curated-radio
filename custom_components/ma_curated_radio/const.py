@@ -31,6 +31,7 @@ CONF_COOLDOWN_SECONDS: Final = "cooldown_seconds"
 CONF_PROVIDER_FILTER: Final = "provider_filter"
 CONF_FILTER_LIVE: Final = "filter_live"
 CONF_FILTER_REMIX: Final = "filter_remix"
+CONF_SEED_FROM_SONG: Final = "seed_from_song"
 CONF_FILTER_HOLIDAY: Final = "filter_holiday"
 
 # --- Defaults ----------------------------------------------------------------
@@ -54,6 +55,22 @@ DEFAULT_FILTER_LIVE: Final = True
 # is the only version of that song there is.
 DEFAULT_FILTER_REMIX: Final = False
 DEFAULT_FILTER_HOLIDAY: Final = True
+
+# Seed a station from the songs people play alongside the one picked,
+# rather than from the artists people play alongside its artist. On by
+# default: the artist graph names a neighbour and leaves the provider's
+# relevance ranking to choose the record, which is how a Michael Jackson
+# station came to play Kool & the Gang's "Summer Madness" rather than
+# "Cherish". Turning it off restores the 0.39 behaviour exactly, which is
+# a faster A/B than reinstalling and covers the case where a lane is too
+# thin for a crowd to exist.
+DEFAULT_SEED_FROM_SONG: Final = True
+
+# How many of a song's neighbours to ask for. Last.fm serves well past
+# 100 (237 measured on one track), but the far tail drifts off-lane and
+# the filters are what keep the near tail usable, so this is the depth
+# worth paying for rather than the depth available.
+CROWD_SIZE: Final = 100
 
 # How many similar artists to ask Last.fm for, regardless of how many end
 # up in a batch. Last.fm ranks by match score, and the goal is a station

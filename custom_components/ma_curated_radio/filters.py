@@ -1306,6 +1306,76 @@ def depth_bar(sizes: Mapping[str, int]) -> int:
     return int(typical * DEPTH_BAR_SHARE)
 
 
+def crowd_pool(
+    crowd: Sequence[tuple[str, str, float]],
+    seed_artist: str,
+    limit: int,
+) -> tuple[list[tuple[str, float]], dict[str, list[str]]]:
+    """Turn a song's crowd into an artist pool and the records it wants.
+
+    Returns the same ``(name, match)`` pairs the artist graph returns, so
+    everything downstream is unchanged, plus the titles the crowd asked
+    for from each artist. Those titles are what fixes the defect: the
+    artist graph names a neighbour and then leaves the provider's
+    relevance ranking to pick the song, which is how "Summer Madness"
+    reached a Michael Jackson station instead of "Cherish".
+
+    An artist keeps the match score of the first song of theirs the crowd
+    offered, and their titles accumulate in crowd order, so Cyndi Lauper
+    appearing twice arrives with two records to choose between rather
+    than as two pool entries.
+
+    The seed's own tracks are dropped. Every crowd is topped by them, and
+    on a giant it is not only the seed: a "Man in the Mirror" crowd opens
+    with two Michael Jackson records, then his brothers. The seed gets its
+    share of the batch from the seed lean, not from the crowd.
+    """
+    ordered: list[tuple[str, float]] = []
+    titles: dict[str, list[str]] = {}
+    seen: dict[str, str] = {}
+    for who, title, match in crowd:
+        name = who.strip()
+        if not name or not title.strip():
+            continue
+        if _same_artist(name, seed_artist):
+            continue
+        key = name.lower()
+        if key not in seen:
+            if len(ordered) >= limit > 0:
+                continue
+            seen[key] = name
+            ordered.append((name, match))
+            titles[name] = []
+        wanted = titles[seen[key]]
+        if title not in wanted:
+            wanted.append(title)
+    return ordered, titles
+
+
+def prefer_titles(tracks: list[Any], wanted: Sequence[str]) -> list[Any]:
+    """Move the records the crowd asked for to the front of an artist's list.
+
+    A reordering rather than a filter, deliberately. The crowd names a
+    record, and the provider may not carry it under that spelling or at
+    all; dropping everything else would then leave the artist
+    contributing nothing, which is the failure mode that made a silently
+    empty pool so hard to see (0.25.1). Anything the crowd did not name
+    keeps its provider order behind those it did.
+
+    Matched on ``base_title`` so a remaster, a single version or a
+    parenthesised subtitle still counts as the record asked for.
+    """
+    if not wanted:
+        return tracks
+    order = {base_title(title): index for index, title in enumerate(wanted)}
+    if not order:
+        return tracks
+    return sorted(
+        tracks,
+        key=lambda track: order.get(base_title(getattr(track, "name", "")), len(order)),
+    )
+
+
 def song_shares(
     title_by_uri: Mapping[str, str],
     known: Sequence[tuple[str, int]] | None,

@@ -32,6 +32,7 @@ from .const import (
     CONF_POPULARITY_FLOOR,
     CONF_PROVIDER_FILTER,
     CONF_REFILL_THRESHOLD,
+    CONF_SEED_FROM_SONG,
     CONF_SEED_LEAN,
     CONF_SETTLE_SECONDS,
     CONF_TRACK_SUPPRESS_DAYS,
@@ -53,6 +54,7 @@ from .const import (
     DEFAULT_POPULARITY_FLOOR,
     DEFAULT_PROVIDER_FILTER,
     DEFAULT_REFILL_THRESHOLD,
+    DEFAULT_SEED_FROM_SONG,
     DEFAULT_SEED_LEAN,
     DEFAULT_SETTLE_SECONDS,
     DEFAULT_TRACK_SUPPRESS_DAYS,
@@ -86,6 +88,7 @@ class Settings:
     filter_live: bool
     filter_remix: bool
     filter_holiday: bool
+    seed_from_song: bool
     seed_lean: str
     familiarity: str
     explicit: str
@@ -133,6 +136,9 @@ class Settings:
             filter_remix=bool(merged.get(CONF_FILTER_REMIX, DEFAULT_FILTER_REMIX)),
             filter_holiday=bool(
                 merged.get(CONF_FILTER_HOLIDAY, DEFAULT_FILTER_HOLIDAY)
+            ),
+            seed_from_song=bool(
+                merged.get(CONF_SEED_FROM_SONG, DEFAULT_SEED_FROM_SONG)
             ),
             seed_lean=style,
             familiarity=_familiarity(merged.get(CONF_FAMILIARITY, DEFAULT_FAMILIARITY)),

@@ -15,6 +15,7 @@ from filters import (
     clean_similar_artists,
     close_to_home,
     credits_artist,
+    crowd_pool,
     depth_bar,
     drop_outliers,
     is_demo,
@@ -29,6 +30,7 @@ from filters import (
     matches_provider,
     move_on,
     neighbourhood_strength,
+    prefer_titles,
     reach_of,
     sequence_tiered,
     song_shares,
@@ -1028,6 +1030,105 @@ def test_no_lastfm_data_means_no_shares_rather_than_zero_shares():
     """An outage must leave the tiering on its guess, not flatten it."""
     assert song_shares({"u": "Anything"}, None) == {}
     assert song_shares({"u": "Anything"}, []) == {}
+
+
+# --- Seeding from the song's crowd rather than the artist's --------------
+
+# The real opening of "Man in the Mirror"'s crowd, 2026-09-15.
+MITM_CROWD = [
+    ("Michael Jackson", "The Way You Make Me Feel", 1.0),
+    ("Michael Jackson", "Bad", 0.912),
+    ("The Jackson 5", "I'll Be There", 0.255),
+    ("Rockwell", "Somebody's Watching Me", 0.176),
+    ("Whitney Houston", "I Wanna Dance with Somebody", 0.128),
+    ("Prince", "Purple Rain", 0.112),
+    ("Rockwell", "Obscene Phone Caller", 0.04),
+]
+
+
+def test_the_crowd_drops_the_seeds_own_records():
+    """Every crowd is topped by the seed. On a giant it is two of them."""
+    pool, _ = crowd_pool(MITM_CROWD, "Michael Jackson", 8)
+    assert [name for name, _ in pool] == [
+        "The Jackson 5",
+        "Rockwell",
+        "Whitney Houston",
+        "Prince",
+    ]
+
+
+def test_the_crowd_says_which_record_it_wants_from_each_artist():
+    """The whole point. The artist graph names Kool & the Gang and leaves
+    the provider to choose "Summer Madness"; the crowd names the record."""
+    _, titles = crowd_pool(MITM_CROWD, "Michael Jackson", 8)
+    assert titles["Whitney Houston"] == ["I Wanna Dance with Somebody"]
+    assert titles["Prince"] == ["Purple Rain"]
+
+
+def test_an_artist_appearing_twice_arrives_with_two_records_not_twice():
+    _, titles = crowd_pool(MITM_CROWD, "Michael Jackson", 8)
+    assert titles["Rockwell"] == ["Somebody's Watching Me", "Obscene Phone Caller"]
+    pool, _ = crowd_pool(MITM_CROWD, "Michael Jackson", 8)
+    assert [name for name, _ in pool].count("Rockwell") == 1
+
+
+def test_an_artists_match_score_is_the_first_one_the_crowd_offered():
+    """Downstream weights on it exactly as it does for the artist graph,
+    so a later, weaker song by the same artist must not demote them."""
+    pool, _ = crowd_pool(MITM_CROWD, "Michael Jackson", 8)
+    assert dict(pool)["Rockwell"] == 0.176
+
+
+def test_the_crowd_pool_respects_the_artist_limit():
+    pool, _ = crowd_pool(MITM_CROWD, "Michael Jackson", 2)
+    assert len(pool) == 2
+
+
+def test_a_backing_band_spelling_still_counts_as_the_seed():
+    crowd = [("Bruce Springsteen & The E Street Band", "Badlands", 0.9)]
+    pool, _ = crowd_pool(crowd, "Bruce Springsteen", 8)
+    assert pool == []
+
+
+def test_the_crowds_record_goes_to_the_front_of_the_providers_list():
+    tracks = [
+        _Song("a", "Summer Madness"),
+        _Song("b", "Jungle Boogie"),
+        _Song("c", "Cherish"),
+    ]
+    ordered = prefer_titles(tracks, ["Cherish"])
+    assert [t.uri for t in ordered] == ["c", "a", "b"]
+
+
+def test_preferring_a_title_reorders_rather_than_filters():
+    """A crowd can name a record the provider does not carry. Dropping
+    the rest would leave the artist contributing nothing at all, which is
+    the silent-empty-pool failure from 0.25.1."""
+    tracks = [_Song("a", "Kyrie"), _Song("b", "Broken Wings")]
+    ordered = prefer_titles(tracks, ["Is It Love"])
+    assert [t.uri for t in ordered] == ["a", "b"]
+
+
+def test_a_remaster_counts_as_the_record_the_crowd_asked_for():
+    tracks = [
+        _Song("a", "Karma Chameleon (Remastered 2002)"),
+        _Song("b", "Church of the Poison Mind"),
+    ]
+    ordered = prefer_titles(tracks, ["Karma Chameleon"])
+    assert ordered[0].uri == "a"
+
+
+def test_several_wanted_titles_keep_the_crowds_own_order():
+    tracks = [
+        _Song("c", "True Colors"),
+        _Song("d", "She Bop"),
+        _Song("b", "Time After Time"),
+        _Song("a", "Girls Just Want to Have Fun"),
+    ]
+    ordered = prefer_titles(
+        tracks, ["Girls Just Want to Have Fun", "Time After Time", "True Colors"]
+    )
+    assert [t.uri for t in ordered] == ["a", "b", "c", "d"]
 
 
 # --- Which credited artist leads a pick ----------------------------------
