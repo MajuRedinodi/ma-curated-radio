@@ -1420,6 +1420,58 @@ def in_lane(
     )
 
 
+def stratified_sample(
+    candidates: Sequence[tuple[str, float]],
+    count: int,
+    bands: int,
+    rng: random.Random,
+) -> list[str]:
+    """Draw from the strong, the middle and the tail of a pool alike.
+
+    Weighted sampling exists because a deep pool sampled flat filled
+    batches with artists nobody knew (0.6.0). That was true of an
+    *artist* pool, whose tail really is obscure. A song crowd's tail is
+    not: measured to position 55 it was still All Night Long, Footloose,
+    West End Girls, Maneater, Straight Up and Physical. Weighting a pool
+    like that only crowds the draw onto the same few names every day.
+
+    So the pool is cut into bands by rank and drawn from evenly. Three
+    things follow. Every batch gets real anchors, because the top band is
+    always represented. Every batch reaches the tail, which is where the
+    forgotten hits live and which a weighted draw almost never touched.
+    And the same seed gives a different station tomorrow, because a draw
+    of nineteen from forty-five filtered records has more combinations
+    than anyone will exhaust.
+
+    The band a record came from is also the band it should play in, which
+    is what lets the hour's shape drive the draw rather than merely
+    tidying up afterwards: see ``tier_of``.
+
+    Falls back to the whole pool when there is too little to band.
+    """
+    if count <= 0 or not candidates:
+        return []
+    names = [name for name, _ in candidates]
+    if bands <= 1 or len(names) <= count:
+        return names[:count]
+    size = max(1, len(names) // bands)
+    drawn: list[str] = []
+    for band in range(bands):
+        start = band * size
+        stop = len(names) if band == bands - 1 else start + size
+        share = count // bands + (1 if band < count % bands else 0)
+        pool = names[start:stop]
+        drawn.extend(rng.sample(pool, min(share, len(pool))))
+    # A short band leaves room; fill it from whatever is left, nearest the
+    # front first, rather than returning a batch shorter than asked for.
+    if len(drawn) < count:
+        taken = set(drawn)
+        drawn.extend(
+            name for name in names if name not in taken
+        )
+    return drawn[:count]
+
+
 def crowd_pool(
     crowd: Sequence[tuple[str, str, float]],
     seed_artist: str,

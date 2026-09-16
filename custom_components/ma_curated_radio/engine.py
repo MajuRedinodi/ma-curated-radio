@@ -79,6 +79,7 @@ from .filters import (
     select_tracks,
     sequence_tiered,
     song_shares,
+    stratified_sample,
     strong_artists,
     tier_of,
     too_deep,
@@ -774,13 +775,22 @@ class CuratedRadioEngine:
             _LOGGER.debug("Nothing within %s degrees of %s; falling back", cap, seed)
             return await self._async_similar_artists(active.origin, cache, active)
 
-        # Weighted by Last.fm's match score rather than shuffled flat, so a
-        # batch is mostly artists a listener would actually recognise.
-        chosen = weighted_sample(
-            [pair for pair in candidates if pair[0] in allowed],
-            settings.max_artists,
-            FAMILIARITY_EXPONENT.get(settings.familiarity, 1.0),
-        )
+        eligible = [pair for pair in candidates if pair[0] in allowed]
+        if names and crowd_of:
+            # A crowd's tail is as strong as its head, so banding it beats
+            # weighting it: weighting would crowd the draw onto the same
+            # few names every day and never reach the forgotten hits.
+            chosen = stratified_sample(
+                eligible, settings.max_artists, len(TIER_PATTERN), self._rng
+            )
+        else:
+            # An artist pool's tail really is obscure, which is what
+            # weighting was added for in 0.6.0 and why it stays here.
+            chosen = weighted_sample(
+                eligible,
+                settings.max_artists,
+                FAMILIARITY_EXPONENT.get(settings.familiarity, 1.0),
+            )
 
         # Match score says how similar, not how known. Christine McVie
         # matches Fleetwood Mac almost perfectly and has 2% of that pool's

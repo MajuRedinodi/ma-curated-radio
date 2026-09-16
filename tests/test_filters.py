@@ -36,6 +36,7 @@ from filters import (
     reach_of,
     sequence_tiered,
     song_shares,
+    stratified_sample,
     strong_artists,
     tier_of,
     too_deep,
@@ -1033,6 +1034,49 @@ def test_no_lastfm_data_means_no_shares_rather_than_zero_shares():
     """An outage must leave the tiering on its guess, not flatten it."""
     assert song_shares({"u": "Anything"}, None) == {}
     assert song_shares({"u": "Anything"}, []) == {}
+
+
+# --- Drawing evenly across a pool whose tail is as good as its head ------
+
+
+def _pool(size):
+    return [(f"a{i}", 1.0 - i / size) for i in range(size)]
+
+
+def test_every_band_of_the_pool_is_represented():
+    """A weighted draw almost never reached the tail, which is where the
+    forgotten hits live: Break My Stride, Cruel Summer, Toy Soldiers."""
+    drawn = stratified_sample(_pool(45), 9, 3, random.Random(1))
+    assert len(drawn) == 9
+    ranks = sorted(int(name[1:]) for name in drawn)
+    assert ranks[0] < 15
+    assert any(15 <= rank < 30 for rank in ranks)
+    assert ranks[-1] >= 30
+
+
+def test_the_same_pool_gives_a_different_station_tomorrow():
+    """Jeff's constraint: the same song two days running must not give the
+    same station. A deterministic draw from a fixed crowd is the one way
+    this could be worse than what it replaces."""
+    monday = stratified_sample(_pool(45), 19, 3, random.Random(1))
+    tuesday = stratified_sample(_pool(45), 19, 3, random.Random(2))
+    assert monday != tuesday
+
+
+def test_a_pool_too_small_to_band_is_used_whole():
+    assert stratified_sample(_pool(4), 9, 3, random.Random(1)) == [
+        "a0",
+        "a1",
+        "a2",
+        "a3",
+    ]
+
+
+def test_a_short_band_does_not_shorten_the_batch():
+    """Retirement and the lane filter both thin the bands unevenly."""
+    drawn = stratified_sample(_pool(10), 9, 3, random.Random(1))
+    assert len(drawn) == 9
+    assert len(set(drawn)) == 9
 
 
 # --- How much of an artist a station can spend in one evening ------------
