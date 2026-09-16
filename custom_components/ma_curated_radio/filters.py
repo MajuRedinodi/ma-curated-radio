@@ -1420,6 +1420,43 @@ def in_lane(
     )
 
 
+def stratified_bands(
+    candidates: Sequence[tuple[str, float]],
+    count: int,
+    bands: int,
+    rng: random.Random,
+) -> list[tuple[int, list[str]]]:
+    """The same draw as ``stratified_sample``, band by band and unresolved.
+
+    Returns ``(wanted, order)`` per band: how many that band should
+    contribute, and its candidates in the order to try them. The caller
+    walks each band's order until it has ``wanted`` it is happy with,
+    which is what lets a rejected candidate be replaced **from its own
+    band**.
+
+    That matters more than it looks. A batch whose Power candidate fails
+    a check and is refilled from the tail is still the right length and
+    the wrong shape, and the hour it plays is not the hour the clock
+    asked for. Keeping the replacement inside the band is the whole
+    reason this returns bands rather than a finished list.
+    """
+    if count <= 0 or not candidates:
+        return []
+    names = [name for name, _ in candidates]
+    if bands <= 1 or len(names) <= count:
+        return [(count, names)]
+    size = max(1, len(names) // bands)
+    out: list[tuple[int, list[str]]] = []
+    for band in range(bands):
+        start = band * size
+        stop = len(names) if band == bands - 1 else start + size
+        wanted = count // bands + (1 if band < count % bands else 0)
+        pool = names[start:stop]
+        rng.shuffle(pool)
+        out.append((wanted, pool))
+    return out
+
+
 def stratified_sample(
     candidates: Sequence[tuple[str, float]],
     count: int,

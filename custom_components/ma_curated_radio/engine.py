@@ -23,7 +23,6 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .const import (
-    CROWD_CHECKED,
     CROWD_SIZE,
     DEFAULT_PLAYLIST_LENGTH,
     DEPTH_TOP_TRACKS,
@@ -79,7 +78,7 @@ from .filters import (
     select_tracks,
     sequence_tiered,
     song_shares,
-    stratified_sample,
+    stratified_bands,
     strong_artists,
     tier_of,
     too_deep,
@@ -596,7 +595,9 @@ class CuratedRadioEngine:
             pool_from=pool_from,
             artists=artists,
             queued=len(enqueued),
-            tracks=self._listed(enqueued, pool_artists, per_artist, title_by_uri),
+            tracks=self._listed(
+                enqueued, pool_artists, per_artist, title_by_uri, tiers
+            ),
             reach_median=reach_median,
             reach_low=reach_low,
             tiers=counts,
@@ -754,6 +755,7 @@ class CuratedRadioEngine:
         if settings.max_artists <= 0 or not settings.lastfm_api_key:
             return []
         names: list[tuple[str, float]] = []
+        from_crowd = False
         if crowd_of and crowd_from:
             # The song's own crowd, where there is one. Falls through to
             # the artist graph on an obscure record that has no crowd,
@@ -761,6 +763,7 @@ class CuratedRadioEngine:
             names, titles = await self._async_song_crowd(crowd_from, crowd_of)
             if wanted is not None:
                 wanted.update(titles)
+            from_crowd = bool(names)
             if not names:
                 _LOGGER.debug("No crowd for %s; using the artist graph", crowd_of)
         if not names:
@@ -784,12 +787,12 @@ class CuratedRadioEngine:
             return await self._async_similar_artists(active.origin, cache, active)
 
         eligible = [pair for pair in candidates if pair[0] in allowed]
-        if names and crowd_of:
+        if from_crowd:
             # A crowd's tail is as strong as its head, so banding it beats
             # weighting it: weighting would crowd the draw onto the same
             # few names every day and never reach the forgotten hits.
-            chosen = stratified_sample(
-                eligible, settings.max_artists, len(TIER_PATTERN), self._rng
+            chosen = await self._async_draw_in_lane(
+                eligible, settings.max_artists, crowd_from, crowd_of, wanted
             )
         else:
             # An artist pool's tail really is obscure, which is what
@@ -1027,7 +1030,6 @@ class CuratedRadioEngine:
         )
         if not crowd:
             return [], {}
-        crowd = await self._async_hold_the_lane(artist, title, crowd)
         names, wanted = crowd_pool(crowd, artist, 0)
         _LOGGER.debug(
             "Song crowd for %s by %s: %d artists, %d records",
@@ -1044,8 +1046,15 @@ class CuratedRadioEngine:
         pool_artists: list[str],
         per_artist: list[list[str]],
         title_by_uri: dict[str, str],
+        tiers: dict[str, str],
     ) -> list[str]:
         """The batch as a person would read it, in playing order.
+
+        Each line carries its tier, because the hour is laid out to a
+        pattern and a track cannot be judged without knowing which slot
+        it was filling: a record that would be a poor Power track is
+        exactly what a Deep slot is for. Without it every line reads as
+        a claim that this song is a hit.
 
         The artist is the one whose pool the track came from rather than
         the credits on the record, which is deliberate: it says which
@@ -1057,12 +1066,13 @@ class CuratedRadioEngine:
             for artist, uris in zip(pool_artists, per_artist, strict=True)
             for uri in uris
         }
-        return [
-            f"{artist_of[uri]} - {title_by_uri[uri]}"
-            if uri in artist_of
-            else title_by_uri.get(uri, "")
-            for uri in enqueued
-        ]
+        listed: list[str] = []
+        for uri in enqueued:
+            title = title_by_uri.get(uri, "")
+            who = artist_of.get(uri)
+            label = tiers.get(uri, "?")
+            listed.append(f"[{label}] {who} - {title}" if who else f"[{label}] {title}")
+        return listed
 
     def _remember(
         self,
@@ -1161,47 +1171,77 @@ class CuratedRadioEngine:
             return "", ""
         return self._rng.choice(candidates)
 
-    async def _async_hold_the_lane(
-        self, artist: str, title: str, crowd: list[tuple[str, str, float]]
-    ) -> list[tuple[str, str, float]]:
-        """Drop the records that belong to a different era or kind of music.
+    async def _async_draw_in_lane(
+        self,
+        eligible: list[tuple[str, float]],
+        count: int,
+        artist: str,
+        title: str,
+        wanted: Mapping[str, list[str]] | None,
+    ) -> list[str]:
+        """Draw the batch's artists, dropping those from the wrong hour.
 
-        A song's crowd is chosen by who listens, not by what it sounds
-        like, so a Michael Jackson pick returns his brothers' 1970 Motown
-        alongside mid-80s pop, and a 2012 Bruno Mars record alongside
-        both. Neither is obscure, which is why nothing else here catches
-        them: they are famous records from the wrong hour.
+        A song's crowd is chosen by who listens, not by what a record
+        sounds like, so a Michael Jackson pick returns his brothers' 1970
+        Motown beside mid-80s pop, and a Hank Williams Jr. pick returns
+        his father's 1949. Neither is obscure, which is why nothing else
+        catches them: they are famous records from the wrong hour.
 
-        The lane is the picked song's own album tags, which carry a genre
-        and a decade. Bounded to ``CROWD_CHECKED`` records because each
-        costs two cached lookups, and the pool caps well below that
-        anyway; the rest are passed through unchecked rather than
-        discarded unheard.
+        Drawn first and checked second, which is the opposite of what
+        this did at first and both cheaper and more correct. Filtering
+        the crowd up front meant bounding the work to its head, because
+        checking a hundred records to use sixteen is waste; but the
+        banded draw then reached deliberately into the tail the bound had
+        skipped. On a real Hank Williams Jr. batch twelve of sixteen
+        artists came from past that bound and were never checked at all,
+        including the 1949 record the rule exists for. Checking only what
+        is drawn costs sixteen lookups rather than forty and leaves
+        nothing unchecked.
+
+        A rejected candidate is replaced **from its own band**, which is
+        what keeps the hour the shape the clock asked for: refilling a
+        failed Power slot out of the tail gives the right number of
+        tracks and the wrong evening.
         """
         lane = await self._async_lane(artist, title)
+        bands = stratified_bands(eligible, count, len(TIER_PATTERN), self._rng)
         if lane == (set(), set()):
-            _LOGGER.debug("No lane for %s; keeping the whole crowd", title)
-            return crowd
+            _LOGGER.debug("No lane for %s; drawing without one", title)
+            return [name for quota, order in bands for name in order[:quota]]
 
-        head, tail = crowd[:CROWD_CHECKED], crowd[CROWD_CHECKED:]
-        lanes = await asyncio.gather(
-            *(self._async_lane(who, song) for who, song, _ in head)
-        )
-        kept = [
-            entry
-            for entry, found in zip(head, lanes, strict=True)
-            if in_lane(found, lane)
-        ]
-        if dropped := len(head) - len(kept):
+        chosen: list[str] = []
+        dropped: list[str] = []
+        for quota, order in bands:
+            kept = 0
+            for name in order:
+                if kept >= quota:
+                    break
+                if in_lane(await self._async_lane(name, self._record(name, wanted)), lane):
+                    chosen.append(name)
+                    kept += 1
+                else:
+                    dropped.append(name)
+        if dropped:
             _LOGGER.debug(
-                "Out of lane for %s (%s / %s): %d of %d dropped",
+                "Out of lane for %s (%s / %s): %s",
                 title,
                 sorted(lane[0]) or "any era",
                 ", ".join(sorted(lane[1])[:3]) or "any genre",
-                dropped,
-                len(head),
+                ", ".join(dropped[:8]),
             )
-        return kept + tail
+        return chosen
+
+    @staticmethod
+    def _record(artist: str, wanted: Mapping[str, list[str]] | None) -> str:
+        """The record the crowd asked for from this artist, if it named one.
+
+        The lane has to be read off the song the crowd offered rather than
+        off whatever the artist is best known for, because those differ
+        precisely where this matters: Hank Williams' own era is not the
+        era of the compilation his biggest song now sits on.
+        """
+        titles = (wanted or {}).get(artist) or []
+        return titles[0] if titles else ""
 
     async def _async_lane(self, artist: str, title: str) -> tuple[set[int], set[str]]:
         """The era and genres of one record, cached for the entry's life.

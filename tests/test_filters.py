@@ -36,6 +36,7 @@ from filters import (
     reach_of,
     sequence_tiered,
     song_shares,
+    stratified_bands,
     stratified_sample,
     strong_artists,
     tier_of,
@@ -1070,6 +1071,20 @@ def test_a_pool_too_small_to_band_is_used_whole():
         "a2",
         "a3",
     ]
+
+
+def test_bands_come_back_separately_so_a_reject_is_replaced_from_its_own():
+    """Jeff's catch. A Power candidate that fails the era check must be
+    replaced from the Power band: refilling it out of the tail gives the
+    right number of tracks and the wrong hour."""
+    bands = stratified_bands(_pool(45), 9, 3, random.Random(1))
+    assert [quota for quota, _ in bands] == [3, 3, 3]
+    for index, (_, order) in enumerate(bands):
+        ranks = [int(name[1:]) for name in order]
+        assert all(index * 15 <= rank < (index + 1) * 15 for rank in ranks)
+    # And every band offers more than its quota, so there is something to
+    # replace a reject with before the batch has to look elsewhere.
+    assert all(len(order) > quota for quota, order in bands)
 
 
 def test_a_short_band_does_not_shorten_the_batch():

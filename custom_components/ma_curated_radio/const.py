@@ -72,14 +72,6 @@ DEFAULT_SEED_FROM_SONG: Final = True
 # worth paying for rather than the depth available.
 CROWD_SIZE: Final = 100
 
-# How many of a crowd's records to check against the lane. Two cached
-# Last.fm calls each, so it is bounded rather than exhaustive: the pool
-# caps at the artist count anyway, and the crowd is ordered by how
-# strongly listeners associate the record, so the far tail is rarely
-# reached. Anything past this is kept unchecked, which is the same
-# benefit of the doubt the depth limit gives a song it cannot price.
-CROWD_CHECKED: Final = 40
-
 # How big one of an artist's songs has to be, against their own biggest,
 # to count as a record they are still known for. Only ever decides
 # whether an act has anything left to play tonight, never which record
