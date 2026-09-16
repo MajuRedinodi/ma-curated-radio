@@ -108,7 +108,7 @@ created outside that device, and nothing is written to your configuration.
 
 | Kind | Entities |
 |---|---|
-| Switches | Curated radio (the master switch), Skip live recordings, Skip remixes, Skip holiday tracks |
+| Switches | Curated radio (the master switch), Seed from the song, Skip live recordings, Skip remixes, Skip holiday tracks |
 | Sensors | Last batch seed, Last batch built, Last manual pick, Muted artists, Version |
 | Numbers | Similar artists per batch, Tracks per artist, Tracks per batch, Drop artists below, Degrees of separation, Most in a row from one artist, Refill threshold, Skips before muting an artist |
 | Selects | Station style, Familiarity, Explicit content, Muted artist to release, Song to release |
@@ -135,8 +135,9 @@ whichever style is selected, so tuning one cannot quietly retune another.
 | Tracks per batch | How many of the drawn tracks actually play, which is what lets a batch reach deeper without getting longer. Zero plays everything drawn. Per station style: 19 for Balanced and Discovery, 0 for Artist radio. Set from its own entity, not from Configure. |
 | Drop artists below [10%] | Drop a similar artist whose audience is below this share of the pool's own median. Catches a neighbour whose whole catalogue is obscure without penalising a genre Last.fm undercounts. Zero disables it. Set from its own entity, not from Configure. |
 | Station style [balanced] | **Artist radio** always builds from the artist you picked and never wanders. **Balanced** wanders but stays inside the degree fence below. **Discovery** wanders without limit, which is the point of it. |
-| Degrees of separation [3] | How far a session may travel from the artist that started it. Ignored by Artist radio and Discovery. |
-| Familiarity [familiar] | How strongly the artist draw leans on Last.fm's match score, which tracks how recognisable an artist is. **Familiar** crowds selection to the top of that ranking, **Adventurous** ignores it, **Balanced** sits between. Familiar is what makes this feel like radio rather than a shuffle. |
+| Seed from the song [on] | Build the station from the songs people play alongside the one you picked, rather than from the artists people play alongside its artist. Asking about the artist returns a name and leaves the provider to choose the record, which is how a Michael Jackson station ends up playing Kool & the Gang's "Summer Madness" instead of "Cherish". Asking about the song returns the records themselves. Also holds the hour to the era and genre the pick came from, and reseeds each refill from a strong record of the batch before. Turn it off to get the artist-graph behaviour back, which is worth doing for a lane too obscure to have a crowd. Set from its own entity, not from Configure. |
+| Degrees of separation [3] | How far a session may travel from the artist that started it. Ignored by Artist radio and Discovery, and by anything seeded from the song. |
+| Familiarity [familiar] | How strongly the artist draw leans on Last.fm's match score, which tracks how recognisable an artist is. **Familiar** crowds selection to the top of that ranking, **Adventurous** ignores it, **Balanced** sits between. Applies to the artist draw only: a song's crowd is banded rather than weighted, because its tail is as strong as its head. |
 | Shortest track [90 s] | Anything shorter is treated as commentary, an interlude or a skit rather than a song, because search returns those alongside the real tracks. Zero accepts everything. |
 | Most in a row from one artist [2] | How many tracks by the same artist may play back to back. Two lets an artist station feel like an artist station without anyone monopolising the hour. |
 | Skipped song stays away for [30 days] | Skip a song and it will not be queued again for this long. |
@@ -288,6 +289,14 @@ views:
             hide_state: true
             features:
               - type: select-options
+            grid_options: {columns: full}
+          - type: tile
+            # Above the artist-graph settings below it, because turning
+            # this off is what brings them back into play.
+            entity: switch.family_room_stereo_seed_from_the_song
+            name: Seed from the song
+            icon: mdi:music-note-plus
+            color: blue
             grid_options: {columns: full}
           - type: tile
             entity: number.family_room_stereo_degrees_of_separation
