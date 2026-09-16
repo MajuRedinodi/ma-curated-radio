@@ -55,6 +55,7 @@ from .filters import (
     FOOTNOTE_SHARE,
     NEIGHBOURHOOD_SIZE,
     TIER_PATTERN,
+    TIER_POWER,
     SelectionRules,
     base_title,
     clean_similar_artists,
@@ -230,6 +231,11 @@ class CuratedRadioEngine:
         # Who led that batch. A refill never reseeds from them again, or a
         # station anchored close to home just rebuilds the same hour.
         self._last_lead = ""
+        # The Power-tier records of the last batch, as (artist, title). A
+        # refill reseeds its crowd from one of these, which is what keeps
+        # an evening track-level instead of handing hour two back to the
+        # artist graph.
+        self._last_power: list[tuple[str, str]] = []
         # Set when a pick arrives while a batch is building. The build in
         # progress is then for a song the listener has already left.
         self._superseded = False
@@ -257,6 +263,11 @@ class CuratedRadioEngine:
         self._listening = ListeningSession.from_dict(data.get("session"))
         self._last_pool = [str(a) for a in data.get("last_pool") or []]
         self._last_lead = str(data.get("last_lead") or "")
+        self._last_power = [
+            (str(who), str(song))
+            for who, song in (data.get("last_power") or [])
+            if who and song
+        ]
         self._alias = dict(data.get("alias") or {})
         self._lead_override = dict(data.get("lead_override") or {})
         # What this integration queued, which is how a refill knows the
@@ -292,6 +303,7 @@ class CuratedRadioEngine:
             "session": self._listening.as_dict(),
             "last_pool": self._last_pool,
             "last_lead": self._last_lead,
+            "last_power": [list(pair) for pair in self._last_power],
             "alias": self._alias,
             "lead_override": self._lead_override,
             "queued": list(self._queued),
@@ -439,18 +451,20 @@ class CuratedRadioEngine:
         # from the song's crowd rather than the artist's neighbours. Empty
         # otherwise, which leaves selection exactly as it was.
         wanted: dict[str, list[str]] = {}
-        # Only where a station starts. A refill has no picked song to ask
-        # about, and reseeding the crowd from a track of ours is its own
-        # piece of work rather than a free extension of this one.
-        crowd_of = (
-            queue.current_title
-            if starting and self._settings.seed_from_song
-            else ""
+        # A pick asks about the song picked. A refill asks about one of the
+        # strong records of the batch just played, which is what keeps the
+        # whole evening track-level rather than handing hour two back to
+        # the artist graph.
+        crowd_from, crowd_of = self._crowd_seed(
+            starting, seed, queue.current_title, lead
         )
         artists = [
             lead,
             *await self._async_similar_artists(
-                pool_from, crowd_of=crowd_of, wanted=wanted
+                pool_from,
+                crowd_from=crowd_from,
+                crowd_of=crowd_of,
+                wanted=wanted,
             ),
         ]
 
@@ -543,6 +557,20 @@ class CuratedRadioEngine:
         if enqueued:
             self._last_pool = list(pool_artists)
             self._last_lead = lead
+            # The strongest records of this batch, so the next one can be
+            # seeded from a song rather than from an artist. Kept as
+            # (artist, title) because that is what Last.fm is asked about;
+            # a URI would be no use to it.
+            artist_of = {
+                uri: artist
+                for artist, uris in zip(pool_artists, per_artist, strict=True)
+                for uri in uris
+            }
+            self._last_power = [
+                (artist_of[uri], title_by_uri[uri])
+                for uri in enqueued
+                if tiers.get(uri) == TIER_POWER and uri in artist_of
+            ]
 
         _LOGGER.debug(
             "Queued %s track(s) in %s mode, led by %s, neighbours from %s, via %s; "
@@ -688,15 +716,18 @@ class CuratedRadioEngine:
         cache: dict[str, list[tuple[str, float]]] | None = None,
         session: ListeningSession | None = None,
         *,
+        crowd_from: str = "",
         crowd_of: str = "",
         wanted: dict[str, list[str]] | None = None,
     ) -> list[str]:
         """Pick a capped set of similar artists.
 
-        ``crowd_of`` is the song to draw the pool from, when there is one
-        and the setting allows it, in place of the seed's artist
-        neighbours. ``wanted`` is filled in with the records that crowd
-        asked for from each artist, which is what selection later prefers.
+        ``crowd_from`` and ``crowd_of`` name the record to draw the pool
+        from, when there is one and the setting allows it, in place of the
+        seed's artist neighbours. On a pick that is the song picked; on a
+        refill, a strong record of the batch just played. ``wanted`` is
+        filled in with the records that crowd asked for from each artist,
+        which is what selection later prefers.
 
         The pool is deliberately much larger than the cap, because the goal
         is what a station playing the seed artist would also play rather
@@ -708,11 +739,11 @@ class CuratedRadioEngine:
         if settings.max_artists <= 0 or not settings.lastfm_api_key:
             return []
         names: list[tuple[str, float]] = []
-        if crowd_of:
+        if crowd_of and crowd_from:
             # The song's own crowd, where there is one. Falls through to
-            # the artist graph on an obscure pick that has no crowd, which
-            # is the case that would otherwise build nothing at all.
-            names, titles = await self._async_song_crowd(seed, crowd_of)
+            # the artist graph on an obscure record that has no crowd,
+            # which is the case that would otherwise build nothing at all.
+            names, titles = await self._async_song_crowd(crowd_from, crowd_of)
             if wanted is not None:
                 wanted.update(titles)
             if not names:
@@ -982,6 +1013,52 @@ class CuratedRadioEngine:
             sum(len(titles) for titles in wanted.values()),
         )
         return names, wanted
+
+    def _crowd_seed(
+        self, starting: bool, seed: str, playing: str, lead: str
+    ) -> tuple[str, str]:
+        """The record whose crowd this batch is drawn from, if any.
+
+        A pick asks about the song picked, which is the whole statement of
+        what somebody wanted. A refill asks about a strong record of the
+        batch just played, which is what keeps an evening track-level
+        rather than handing hour two back to the artist graph.
+
+        Both empty when the setting is off, or when a refill has no Power
+        tier behind it to draw on, and the artist graph takes over.
+        """
+        if not self._settings.seed_from_song:
+            return "", ""
+        if starting:
+            return seed, playing
+        return self._reseed_song(lead)
+
+    def _reseed_song(self, lead: str) -> tuple[str, str]:
+        """Which record of the last batch the next hour is built from.
+
+        Sampled among the Power tier rather than taken from the top of it.
+        Always choosing the strongest was tried at artist level in 0.32.0
+        and failed on inspection: Fleetwood Mac alternated between the
+        same two neighbourhoods all evening and Nancy Sinatra sat at one
+        value for three refills. Deterministic reseeds oscillate.
+
+        Records by the artist leading this batch are passed over, which is
+        ``move_on`` at song level. Preferring what is closest to home made
+        the origin the closest candidate of all in 0.31.0, and a Texas
+        Hold 'Em station came back as Beyoncé's circle twice running, 23
+        of 39 tracks.
+
+        Empty when the last batch had no Power tier to draw on, which
+        leaves the refill on the artist graph exactly as before.
+        """
+        candidates = [
+            (who, song)
+            for who, song in self._last_power
+            if not credits_artist([who], lead)
+        ] or self._last_power
+        if not candidates:
+            return "", ""
+        return self._rng.choice(candidates)
 
     async def _async_hold_the_lane(
         self, artist: str, title: str, crowd: list[tuple[str, str, float]]
