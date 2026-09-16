@@ -53,6 +53,7 @@ from .decide import leading_pool, starts_station
 from .feedback import SkipMemory
 from .filters import (
     FOOTNOTE_SHARE,
+    LANE_CLASH,
     LANE_MATCH,
     LANE_UNKNOWN,
     NEIGHBOURHOOD_SIZE,
@@ -66,7 +67,6 @@ from .filters import (
     crowd_pool,
     depth_bar,
     drop_outliers,
-    in_lane,
     keep_one_act,
     lane_match,
     lane_of,
@@ -1307,15 +1307,36 @@ class CuratedRadioEngine:
         chosen: list[str] = []
         dropped: list[str] = []
         for quota, order in bands:
-            kept = 0
+            # Three grades, filled in order. A record known to fit is
+            # best. Next best is an artist this station has already
+            # played: in lane by construction, since it was accepted
+            # earlier, and heard without being skipped. Only then an
+            # artist nothing is known about.
+            #
+            # That ordering used to be the other way round, and on a real
+            # batch only 3 of 59 candidates were placeable, so the filter
+            # was replacing known-wrong with unknown. Past the repeat
+            # window a proven track beats an unproven one, which is
+            # Jeff's own rule: rather a repeat at three hours than an
+            # hour of B cuts.
+            fits: list[str] = []
+            heard: list[str] = []
+            unknown: list[str] = []
             for name in order:
-                if kept >= quota:
+                if len(fits) >= quota:
                     break
-                if in_lane(await self._async_lane(name, self._record(name, wanted)), lane):
-                    chosen.append(name)
-                    kept += 1
-                else:
+                rank = lane_match(
+                    await self._async_lane(name, self._record(name, wanted)), lane
+                )
+                if rank == LANE_CLASH:
                     dropped.append(name)
+                elif rank == LANE_MATCH:
+                    fits.append(name)
+                elif self._played.get(name.strip().lower(), 0):
+                    heard.append(name)
+                else:
+                    unknown.append(name)
+            chosen.extend((fits + heard + unknown)[:quota])
         if dropped:
             _LOGGER.debug(
                 "Out of lane for %s (%s / %s): %s",
