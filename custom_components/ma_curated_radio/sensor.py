@@ -107,6 +107,11 @@ class LastBatchSensor(CuratedRadioEntity, SensorEntity):
             "neighbours_from": result.pool_from or None,
             "artists": result.artists,
             "tracks_queued": result.queued,
+            # What it queued, in order, so a batch can be read rather than
+            # waited through. The batch as built: it does not shrink as
+            # songs play, and the Music Assistant panel remains the place
+            # to see the live queue.
+            "tracks": result.tracks,
             "skipped_reason": result.skipped_reason or None,
             # How well known the batch is likely to be. Absolute, so it
             # compares across stations, which the tier counts do not.

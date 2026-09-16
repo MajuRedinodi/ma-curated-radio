@@ -261,6 +261,20 @@ views:
             color: purple
             grid_options: {columns: 6}
 
+          - type: markdown
+            # What the last batch queued, in order. The batch as built,
+            # so it does not shrink as songs play and knows nothing about
+            # anything added by hand: Music Assistant's own panel is
+            # still where the live queue lives.
+            title: In this batch
+            entity_id:
+              - sensor.family_room_stereo_last_batch_seed
+            content: >-
+              {% set t = state_attr('sensor.family_room_stereo_last_batch_seed','tracks')
+              %}{% if t %}{% for s in t %}{{ loop.index }}. {{ s }}
+
+              {% endfor %}{% else %}Nothing queued yet.{% endif %}
+            grid_options: {columns: full}
           - type: heading
             heading: Tuning · per station style
             heading_style: subtitle
@@ -684,6 +698,16 @@ Jackson Browne, via Jackson Browne, Little River Band, Dan Fogelberg,
 The Band, Van Morrison, Steve Winwood, Joe Walsh, Dave Mason;
 median reach 580,807, weakest 106,212, tiers {'P': 7, 'D': 6, 'S': 6}
 ```
+
+The `tracks` attribute lists what it queued, in order, as
+`Artist - Title`. It is what the dashboard's **In this batch** card
+renders, and it is the quickest way to judge an hour without waiting to
+hear it. Two things it is not: it is the batch **as built**, so it does
+not shrink as songs play, and it knows nothing about anything added by
+hand. Music Assistant's own panel is where the live queue lives. The
+artist shown is the one whose slot the track filled rather than the
+credits on the record, which is deliberate: it makes a batch that has
+quietly become one act under three names obvious at a glance.
 
 **Led by** is the artist the batch is built around, and **neighbours from**
 is where its similar artists were drawn. They are normally the same artist:

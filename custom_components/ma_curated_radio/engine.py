@@ -148,6 +148,13 @@ class BatchResult:
     pool_from: str = ""
     artists: list[str] = field(default_factory=list)
     queued: int = 0
+    # What it actually queued, as "Artist - Title", in playing order. The
+    # count above says how many; this says which, which is the only way to
+    # judge a batch without waiting an hour to hear it. The batch as
+    # built, so it does not shrink as songs play and it knows nothing
+    # about anything added by hand: the Music Assistant panel is still
+    # where the live queue lives.
+    tracks: list[str] = field(default_factory=list)
     skipped_reason: str = ""
     # How well known this batch is likely to be, so a shape can be judged
     # before it plays rather than at track ten. Reach is an artist's
@@ -589,6 +596,7 @@ class CuratedRadioEngine:
             pool_from=pool_from,
             artists=artists,
             queued=len(enqueued),
+            tracks=self._listed(enqueued, pool_artists, per_artist, title_by_uri),
             reach_median=reach_median,
             reach_low=reach_low,
             tiers=counts,
@@ -1029,6 +1037,32 @@ class CuratedRadioEngine:
             sum(len(titles) for titles in wanted.values()),
         )
         return names, wanted
+
+    @staticmethod
+    def _listed(
+        enqueued: list[str],
+        pool_artists: list[str],
+        per_artist: list[list[str]],
+        title_by_uri: dict[str, str],
+    ) -> list[str]:
+        """The batch as a person would read it, in playing order.
+
+        The artist is the one whose pool the track came from rather than
+        the credits on the record, which is deliberate: it says which
+        slot of the batch each song filled, so a batch that has quietly
+        become one act under three names is visible at a glance.
+        """
+        artist_of = {
+            uri: artist
+            for artist, uris in zip(pool_artists, per_artist, strict=True)
+            for uri in uris
+        }
+        return [
+            f"{artist_of[uri]} - {title_by_uri[uri]}"
+            if uri in artist_of
+            else title_by_uri.get(uri, "")
+            for uri in enqueued
+        ]
 
     def _remember(
         self,
