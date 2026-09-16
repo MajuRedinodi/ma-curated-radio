@@ -1,0 +1,394 @@
+==============================================================================
+PER ARTIST: shape of the curve
+==============================================================================
+artist                                    #1    #2    #3    #5   #10   #20  cliff
+Erasure                               559407   41%   33%   28%   16%    6%  after 25 (x0.41)
+Thompson Twins                        446002   30%   24%   18%    8%    2%  after  1 (x0.30)
+Yazoo                                 481013   89%   24%   11%    8%    3%  after  2 (x0.27)
+Ultravox                              371247   82%   29%   15%    9%    6%  after  2 (x0.35)
+Culture Club                          735643   53%   14%    9%    4%    1%  after  2 (x0.26)
+Blancmange                            117115   50%   39%   21%   12%    5%  after 25 (x0.50)
+a-ha                                 2941370   11%    9%    7%    4%    2%  after  1 (x0.11)
+Orchestral Manoeuvres in the Dark     331823   66%   55%   37%   24%   13%  after 25 (x0.66)
+Information Society                   119783   47%   38%   28%    9%    4%  after 25 (x0.47)
+Dave Gahan                            114395   81%   59%   51%   43%   18%  after 25 (x0.72)
+Martin L. Gore                         52490   96%   93%   76%   31%   12%  after 25 (x0.53)
+Recoil                                 58198   73%   64%   42%   39%   27%  after 25 (x0.68)
+Depeche Mode                         2192172   54%   48%   38%   25%   17%  after 25 (x0.54)
+The Beatles                          1593785   89%   82%   73%   67%   54%  after 25 (x0.89)
+Michael Jackson                      3454723   82%   71%   45%   39%   24%  after 25 (x0.67)
+Metallica                            1897678   90%   89%   62%   44%   30%  after 25 (x0.83)
+Fleetwood Mac                        2106791   88%   79%   59%   36%   18%  after 25 (x0.81)
+Madonna                              1729261   93%   84%   66%   43%   24%  after 25 (x0.81)
+Elton John                           1779453   81%   79%   61%   29%   16%  after 25 (x0.64)
+Queen                                2310917   73%   67%   57%   42%   25%  after 25 (x0.73)
+Mr. Mister                            576812   39%    7%    4%    2%    1%  after  2 (x0.18)
+REO Speedwagon                        615729   98%   58%   23%   10%    3%  after 25 (x0.40)
+Loverboy                              467545   32%   22%    9%    4%    1%  after  1 (x0.32)
+.38 Special                           131453   78%   29%   27%   12%    3%  after 25 (x0.37)
+Glenn Frey                            129403   71%   54%   23%    9%    3%  after 25 (x0.60)
+Don Henley                            734998   29%   24%   21%    7%    2%  after  1 (x0.29)
+Christine McVie                        28081   48%   34%   30%   14%   10%  after 25 (x0.48)
+Buckingham Nicks                       40601   68%   61%   49%   35%    1%  after 25 (x0.38)
+Camouflage                            160626   59%   22%   16%   11%    7%  after 25 (x0.38)
+Shawn Colvin                          228175   19%   18%   16%   14%    7%  after  1 (x0.19)
+Dexys Midnight Runners               1326634    4%    3%    1%    1%    1%  after  1 (x0.04)
+Norman Greenbaum                      667892    1%    1%    0%    0%    0%  after  1 (x0.01)
+The Knack                             765390    6%    2%    2%    1%    0%  after  1 (x0.06)
+Toni Basil                            171979   47%    1%    1%    1%    0%  after  2 (x0.03)
+Men Without Hats                      504208   36%    9%    4%    1%    1%  after  2 (x0.25)
+Soft Cell                            1981787    6%    5%    5%    2%    1%  after  1 (x0.06)
+Right Said Fred                       351849   12%    9%    3%    1%    1%  after  1 (x0.12)
+Chumbawamba                           902082    6%    3%    3%    2%    2%  after  1 (x0.06)
+Semisonic                            1025456   31%   12%    9%    5%    2%  after  1 (x0.31)
+Blind Melon                          1129380   24%   17%   11%    9%    6%  after  1 (x0.24)
+Nena                                 1037806   31%   14%    8%    2%    1%  after  1 (x0.31)
+Harvey Danger                         497652   18%   14%    9%    7%    4%  after  1 (x0.18)
+Hank Williams Jr.                      38490   83%   65%   42%   31%   18%  after 25 (x0.71)
+George Strait                         272787   92%   86%   72%   39%   20%  after 25 (x0.67)
+Luke Combs                            372637   79%   66%   55%   41%   17%  after 25 (x0.68)
+Bonnie Raitt                          264169   63%   59%   33%   14%    8%  after 25 (x0.58)
+Antonio Vivaldi                       219226   88%   75%   70%   47%   28%  after 25 (x0.85)
+Johann Sebastian Bach                 576397   50%   49%   42%   21%   14%  after 25 (x0.50)
+Sugar                                  86570   71%   62%   51%   29%   18%  after 25 (x0.71)
+
+==============================================================================
+DOES A RATIO LINE EXIST? songs kept per artist at each share
+==============================================================================
+artist                                 5%     10%     12%     15%     18%     20%     25%
+-- control-erasure-good
+Erasure                                22      12      10      10       8       6       5
+Thompson Twins                         13       9       8       6       5       3       2
+Yazoo                                  16       6       4       4       4       4       2
+Ultravox                               23       9       8       4       3       3       3
+Culture Club                            9       4       4       2       2       2       2
+Blancmange                             14      11       8       7       7       5       4
+a-ha                                    7       2       1       1       1       1       1
+Orchestral Manoeuvres in the Dark      31      21      21      18      17      14       9
+Information Society                    13       8       8       7       6       6       5
+-- bad-side-projects
+Dave Gahan                             30      23      22      20      20      19      15
+Martin L. Gore                         24      22      20      16      15      14      12
+Recoil                                 41      35      32      31      29      27      23
+Depeche Mode                           98      42      35      24      19      14      10
+-- giants
+The Beatles                            75      75      75      75      75      75      75
+Michael Jackson                        61      38      30      27      25      23      18
+Metallica                              89      89      88      71      65      53      32
+Fleetwood Mac                          52      31      29      23      19      17      13
+Madonna                                95      66      55      42      28      24      17
+Elton John                             43      28      26      21      17      16      15
+Queen                                  58      42      36      31      27      24      18
+-- mid-with-cliff
+Mr. Mister                              3       2       2       2       2       2       2
+REO Speedwagon                         15      10       7       5       5       5       3
+Loverboy                                8       4       4       3       3       3       2
+.38 Special                            15      10       9       7       7       7       6
+-- forgotten-hit
+Glenn Frey                             11       9       9       8       5       5       4
+Don Henley                             10       8       6       6       6       5       2
+-- thin
+Christine McVie                        34      18      14       7       6       6       5
+Buckingham Nicks                       16      12      12      11      11      11      10
+Camouflage                             33      10       7       5       4       4       2
+Shawn Colvin                           23      11      11       6       3       1       1
+-- one-hit
+Dexys Midnight Runners                  1       1       1       1       1       1       1
+Norman Greenbaum                        1       1       1       1       1       1       1
+The Knack                               2       1       1       1       1       1       1
+Toni Basil                              2       2       2       2       2       2       2
+Men Without Hats                        3       2       2       2       2       2       2
+Soft Cell                               4       1       1       1       1       1       1
+Right Said Fred                         4       2       1       1       1       1       1
+Chumbawamba                             2       1       1       1       1       1       1
+Semisonic                               9       3       3       2       2       2       2
+Blind Melon                            21       6       4       3       2       2       1
+Nena                                    5       4       3       2       2       2       2
+Harvey Danger                          14       3       3       2       1       1       1
+-- country
+Hank Williams Jr.                      61      35      29      26      20      15      14
+George Strait                          64      39      32      22      21      20      16
+Luke Combs                             60      30      26      22      18      15      13
+Bonnie Raitt                           37      15      12       9       6       6       5
+-- classical
+Antonio Vivaldi                        91      56      49      40      31      27      23
+Johann Sebastian Bach                  70      29      24      18      13      10       7
+-- junk-namesake
+Sugar                                  31      27      23      22      19      16      13
+
+==============================================================================
+PINNED RECORDS: the verdicts a rule has to reproduce
+==============================================================================
+Mr. Mister                 Kyrie                      #2     224890  39.0%  want=keep cliff=keep  ratio12=keep 
+Glenn Frey                 You Belong To The City     #2      91633  70.8%  want=keep cliff=keep  ratio12=keep 
+Sugar                      Candy from Strangers       #27      8669  10.0%  want=cut  cliff=cut   ratio12=cut  
+Information Society        What's on Your Mind (Pure  #1     119783 100.0%  want=keep cliff=keep  ratio12=keep 
+
+==============================================================================
+WHAT A BATCH WOULD PLAY: titles to mark up by ear
+==============================================================================
+
+### control-erasure-good
+  today (top 2, no bar)  18 tracks
+      Erasure / A Little Respect (559407)
+      Erasure / Always (230391)
+      Thompson Twins / Hold Me Now (446002)
+      Thompson Twins / Doctor! Doctor! (134203)
+      Yazoo / Don't Go (481013)
+      Yazoo / Only You (427155)
+      Ultravox / Dancing with Tears in My Eyes (371247)
+      Ultravox / Vienna (304216)
+      Culture Club / Karma Chameleon (735643)
+      Culture Club / Do You Really Want to Hurt Me (391008)
+      Blancmange / Living On The Ceiling (117115)
+      Blancmange / Don't Tell Me (58656)
+      a-ha / Take on Me (2941370)
+      a-ha / Hunting High and Low (324137)
+      Orchestral Manoeuvres in the Dark / Enola Gay (331823)
+      Orchestral Manoeuvres in the Dark / If You Leave (219320)
+      Information Society / What's on Your Mind (Pure Energy) (119783)
+      Information Society / Repetition (56223)
+  cliff                  108 tracks
+      Erasure / A Little Respect (559407)
+      Erasure / Always (230391)
+      Erasure / Sometimes (185182)
+      Erasure / Love to Hate You (160860)
+      Erasure / Oh L'Amour (155415)
+      Erasure / Chains of Love (137863)
+      Erasure / Stop! (108122)
+      Erasure / Take a Chance on Me (102602)
+      Erasure / Blue Savannah (90712)
+      Erasure / Ship of Fools (89198)
+      Erasure / Chorus (59908)
+      Erasure / Victim of Love (59388)
+      Erasure / Breath of Life (52132)
+      Erasure / Lay All Your Love on Me (45022)
+      Erasure / Solsbury Hill (35263)
+      Erasure / The Circus (35018)
+      Erasure / It Doesn't Have to Be (34422)
+      Erasure / Who Needs Love (Like That) (32743)
+      Erasure / Star (31429)
+      Erasure / You Surround Me (30977)
+      Erasure / Drama! (30678)
+      Erasure / In My Arms (28795)
+      Erasure / Heavenly Action (26146)
+      Erasure / Breathe (25319)
+  ratio 12%              72 tracks
+      Erasure / A Little Respect (559407)
+      Erasure / Always (230391)
+      Erasure / Sometimes (185182)
+      Erasure / Love to Hate You (160860)
+      Erasure / Oh L'Amour (155415)
+      Erasure / Chains of Love (137863)
+      Erasure / Stop! (108122)
+      Erasure / Take a Chance on Me (102602)
+      Erasure / Blue Savannah (90712)
+      Erasure / Ship of Fools (89198)
+      Thompson Twins / Hold Me Now (446002)
+      Thompson Twins / Doctor! Doctor! (134203)
+      Thompson Twins / If You Were Here (108081)
+      Thompson Twins / Lies (86722)
+      Thompson Twins / Lay Your Hands On Me (81278)
+      Thompson Twins / Love On Your Side (71218)
+      Thompson Twins / In the Name of Love (63702)
+      Thompson Twins / King For A Day (62013)
+      Yazoo / Don't Go (481013)
+      Yazoo / Only You (427155)
+      Yazoo / Situation (116419)
+      Yazoo / Nobody's Diary (111270)
+      Ultravox / Dancing with Tears in My Eyes (371247)
+      Ultravox / Vienna (304216)
+
+### bad-side-projects
+  today (top 2, no bar)  8 tracks
+      Dave Gahan / Kingdom (114395)
+      Dave Gahan / Saw Something (93165)
+      Martin L. Gore / Gone (52490)
+      Martin L. Gore / Motherless Child (50216)
+      Recoil / Want (58198)
+      Recoil / Jezebel (42609)
+      Depeche Mode / Enjoy the Silence (2192172)
+      Depeche Mode / Personal Jesus (1181648)
+  cliff                  100 tracks
+      Dave Gahan / Kingdom (114395)
+      Dave Gahan / Saw Something (93165)
+      Dave Gahan / Dirty Sticky Floors (67229)
+      Dave Gahan / Deeper and Deeper (60566)
+      Dave Gahan / Use You (58213)
+      Dave Gahan / 21 Days (54290)
+      Dave Gahan / Miracles (53370)
+      Dave Gahan / Endless (52828)
+      Dave Gahan / A Little Lie (51894)
+      Dave Gahan / Down (48995)
+      Dave Gahan / Insoluble (48444)
+      Dave Gahan / Bottle Living (36606)
+      Dave Gahan / I Need You (36192)
+      Dave Gahan / Hold On (32867)
+      Dave Gahan / Stay (30931)
+      Dave Gahan / Black and Blue Again (26994)
+      Dave Gahan / A Little Piece (26960)
+      Dave Gahan / Hidden Houses (26826)
+      Dave Gahan / Bitter Apple (25796)
+      Dave Gahan / All of This and Nothing (20828)
+      Dave Gahan / Goodbye (16389)
+      Dave Gahan / Nothing Else Matters (15119)
+      Dave Gahan / Metal Heart (13350)
+      Dave Gahan / Tempted (11077)
+  ratio 12%              109 tracks
+      Dave Gahan / Kingdom (114395)
+      Dave Gahan / Saw Something (93165)
+      Dave Gahan / Dirty Sticky Floors (67229)
+      Dave Gahan / Deeper and Deeper (60566)
+      Dave Gahan / Use You (58213)
+      Dave Gahan / 21 Days (54290)
+      Dave Gahan / Miracles (53370)
+      Dave Gahan / Endless (52828)
+      Dave Gahan / A Little Lie (51894)
+      Dave Gahan / Down (48995)
+      Dave Gahan / Insoluble (48444)
+      Dave Gahan / Bottle Living (36606)
+      Dave Gahan / I Need You (36192)
+      Dave Gahan / Hold On (32867)
+      Dave Gahan / Stay (30931)
+      Dave Gahan / Black and Blue Again (26994)
+      Dave Gahan / A Little Piece (26960)
+      Dave Gahan / Hidden Houses (26826)
+      Dave Gahan / Bitter Apple (25796)
+      Dave Gahan / All of This and Nothing (20828)
+      Dave Gahan / Goodbye (16389)
+      Dave Gahan / Nothing Else Matters (15119)
+      Martin L. Gore / Gone (52490)
+      Martin L. Gore / Motherless Child (50216)
+
+### one-hit
+  today (top 2, no bar)  24 tracks
+      Dexys Midnight Runners / Come on Eileen (1326634)
+      Dexys Midnight Runners / Geno - 2000 Remaster (54255)
+      Norman Greenbaum / Spirit in the Sky (667892)
+      Norman Greenbaum / Skyline (5577)
+      The Knack / My Sharona (765390)
+      The Knack / Good Girls Don't (42437)
+      Toni Basil / Mickey (171979)
+      Toni Basil / Hey Mickey (81004)
+      Men Without Hats / The Safety Dance (504208)
+      Men Without Hats / Safety Dance (181738)
+      Soft Cell / Tainted Love (1981787)
+      Soft Cell / Where Did Our Love Go? (114098)
+      Right Said Fred / I'm Too Sexy (351849)
+      Right Said Fred / Don't Talk Just Kiss (41089)
+      Chumbawamba / Tubthumping (902082)
+      Chumbawamba / Amnesia (57493)
+      Semisonic / Closing Time (1025456)
+      Semisonic / Secret Smile (315202)
+      Blind Melon / No Rain (1129380)
+      Blind Melon / Change (272740)
+      Nena / 99 Luftballons (1037806)
+      Nena / 99 Red Balloons (323379)
+      Harvey Danger / Flagpole Sitta (497652)
+      Harvey Danger / Cream and Bastards Rise (87515)
+  cliff                  14 tracks
+      Dexys Midnight Runners / Come on Eileen (1326634)
+      Norman Greenbaum / Spirit in the Sky (667892)
+      The Knack / My Sharona (765390)
+      Toni Basil / Mickey (171979)
+      Toni Basil / Hey Mickey (81004)
+      Men Without Hats / The Safety Dance (504208)
+      Men Without Hats / Safety Dance (181738)
+      Soft Cell / Tainted Love (1981787)
+      Right Said Fred / I'm Too Sexy (351849)
+      Chumbawamba / Tubthumping (902082)
+      Semisonic / Closing Time (1025456)
+      Blind Melon / No Rain (1129380)
+      Nena / 99 Luftballons (1037806)
+      Harvey Danger / Flagpole Sitta (497652)
+  ratio 12%              23 tracks
+      Dexys Midnight Runners / Come on Eileen (1326634)
+      Norman Greenbaum / Spirit in the Sky (667892)
+      The Knack / My Sharona (765390)
+      Toni Basil / Mickey (171979)
+      Toni Basil / Hey Mickey (81004)
+      Men Without Hats / The Safety Dance (504208)
+      Men Without Hats / Safety Dance (181738)
+      Soft Cell / Tainted Love (1981787)
+      Right Said Fred / I'm Too Sexy (351849)
+      Chumbawamba / Tubthumping (902082)
+      Semisonic / Closing Time (1025456)
+      Semisonic / Secret Smile (315202)
+      Semisonic / Singing In My Sleep (124588)
+      Blind Melon / No Rain (1129380)
+      Blind Melon / Change (272740)
+      Blind Melon / Tones of Home (192431)
+      Blind Melon / Toes Across the Floor (154133)
+      Nena / 99 Luftballons (1037806)
+      Nena / 99 Red Balloons (323379)
+      Nena / Nur geträumt (141595)
+      Harvey Danger / Flagpole Sitta (497652)
+      Harvey Danger / Cream and Bastards Rise (87515)
+      Harvey Danger / Little Round Mirrors (68270)
+
+### giants
+  today (top 2, no bar)  14 tracks
+      The Beatles / Here Comes the Sun - Remastered 2009 (1593785)
+      The Beatles / Hey Jude (1424385)
+      Michael Jackson / Billie Jean (3454723)
+      Michael Jackson / Beat It (2845632)
+      Metallica / Enter Sandman (1897678)
+      Metallica / Nothing Else Matters (1712093)
+      Fleetwood Mac / Dreams - 2004 Remaster (2106791)
+      Fleetwood Mac / The Chain - 2004 Remaster (1862991)
+      Madonna / Hung Up (1729261)
+      Madonna / Like a Prayer (1607723)
+      Elton John / I'm Still Standing (1779453)
+      Elton John / Your Song (1441661)
+      Queen / Bohemian Rhapsody (2310917)
+      Queen / Don't Stop Me Now - Remastered 2011 (1697071)
+  cliff                  175 tracks
+      The Beatles / Here Comes the Sun - Remastered 2009 (1593785)
+      The Beatles / Hey Jude (1424385)
+      The Beatles / Eleanor Rigby (1299931)
+      The Beatles / Come Together (1185462)
+      The Beatles / Let It Be (1169080)
+      The Beatles / Yellow Submarine (1151557)
+      The Beatles / Yesterday (1113854)
+      The Beatles / Blackbird - Remastered 2009 (1069520)
+      The Beatles / Help! (1064880)
+      The Beatles / All You Need Is Love (1064615)
+      The Beatles / Something - Remastered 2009 (1062742)
+      The Beatles / In My Life - Remastered 2009 (1032956)
+      The Beatles / Lucy in the Sky With Diamonds (993748)
+      The Beatles / Penny Lane (930985)
+      The Beatles / While My Guitar Gently Weeps (914552)
+      The Beatles / Twist And Shout - Remastered 2009 (875489)
+      The Beatles / A Day in the Life (869183)
+      The Beatles / I Want to Hold Your Hand (858858)
+      The Beatles / Get Back (853578)
+      The Beatles / Strawberry Fields Forever (852809)
+      The Beatles / Love Me Do (825783)
+      The Beatles / And I Love Her - Remastered 2009 (825630)
+      The Beatles / Can't Buy Me Love (816386)
+      The Beatles / A Hard Day's Night (783919)
+  ratio 12%              339 tracks
+      The Beatles / Here Comes the Sun - Remastered 2009 (1593785)
+      The Beatles / Hey Jude (1424385)
+      The Beatles / Eleanor Rigby (1299931)
+      The Beatles / Come Together (1185462)
+      The Beatles / Let It Be (1169080)
+      The Beatles / Yellow Submarine (1151557)
+      The Beatles / Yesterday (1113854)
+      The Beatles / Blackbird - Remastered 2009 (1069520)
+      The Beatles / Help! (1064880)
+      The Beatles / All You Need Is Love (1064615)
+      The Beatles / Something - Remastered 2009 (1062742)
+      The Beatles / In My Life - Remastered 2009 (1032956)
+      The Beatles / Lucy in the Sky With Diamonds (993748)
+      The Beatles / Penny Lane (930985)
+      The Beatles / While My Guitar Gently Weeps (914552)
+      The Beatles / Twist And Shout - Remastered 2009 (875489)
+      The Beatles / A Day in the Life (869183)
+      The Beatles / I Want to Hold Your Hand (858858)
+      The Beatles / Get Back (853578)
+      The Beatles / Strawberry Fields Forever (852809)
+      The Beatles / Love Me Do (825783)
+      The Beatles / And I Love Her - Remastered 2009 (825630)
+      The Beatles / Can't Buy Me Love (816386)
+      The Beatles / A Hard Day's Night (783919)
