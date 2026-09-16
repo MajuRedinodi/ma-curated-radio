@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from http import HTTPStatus
+from typing import Any
 
 import aiohttp
 
@@ -170,6 +171,93 @@ async def async_get_similar_tracks(
             match = 0.0
         results.append((who, title, match))
     return results
+
+
+async def async_get_album_of(
+    session: aiohttp.ClientSession, api_key: str, artist: str, track: str
+) -> str:
+    """The album Last.fm files a track under, or "" if it does not know.
+
+    Needed only because the album is where the usable tags live. A
+    track's own tags are mostly absent: measured over ten songs, six
+    returned nothing at all, including records with over a million
+    listeners.
+    """
+    payload = await _call(
+        session,
+        api_key,
+        {"method": "track.getinfo", "artist": artist, "track": track},
+        f"{track} by {artist}",
+    )
+    if not payload:
+        return ""
+    album = ((payload.get("track") or {}).get("album") or {}).get("title")
+    return str(album or "")
+
+
+async def async_get_album_tags(
+    session: aiohttp.ClientSession, api_key: str, artist: str, album: str
+) -> list[str]:
+    """What listeners call an album, lower-cased. Empty if nothing is known.
+
+    Album tags are the one place both a record's genre and its era are
+    reliably recorded. Measured: Michael Jackson's *Bad* comes back "pop,
+    80s, dance"; a-ha's *Hunting High and Low* "80s, pop, new wave,
+    synthpop"; The Jackson 5's *Third Album* "soul, 70s, motown", which is
+    why that record does not belong on a mid-80s pop station.
+
+    Do NOT reach for the ``published`` field for a release year. It is the
+    date somebody last edited the Last.fm wiki, not the release: it
+    returns 2026 for *Bad*. The decade tag is the honest signal, and its
+    absence says "recent", since nobody tags a 2012 record "10s".
+    """
+    payload = await _call(
+        session,
+        api_key,
+        {"method": "album.getinfo", "artist": artist, "album": album},
+        f"{album} by {artist}",
+    )
+    if not payload:
+        return []
+    tags = (payload.get("album") or {}).get("tags") or {}
+    if not isinstance(tags, dict):
+        return []
+    entries = tags.get("tag") or []
+    if isinstance(entries, dict):
+        entries = [entries]
+    return [
+        str(entry["name"]).strip().lower()
+        for entry in entries
+        if isinstance(entry, dict) and entry.get("name")
+    ]
+
+
+async def _call(
+    session: aiohttp.ClientSession,
+    api_key: str,
+    params: dict[str, str],
+    subject: str,
+) -> dict[str, Any] | None:
+    """One Last.fm request, returning None on anything that went wrong.
+
+    Last.fm reports API-level errors with HTTP 200 and serves JSON as
+    text/plain on some error paths, so both need handling every time.
+    """
+    query = {**params, "api_key": api_key, "format": "json", "autocorrect": "1"}
+    try:
+        async with session.get(API_URL, params=query, timeout=TIMEOUT) as response:
+            if response.status != HTTPStatus.OK:
+                _LOGGER.debug(
+                    "Last.fm returned HTTP %s for %s", response.status, subject
+                )
+                return None
+            payload = await response.json(content_type=None)
+    except (aiohttp.ClientError, TimeoutError, ValueError) as err:
+        _LOGGER.debug("Last.fm lookup failed for %s: %s", subject, err)
+        return None
+    if not isinstance(payload, dict) or "error" in payload:
+        return None
+    return payload
 
 
 async def async_validate_api_key(

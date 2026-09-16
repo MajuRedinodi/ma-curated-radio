@@ -1306,6 +1306,120 @@ def depth_bar(sizes: Mapping[str, int]) -> int:
     return int(typical * DEPTH_BAR_SHARE)
 
 
+_DECADE_TAG = re.compile(r"^(?:19|20)?([0-9]0)s$")
+
+# Above this, a bare two-digit decade tag means the twentieth century.
+# "40s" is the 1940s; "20s" is this one, not the Charleston.
+_LAST_MODERN_DECADE: Final = 30
+
+# Tags that describe a listener or a passport rather than a record. Left
+# out of the genre comparison, which would otherwise match an American
+# country album to an American hip-hop one on "american" alone.
+_NOT_A_GENRE: Final = frozenset(
+    {
+        "american", "british", "english", "irish", "scottish", "usa", "uk",
+        "australian", "canadian", "german", "swedish", "french", "japanese",
+        "male vocalists", "female vocalists", "male vocalist",
+        "female vocalist", "singer-songwriter", "favourites", "favorites",
+        "favourite songs", "awesome", "love", "beautiful", "seen live",
+        "albums i own", "vinyl", "my music", "cool", "classic", "the best",
+        "under 2000 listeners", "memories", "sexy", "epic", "party",
+    }
+)
+
+
+def lane_of(tags: Sequence[str], artist: str = "") -> tuple[set[int], set[str]]:
+    """Split album tags into the decades and the genres they claim.
+
+    Both halves matter and they fail differently. The decade is what
+    separates The Jackson 5's 1970 Motown from the mid-80s pop station it
+    was landing on, and a *missing* decade is itself a signal, since
+    nobody tags a 2012 record "10s".
+
+    The artist's own name is dropped, because half of Last.fm's top tags
+    are the act being tagged. So are nationalities and the listener's own
+    filing habits: "american" is not a genre, and matching on it pairs a
+    country record with a hip-hop one.
+
+    Deliberately keeps everything else, including noise. Rick Astley's
+    album lists "brutal death metal", which is a joke the whole internet
+    is in on, and it does no harm alongside "dance" and "pop": what
+    matters is that the sets *overlap*, not that they are clean.
+    """
+    decades: set[int] = set()
+    genres: set[str] = set()
+    name = artist.strip().lower()
+    for raw in tags:
+        tag = raw.strip().lower()
+        if not tag:
+            continue
+        if found := _DECADE_TAG.match(tag):
+            decades.add(_full_decade(found.group(1)))
+        elif tag not in _NOT_A_GENRE and (not name or name not in tag):
+            genres.add(tag)
+    return decades, genres
+
+
+def _full_decade(pair: str) -> int:
+    """"80" to 1980, "00" to 2000. Two digits cannot span a century.
+
+    Without this, the 90s and the 00s read as ninety years apart rather
+    than as neighbours, and the slack that keeps 1985 next to 1980 would
+    have refused to put 1999 next to 2001.
+    """
+    value = int(pair)
+    return 2000 + value if value <= _LAST_MODERN_DECADE else 1900 + value
+
+
+def in_lane(
+    candidate: tuple[set[int], set[str]],
+    lane: tuple[set[int], set[str]],
+    *,
+    decade_slack: int = 1,
+) -> bool:
+    """Whether a record belongs in the same hour as the song that started it.
+
+    Two independent tests, both of which have to pass, because each
+    catches something the other does not. Genre alone would keep The
+    Jackson 5 on a pop station; era alone would pair 80s soul with 80s
+    thrash.
+
+    **Nothing known means keep.** An untagged album is not evidence of a
+    bad record, and rejecting on absence cost Billy Ocean's "Caribbean
+    Queen", a 1984 number one, from a lane it obviously belongs in. That
+    is also how ``too_deep`` and ``drop_outliers`` treat missing numbers,
+    and the consistency is deliberate.
+
+    **Adjacent decades count.** Album tags inherit an artist's centre of
+    gravity rather than a record's date: Stevie Wonder's "Part-Time
+    Lover" is 1985 and its album reads 70s, because that is where his
+    audience lives. One decade of slack keeps it; two would let the 60s
+    into an 80s hour.
+    """
+    want_decades, want_genres = lane
+    got_decades, got_genres = candidate
+    if not got_decades and not got_genres:
+        # Nothing known at all. No evidence is not evidence against.
+        return True
+    if want_genres and got_genres and not (got_genres & want_genres):
+        return False
+    if not want_decades:
+        # The lane itself has no era to hold anything to.
+        return True
+    if not got_decades:
+        # Tagged, and nobody reached for a decade. On a record people know
+        # that means recent, because nobody tags a 2012 album "10s". This
+        # is the only thing that catches Bruno Mars's "Locked Out of
+        # Heaven" on an 80s station: its genres are pop and rnb, so genre
+        # alone waves it straight through.
+        return False
+    return any(
+        abs(got - want) <= decade_slack * 10
+        for got in got_decades
+        for want in want_decades
+    )
+
+
 def crowd_pool(
     crowd: Sequence[tuple[str, str, float]],
     seed_artist: str,

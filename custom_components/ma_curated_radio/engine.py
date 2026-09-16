@@ -23,6 +23,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    CROWD_CHECKED,
     CROWD_SIZE,
     DEFAULT_PLAYLIST_LENGTH,
     DEPTH_TOP_TRACKS,
@@ -62,7 +63,9 @@ from .filters import (
     crowd_pool,
     depth_bar,
     drop_outliers,
+    in_lane,
     keep_one_act,
+    lane_of,
     lead_among_credits,
     lean_toward_strength,
     matches_provider,
@@ -82,6 +85,8 @@ from .filters import (
 )
 from .history import TitleHistory
 from .lastfm import (
+    async_get_album_of,
+    async_get_album_tags,
     async_get_artist_listeners,
     async_get_similar_artists,
     async_get_similar_tracks,
@@ -211,6 +216,10 @@ class CuratedRadioEngine:
         # Each artist's best-known songs on Last.fm with their listeners, for
         # the depth limit. Kept for the life of the entry, like sizes.
         self._top_tracks: dict[str, list[tuple[str, int]]] = {}
+        # Each record's era and genres, from its album tags, keyed by
+        # (artist, base title). Albums recur heavily inside a lane, so the
+        # second batch of an evening pays almost nothing for this.
+        self._lanes: dict[tuple[str, str], tuple[set[int], set[str]]] = {}
         # Its own generator so reseed choices can be reproduced in tests.
         self._rng = random.Random()
         # Artists that actually contributed to the last batch. A refill
@@ -963,6 +972,7 @@ class CuratedRadioEngine:
         )
         if not crowd:
             return [], {}
+        crowd = await self._async_hold_the_lane(artist, title, crowd)
         names, wanted = crowd_pool(crowd, artist, 0)
         _LOGGER.debug(
             "Song crowd for %s by %s: %d artists, %d records",
@@ -972,6 +982,68 @@ class CuratedRadioEngine:
             sum(len(titles) for titles in wanted.values()),
         )
         return names, wanted
+
+    async def _async_hold_the_lane(
+        self, artist: str, title: str, crowd: list[tuple[str, str, float]]
+    ) -> list[tuple[str, str, float]]:
+        """Drop the records that belong to a different era or kind of music.
+
+        A song's crowd is chosen by who listens, not by what it sounds
+        like, so a Michael Jackson pick returns his brothers' 1970 Motown
+        alongside mid-80s pop, and a 2012 Bruno Mars record alongside
+        both. Neither is obscure, which is why nothing else here catches
+        them: they are famous records from the wrong hour.
+
+        The lane is the picked song's own album tags, which carry a genre
+        and a decade. Bounded to ``CROWD_CHECKED`` records because each
+        costs two cached lookups, and the pool caps well below that
+        anyway; the rest are passed through unchecked rather than
+        discarded unheard.
+        """
+        lane = await self._async_lane(artist, title)
+        if lane == (set(), set()):
+            _LOGGER.debug("No lane for %s; keeping the whole crowd", title)
+            return crowd
+
+        head, tail = crowd[:CROWD_CHECKED], crowd[CROWD_CHECKED:]
+        lanes = await asyncio.gather(
+            *(self._async_lane(who, song) for who, song, _ in head)
+        )
+        kept = [
+            entry
+            for entry, found in zip(head, lanes, strict=True)
+            if in_lane(found, lane)
+        ]
+        if dropped := len(head) - len(kept):
+            _LOGGER.debug(
+                "Out of lane for %s (%s / %s): %d of %d dropped",
+                title,
+                sorted(lane[0]) or "any era",
+                ", ".join(sorted(lane[1])[:3]) or "any genre",
+                dropped,
+                len(head),
+            )
+        return kept + tail
+
+    async def _async_lane(self, artist: str, title: str) -> tuple[set[int], set[str]]:
+        """The era and genres of one record, cached for the entry's life.
+
+        Two lookups the first time and none afterwards. Albums recur
+        heavily inside a lane, so the second batch of an evening pays
+        almost nothing.
+        """
+        key = (artist.lower(), base_title(title))
+        if key in self._lanes:
+            return self._lanes[key]
+        api_key = self._settings.lastfm_api_key
+        album = await async_get_album_of(self._session, api_key, artist, title)
+        tags = (
+            await async_get_album_tags(self._session, api_key, artist, album)
+            if album
+            else []
+        )
+        self._lanes[key] = lane_of(tags, artist)
+        return self._lanes[key]
 
     async def _async_lookup_similar(self, seed: str) -> list[tuple[str, float]]:
         """Ask Last.fm about a seed, under its resolved name if it has one."""

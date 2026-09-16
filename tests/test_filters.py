@@ -18,6 +18,7 @@ from filters import (
     crowd_pool,
     depth_bar,
     drop_outliers,
+    in_lane,
     is_demo,
     is_holiday,
     is_live,
@@ -25,6 +26,7 @@ from filters import (
     is_remix,
     is_too_short,
     keep_one_act,
+    lane_of,
     lead_among_credits,
     lean_toward_strength,
     matches_provider,
@@ -1030,6 +1032,108 @@ def test_no_lastfm_data_means_no_shares_rather_than_zero_shares():
     """An outage must leave the tiering on its guess, not flatten it."""
     assert song_shares({"u": "Anything"}, None) == {}
     assert song_shares({"u": "Anything"}, []) == {}
+
+
+# --- The era and genre lane -----------------------------------------------
+
+# Every tag list here is what Last.fm actually returned on 2026-09-15.
+BAD = ["pop", "80s", "michael jackson", "dance"]
+THIRD_ALBUM = ["soul", "70s", "motown", "family"]
+UNORTHODOX_JUKEBOX = ["pop", "rnb", "bruno mars", "american"]
+HUNTING_HIGH_AND_LOW = ["80s", "pop", "new wave", "synthpop"]
+RHYTHM_NATION = ["pop", "rnb", "80s", "dance"]
+WHENEVER_YOU_NEED_SOMEBODY = ["80s", "brutal death metal", "dance", "pop"]
+
+
+def test_the_artists_own_name_is_not_a_genre():
+    """Half of Last.fm's top tags are the act being tagged."""
+    _, genres = lane_of(BAD, "Michael Jackson")
+    assert "michael jackson" not in genres
+    assert genres == {"pop", "dance"}
+
+
+def test_a_nationality_is_not_a_genre():
+    """Matching on "american" would pair a country record with a rap one."""
+    _, genres = lane_of(UNORTHODOX_JUKEBOX, "Bruno Mars")
+    assert genres == {"pop", "rnb"}
+
+
+def test_the_decade_is_read_off_the_tags():
+    decades, _ = lane_of(BAD, "Michael Jackson")
+    assert decades == {1980}
+
+
+def test_a_two_digit_decade_cannot_span_a_century():
+    """The 90s and the 00s are neighbours, not ninety years apart."""
+    nineties, _ = lane_of(["90s"], "")
+    noughties, _ = lane_of(["00s"], "")
+    assert nineties == {1990}
+    assert noughties == {2000}
+    assert in_lane((noughties, {"pop"}), (nineties, {"pop"}))
+
+
+def test_the_1970_motown_record_is_out_of_an_eighties_pop_lane():
+    """Jeff's objection, and it is era and genre rather than kinship:
+    "the jackson 5 dont really belong as such ... ther are not really pop"."""
+    lane = lane_of(BAD, "Michael Jackson")
+    assert not in_lane(lane_of(THIRD_ALBUM, "The Jackson 5"), lane)
+
+
+def test_a_2012_record_is_caught_by_having_no_decade_at_all():
+    """Nobody tags a modern record "10s", so the absence is the signal.
+
+    Bruno Mars's "Locked Out of Heaven" is tagged pop and rnb, which
+    overlaps an 80s pop lane perfectly. Genre alone waves it straight
+    through; only the missing decade catches it.
+    """
+    lane = lane_of(BAD, "Michael Jackson")
+    decades, genres = lane_of(UNORTHODOX_JUKEBOX, "Bruno Mars")
+    assert decades == set()
+    assert genres & {"pop"}
+    assert in_lane((decades, genres), lane) is False
+
+
+def test_no_decade_is_only_damning_when_the_album_is_tagged_at_all():
+    """The difference between Bruno Mars and Billy Ocean. One came back
+    tagged with no decade; the other came back with nothing at all."""
+    lane = lane_of(BAD, "Michael Jackson")
+    assert in_lane((set(), set()), lane) is True
+    assert in_lane((set(), {"pop"}), lane) is False
+
+
+def test_the_records_that_belong_survive():
+    lane = lane_of(BAD, "Michael Jackson")
+    assert in_lane(lane_of(HUNTING_HIGH_AND_LOW, "a-ha"), lane)
+    assert in_lane(lane_of(RHYTHM_NATION, "Janet Jackson"), lane)
+
+
+def test_a_joke_tag_does_no_harm_while_the_real_ones_overlap():
+    """Rick Astley's album really does list "brutal death metal". Anything
+    keying on the top tag alone would have filed him under it."""
+    lane = lane_of(BAD, "Michael Jackson")
+    assert in_lane(lane_of(WHENEVER_YOU_NEED_SOMEBODY, "Rick Astley"), lane)
+
+
+def test_an_untagged_album_is_kept_rather_than_rejected():
+    """Billy Ocean's "Caribbean Queen", a 1984 number one, was dropped for
+    having no album tags. Absence is not evidence, which is how too_deep
+    and drop_outliers already treat a missing number."""
+    lane = lane_of(BAD, "Michael Jackson")
+    assert in_lane((set(), set()), lane)
+
+
+def test_an_adjacent_decade_is_close_enough():
+    """"Part-Time Lover" is 1985 and its album reads 70s, because album
+    tags inherit where an artist's audience lives rather than a date."""
+    lane = lane_of(BAD, "Michael Jackson")
+    assert in_lane(({1970}, {"soul", "pop"}), lane)
+    # Two decades out is a different hour, though.
+    assert not in_lane(({1960}, {"pop"}), lane)
+
+
+def test_a_lane_with_no_tags_of_its_own_keeps_everything():
+    """An untagged seed must not silently empty the pool."""
+    assert in_lane(lane_of(THIRD_ALBUM, "The Jackson 5"), (set(), set()))
 
 
 # --- Seeding from the song's crowd rather than the artist's --------------
