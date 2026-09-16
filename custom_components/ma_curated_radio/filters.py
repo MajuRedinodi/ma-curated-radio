@@ -1555,6 +1555,143 @@ def lane_match(
     return LANE_MATCH
 
 
+_INFOBOX_DATE = re.compile(
+    # Up to the next field, the end of the template, or the end of what
+    # we were given: an infobox is usually followed by another field, but
+    # a truncated article or a fragment ends without one.
+    r"\|\s*(?:released|recorded)\s*=\s*(.+?)(?=\n\s*\||\n\s*\}\}|\Z)",
+    re.I | re.S,
+)
+_YEAR_IN_TEXT = re.compile(r"\b(1[89]\d{2}|20[0-2]\d)\b")
+
+# Nothing before this is a recording. Guards against a year picked out of
+# a composer's birth date or a citation to a nineteenth-century source.
+_FIRST_RECORDED_YEAR: Final = 1890
+
+
+def earliest_year(wikitext: str) -> int | None:
+    """The earliest Released or Recorded year in a Wikipedia infobox.
+
+    Both fields, because they differ and the earlier one is the truth for
+    an era: Big Thief's "Spud Infinity" was recorded 2020 and released
+    2022, and Hank Williams' "Hey, Good Lookin'" was cut in March 1951
+    and issued that June.
+
+    The earliest of everything found, not the first match. An infobox
+    lists later releases too, and taking the first gave 1983 for "Hello
+    in There", which is a 1971 song reissued as a single.
+
+    None where the article carries no date at all, which is a real case:
+    a song can have an article and no infobox dates, and the caller must
+    read that as "unknown" rather than as "undated therefore modern".
+    """
+    years: list[int] = []
+    for field in _INFOBOX_DATE.findall(wikitext or ""):
+        for found in _YEAR_IN_TEXT.findall(field):
+            year = int(found)
+            if year >= _FIRST_RECORDED_YEAR:
+                years.append(year)
+    return min(years) if years else None
+
+
+# Longer than this is a sentence rather than a genre: a malformed field
+# can swallow half an article.
+_LONGEST_GENRE: Final = 40
+
+# Longer than this is a sentence rather than a genre name: a malformed
+# field can otherwise swallow half an article.
+_LONGEST_GENRE: Final = 40
+
+_INFOBOX_GENRE = re.compile(
+    r"\|\s*genre\s*=\s*(.+?)(?=\n\s*\||\n\s*\}\}|\Z)", re.I | re.S
+)
+_WIKI_LINK = re.compile(r"\[\[(?:[^\]|]*\|)?([^\]|]+)\]\]")
+_WIKI_TEMPLATE = re.compile(r"\{\{[^}]*?\}\}")
+_WIKI_REF = re.compile(r"<ref[^>]*>.*?</ref>|<ref[^>]*/>", re.S)
+# Inline citation templates, which carry author surnames and page numbers
+# and must be dropped whole rather than unwrapped.
+_CITATION = re.compile(
+    r"\{\{\s*(?:sfn|sfnp|harv\w*|cite\w*|r|efn|refn|ref\w*)\b[^{}]*\}\}", re.I
+)
+
+
+def infobox_genres(wikitext: str) -> set[str]:
+    """What a song's own Wikipedia infobox calls it.
+
+    Better evidence than an album's Last.fm tags for the same reason the
+    year is: this describes the record, where album tags describe
+    whichever compilation the track was filed under. "Hey, Good Lookin'"
+    is country on its own article and untagged on the compilation Last.fm
+    files it against.
+
+    Markup is stripped rather than parsed. A genre field is written every
+    way a wiki allows: "[[Country music|Country]]", a hlist template, a
+    plain comma-separated line, any of them trailed by citations.
+    """
+    field = _INFOBOX_GENRE.search(wikitext or "")
+    if not field:
+        return set()
+    text = _WIKI_REF.sub(" ", field.group(1))
+    # Citations go before anything else unwraps them. A genre field is
+    # often sourced inline, and keeping the contents turned the authors
+    # of a Hank Williams biography into genres called "escott" and
+    # "macewen".
+    text = _CITATION.sub(" ", text)
+    text = _WIKI_LINK.sub(r"\1", text)
+    # Remaining templates wrap lists: drop the wrapper, keep the
+    # pipe-separated contents it was holding.
+    text = text.replace("{{", " ").replace("}}", " ")
+    text = re.sub(r"\b(?:hlist|flatlist|plainlist|nowrap|ubl)\b", " ", text, flags=re.I)
+    found = set()
+    for part in re.split(r"[,|/\n]+", text):
+        # Normalised exactly as ``lane_of`` normalises a Last.fm tag, and
+        # no further. Folding punctuation here would turn "synth-pop"
+        # into "synthpop" and it would then never match the Last.fm tag
+        # of the same name, which is the whole point of collecting it.
+        # A wiki list writes each entry as a bullet, which survives the
+        # newline split as a leading marker.
+        name = part.strip().lstrip("*#:;").strip().lower()
+        if name and not name.isdigit() and len(name) <= _LONGEST_GENRE:
+            found.add(name)
+    return found
+
+
+def best_article(results: Sequence[str], title: str, artist: str) -> str:
+    """Which search result is the article for this recording.
+
+    Searching is not optional. A direct title lookup for "Hey Good
+    Lookin'" resolves to a real but different article carrying no dates,
+    which is indistinguishable from a genuine gap and is how three
+    separate attempts concluded the data did not exist. The search for
+    the same phrase plus the artist puts "Hey, Good Lookin' (song)"
+    first.
+
+    Prefers a result whose name carries the song disambiguator, then one
+    matching the title once punctuation is folded, then the top hit.
+    Rejects a result that is merely the artist's own page, which is what
+    comes back when a track has no article of its own.
+    """
+    if not results:
+        return ""
+    wanted = _folded(title)
+    performer = _folded(artist)
+    scored: list[tuple[int, str]] = []
+    for name in results:
+        folded = _folded(name)
+        if folded == performer:
+            continue  # the artist's page, not the song's
+        rank = 0
+        if wanted and wanted in folded:
+            rank += 2
+        if "song" in name.lower() or "single" in name.lower():
+            rank += 1
+        scored.append((rank, name))
+    if not scored:
+        return ""
+    best = max(scored, key=lambda pair: pair[0])
+    return best[1] if best[0] else scored[0][1]
+
+
 def crowd_pool(
     crowd: Sequence[tuple[str, str, float]],
     seed_artist: str,

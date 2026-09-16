@@ -15,13 +15,16 @@ from filters import (
     TIER_DEEP,
     TIER_POWER,
     base_title,
+    best_article,
     clean_similar_artists,
     close_to_home,
     credits_artist,
     crowd_pool,
     depth_bar,
     drop_outliers,
+    earliest_year,
     in_lane,
+    infobox_genres,
     is_demo,
     is_holiday,
     is_live,
@@ -1139,6 +1142,114 @@ def test_no_data_means_no_opinion_rather_than_nothing_left():
     """A Last.fm outage must cost variety, not the batch."""
     assert usable_songs(None, 0.05) == 0
     assert usable_songs([], 0.05) == 0
+
+
+# --- When a record was actually made --------------------------------------
+
+# The real infobox from "Hey, Good Lookin' (song)", which is the record
+# every other source dated wrongly: Last.fm to an undated compilation,
+# MusicBrainz to a 1970 reissue, Wikidata to nothing at all.
+HANK_INFOBOX = """{{Infobox song
+| name = Hey, Good Lookin'
+| artist = [[Hank Williams]]
+| released = {{Start date|1951|6|22}}
+| recorded = {{Start date|1951|3|16}}<ref>{{Cite web|title=78rpm Issues}}</ref>
+| genre = [[Country music|Country]]
+}}"""
+
+# "Hello in There": a 1971 song whose infobox also lists a 1983 single.
+PRINE_INFOBOX = """{{Infobox song
+| name = Hello in There
+| recorded = 1971
+| released = 1983
+}}"""
+
+
+def test_the_earliest_year_is_taken_not_the_first_one_listed():
+    """An infobox lists later releases too. Taking the first match gave
+    1983 for a 1971 song."""
+    assert earliest_year(PRINE_INFOBOX) == 1971
+
+
+def test_recorded_counts_as_well_as_released():
+    """They differ, and the earlier is the truth about an era. Hank
+    Williams cut this in March 1951 and it was issued that June."""
+    assert earliest_year(HANK_INFOBOX) == 1951
+
+
+def test_no_date_in_the_infobox_means_unknown_not_modern():
+    """A song can have an article and no dates. Reading that as recent is
+    what would throw out most of a country batch."""
+    assert earliest_year("{{Infobox song\n| name = Something\n}}") is None
+    assert earliest_year("") is None
+
+
+def test_a_year_from_before_recording_existed_is_not_a_release_date():
+    """Guards against picking a composer's birth year or an old citation
+    out of the field."""
+    assert earliest_year("| released = 1826 revival, reissued 1962") == 1962
+
+
+def test_the_genre_comes_off_the_song_not_off_a_compilation():
+    """The other half of the lane, and better evidence than album tags:
+    this describes the record rather than whichever compilation the track
+    was filed under."""
+    assert infobox_genres(HANK_INFOBOX) == {"country"}
+
+
+@pytest.mark.parametrize(
+    ("field", "expected"),
+    [
+        # Every way a wiki genre field actually gets written.
+        ("| genre = [[Country music|Country]]", {"country"}),
+        ("| genre = [[Rock music|Rock]], [[Pop music|Pop]]", {"rock", "pop"}),
+        ("| genre = {{hlist|[[Folk]]|[[Americana]]}}", {"folk", "americana"}),
+        ("| genre = Outlaw country<ref>{{cite web|title=x}}</ref>", {"outlaw country"}),
+        # A wiki bulleted list, which is how most multi-genre fields are
+        # written. The markers survive the newline split.
+        ("| genre =\n* [[Alternative rock]]\n* [[Pop-punk]]", {"alternative rock", "pop-punk"}),
+        # An inline citation, which carries the authors of whatever book
+        # sourced the claim. Unwrapped rather than dropped, a Hank
+        # Williams biography contributed genres called "escott" and
+        # "macewen".
+        ("| genre = [[Honky-tonk]]{{sfn|Escott|MacEwen|2004|p=12}}", {"honky-tonk"}),
+        # Normalised the same way a Last.fm tag is, and no further, or the
+        # two spellings of one genre would never meet.
+        ("| genre = [[Synth-pop]] / [[new wave]]", {"synth-pop", "new wave"}),
+        ("| genre = ", set()),
+    ],
+)
+def test_genre_survives_the_markup(field, expected):
+    assert infobox_genres(field) == expected
+
+
+def test_the_song_article_is_preferred_over_the_bare_title():
+    """The trap that made three separate attempts conclude the data did
+    not exist: "Hey Good Lookin'" without the comma is a real article
+    with no dates in it, and search returns both."""
+    hits = ["Hey, Good Lookin' (song)", "Hey Good Lookin'", "Hank Wilson's Back"]
+    assert best_article(hits, "Hey Good Lookin'", "Hank Williams") == (
+        "Hey, Good Lookin' (song)"
+    )
+
+
+def test_a_disambiguated_article_is_found_under_another_artists_name():
+    """Waylon's "Amanda" lives at the Don Williams article."""
+    hits = ["Amanda (Don Williams song)", "Waylon Jennings albums discography"]
+    assert best_article(hits, "Amanda", "Waylon Jennings") == (
+        "Amanda (Don Williams song)"
+    )
+
+
+def test_the_artists_own_page_is_never_the_answer():
+    """What comes back when a track has no article of its own. Taking it
+    would date every such song to the artist's debut."""
+    hits = ["Big Thief", "Dragon New Warm Mountain I Believe in You"]
+    assert best_article(hits, "Spud Infinity", "Big Thief") != "Big Thief"
+
+
+def test_no_results_is_no_article():
+    assert best_article([], "Anything", "Anyone") == ""
 
 
 # --- The era and genre lane -----------------------------------------------
