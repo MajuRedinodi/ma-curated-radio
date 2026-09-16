@@ -1403,16 +1403,23 @@ def in_lane(
         return True
     if want_genres and got_genres and not (got_genres & want_genres):
         return False
-    if not want_decades:
-        # The lane itself has no era to hold anything to.
+    if not want_decades or not got_decades:
+        # An era can only be enforced between two known eras. A missing
+        # decade used to be read as "recent, therefore reject", which was
+        # generalised from a single pop example and is catastrophic
+        # elsewhere: country albums are largely not decade-tagged, and on
+        # a real Colter Wall lane that rule would have thrown out ten of
+        # fifteen artists, among them Loretta Lynn, Merle Haggard and
+        # George Jones. Absence of evidence gets the same benefit of the
+        # doubt it gets in ``too_deep`` and ``drop_outliers``.
+        #
+        # What this gives up is catching Bruno Mars's "Locked Out of
+        # Heaven" on an 80s station. That is handled where it actually
+        # matters instead: see ``lane_match``, which keeps an unplaceable
+        # record out of the *reseed* even while letting it play. One
+        # off-era song is a song; an off-era seed is the rest of the
+        # evening.
         return True
-    if not got_decades:
-        # Tagged, and nobody reached for a decade. On a record people know
-        # that means recent, because nobody tags a 2012 album "10s". This
-        # is the only thing that catches Bruno Mars's "Locked Out of
-        # Heaven" on an 80s station: its genres are pop and rnb, so genre
-        # alone waves it straight through.
-        return False
     return any(
         abs(got - want) <= decade_slack * 10
         for got in got_decades
@@ -1507,6 +1514,45 @@ def stratified_sample(
             name for name in names if name not in taken
         )
     return drawn[:count]
+
+
+LANE_MATCH: Final = 2
+LANE_UNKNOWN: Final = 1
+LANE_CLASH: Final = 0
+
+
+def lane_match(
+    candidate: tuple[set[int], set[str]],
+    lane: tuple[set[int], set[str]],
+    *,
+    decade_slack: int = 1,
+) -> int:
+    """How confidently a record belongs to a lane: match, unknown, or clash.
+
+    ``in_lane`` answers yes or no and gives an unplaceable record the
+    benefit of the doubt, which is right for deciding what may play. It
+    is wrong for deciding what the next hour is built from, because a
+    seed carries its era into every track that follows it. So this
+    separates "known to fit" from "nothing known", and the reseed prefers
+    the first.
+
+    The effect is self-adjusting by genre, which is the point. Pop albums
+    are decade-tagged, so on an 80s station the genuine 80s records rank
+    MATCH and a record like "Locked Out of Heaven" ranks UNKNOWN and is
+    passed over for seeding while still being allowed to play. Country
+    albums are largely not decade-tagged, so nearly everything ranks
+    UNKNOWN, the ordering flattens, and this stops having an opinion
+    rather than starting to guess.
+    """
+    want_decades, want_genres = lane
+    got_decades, got_genres = candidate
+    if not in_lane(candidate, lane, decade_slack=decade_slack):
+        return LANE_CLASH
+    if not (want_decades and got_decades):
+        return LANE_UNKNOWN
+    if want_genres and not (got_genres & want_genres):
+        return LANE_UNKNOWN
+    return LANE_MATCH
 
 
 def crowd_pool(

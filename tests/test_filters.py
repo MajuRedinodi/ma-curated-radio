@@ -9,6 +9,9 @@ import random
 
 import pytest
 from filters import (
+    LANE_CLASH,
+    LANE_MATCH,
+    LANE_UNKNOWN,
     TIER_DEEP,
     TIER_POWER,
     base_title,
@@ -26,6 +29,7 @@ from filters import (
     is_remix,
     is_too_short,
     keep_one_act,
+    lane_match,
     lane_of,
     lead_among_credits,
     lean_toward_strength,
@@ -1182,26 +1186,43 @@ def test_the_1970_motown_record_is_out_of_an_eighties_pop_lane():
     assert not in_lane(lane_of(THIRD_ALBUM, "The Jackson 5"), lane)
 
 
-def test_a_2012_record_is_caught_by_having_no_decade_at_all():
-    """Nobody tags a modern record "10s", so the absence is the signal.
+def test_an_undated_record_may_play_but_must_not_seed():
+    """The rule that replaced "no decade means reject".
 
-    Bruno Mars's "Locked Out of Heaven" is tagged pop and rnb, which
-    overlaps an 80s pop lane perfectly. Genre alone waves it straight
-    through; only the missing decade catches it.
+    Rejecting on a missing decade was generalised from one pop example
+    and is ruinous elsewhere: on a real Colter Wall lane, ten of fifteen
+    country artists had no decade tag, among them Loretta Lynn, Merle
+    Haggard and George Jones. So an unplaceable record is allowed to
+    play.
+
+    What still has to hold is Jeff's condition for accepting that: it
+    must not become the seed. One off-era song is a song; an off-era seed
+    carries its era into the whole of the next hour.
     """
     lane = lane_of(BAD, "Michael Jackson")
-    decades, genres = lane_of(UNORTHODOX_JUKEBOX, "Bruno Mars")
-    assert decades == set()
-    assert genres & {"pop"}
-    assert in_lane((decades, genres), lane) is False
+    bruno = lane_of(UNORTHODOX_JUKEBOX, "Bruno Mars")
+    assert bruno[0] == set()
+    assert in_lane(bruno, lane) is True
+    assert lane_match(bruno, lane) == LANE_UNKNOWN
+
+    # And a record that genuinely belongs outranks it for seeding.
+    madonna = lane_of(["pop", "80s", "dance"], "Madonna")
+    assert lane_match(madonna, lane) == LANE_MATCH
+    assert LANE_MATCH > LANE_UNKNOWN
 
 
-def test_no_decade_is_only_damning_when_the_album_is_tagged_at_all():
-    """The difference between Bruno Mars and Billy Ocean. One came back
-    tagged with no decade; the other came back with nothing at all."""
+def test_a_wrong_era_record_is_a_clash_rather_than_merely_unknown():
+    """The Jackson 5 case still has to rank below everything else."""
     lane = lane_of(BAD, "Michael Jackson")
-    assert in_lane((set(), set()), lane) is True
-    assert in_lane((set(), {"pop"}), lane) is False
+    assert lane_match(lane_of(THIRD_ALBUM, "The Jackson 5"), lane) == LANE_CLASH
+
+
+def test_where_nothing_is_dated_the_ranking_flattens_rather_than_guesses():
+    """Country albums are largely not decade-tagged, so on a country lane
+    almost everything ranks the same and this stops having an opinion."""
+    lane = lane_of(["country", "americana", "acoustic"], "Colter Wall")
+    for tags in (["country", "outlaw country"], ["country", "classic country"]):
+        assert lane_match(lane_of(tags, "x"), lane) == LANE_UNKNOWN
 
 
 def test_the_records_that_belong_survive():

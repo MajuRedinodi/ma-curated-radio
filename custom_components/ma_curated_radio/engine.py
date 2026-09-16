@@ -53,6 +53,8 @@ from .decide import leading_pool, starts_station
 from .feedback import SkipMemory
 from .filters import (
     FOOTNOTE_SHARE,
+    LANE_MATCH,
+    LANE_UNKNOWN,
     NEIGHBOURHOOD_SIZE,
     TIER_PATTERN,
     TIER_POWER,
@@ -66,6 +68,7 @@ from .filters import (
     drop_outliers,
     in_lane,
     keep_one_act,
+    lane_match,
     lane_of,
     lead_among_credits,
     lean_toward_strength,
@@ -230,6 +233,11 @@ class CuratedRadioEngine:
         # (artist, base title). Albums recur heavily inside a lane, so the
         # second batch of an evening pays almost nothing for this.
         self._lanes: dict[tuple[str, str], tuple[set[int], set[str]]] = {}
+        # The lane of the song that started this station. Every reseed is
+        # judged against it rather than against wherever the last hour
+        # drifted to, so an off-era track can play without becoming the
+        # seed that carries its era into the rest of the evening.
+        self._origin_lane: tuple[set[int], set[str]] = (set(), set())
         # Its own generator so reseed choices can be reproduced in tests.
         self._rng = random.Random()
         # Artists that actually contributed to the last batch. A refill
@@ -473,7 +481,7 @@ class CuratedRadioEngine:
         # strong records of the batch just played, which is what keeps the
         # whole evening track-level rather than handing hour two back to
         # the artist graph.
-        crowd_from, crowd_of = self._crowd_seed(
+        crowd_from, crowd_of = await self._async_crowd_seed(
             starting, seed, queue.current_title, lead
         )
         artists = [
@@ -1143,7 +1151,7 @@ class CuratedRadioEngine:
         played = self._played.get(artist.strip().lower(), 0)
         return played >= usable_songs(known, USABLE_SHARE) > 0
 
-    def _crowd_seed(
+    async def _async_crowd_seed(
         self, starting: bool, seed: str, playing: str, lead: str
     ) -> tuple[str, str]:
         """The record whose crowd this batch is drawn from, if any.
@@ -1159,10 +1167,14 @@ class CuratedRadioEngine:
         if not self._settings.seed_from_song:
             return "", ""
         if starting:
+            # The station's own lane is settled here, on the song that
+            # started it, and every later reseed is judged against it
+            # rather than against whatever the last hour drifted to.
+            self._origin_lane = await self._async_lane(seed, playing)
             return seed, playing
-        return self._reseed_song(lead)
+        return await self._async_reseed_song(lead)
 
-    def _reseed_song(self, lead: str) -> tuple[str, str]:
+    async def _async_reseed_song(self, lead: str) -> tuple[str, str]:
         """Which record of the last batch the next hour is built from.
 
         Sampled among the Power tier rather than taken from the top of it.
@@ -1187,6 +1199,25 @@ class CuratedRadioEngine:
         ] or self._last_power
         if not candidates:
             return "", ""
+        if self._origin_lane and self._origin_lane != (set(), set()):
+            # Permissive about what plays, strict about what seeds. A
+            # record from the wrong era is one song; the same record as a
+            # seed carries its era into every track of the next hour and
+            # every hour after that. So a candidate that cannot be placed
+            # is passed over while any that positively matches the
+            # station's own lane is available.
+            ranked: dict[int, list[tuple[str, str]]] = {}
+            for who, song in candidates:
+                rank = lane_match(await self._async_lane(who, song), self._origin_lane)
+                ranked.setdefault(rank, []).append((who, song))
+            best = ranked.get(LANE_MATCH) or ranked.get(LANE_UNKNOWN) or candidates
+            if len(best) < len(candidates):
+                _LOGGER.debug(
+                    "Reseeding from %d of %d records that fit the station's lane",
+                    len(best),
+                    len(candidates),
+                )
+            candidates = best
         return self._rng.choice(candidates)
 
     @staticmethod
