@@ -779,11 +779,29 @@ class CuratedRadioEngine:
 
         active = session or self._listening
         cap = self._degree_cap
-        allowed = set(active.eligible(seed, [name for name, _ in candidates], cap))
-        if not allowed and active.origin and seed != active.origin:
+        # Count the hop in the graph actually being walked. A crowd is
+        # reached from a record already playing in this station, so its
+        # artists are one step from THAT artist, not from whoever the pool
+        # was seeded on. Measuring them against the artist graph counted a
+        # hop nothing took, and since a crowd deliberately reaches names
+        # artist similarity never would, they were routinely judged too
+        # far and the whole station fell back to the artist graph.
+        parent = crowd_from if from_crowd and crowd_from else seed
+        allowed = set(active.eligible(parent, [name for name, _ in candidates], cap))
+        if not allowed and active.origin and parent != active.origin:
             # At the edge of the fence with nothing eligible nearby. Pull
-            # back toward the origin rather than stalling out there.
-            _LOGGER.debug("Nothing within %s degrees of %s; falling back", cap, seed)
+            # back toward the origin rather than stalling out there, on
+            # the artist graph, because a crowd that has just been judged
+            # entirely out of bounds is not the thing to try again.
+            #
+            # The crowd is deliberately NOT carried into this call. It
+            # cannot be: the crowd's parent does not change, so the same
+            # judgement would repeat and the recursion would never end.
+            # Logged at info rather than debug because it switches the
+            # whole of 0.40 off for a batch, and the one time it happened
+            # silently it looked like the era filter was broken when it
+            # had simply never run.
+            self._log_fence_fallback(from_crowd, crowd_of or parent, cap, active.origin)
             return await self._async_similar_artists(active.origin, cache, active)
 
         eligible = [pair for pair in candidates if pair[0] in allowed]
@@ -1170,6 +1188,28 @@ class CuratedRadioEngine:
         if not candidates:
             return "", ""
         return self._rng.choice(candidates)
+
+    @staticmethod
+    def _log_fence_fallback(
+        from_crowd: bool, subject: str, cap: int | None, origin: str
+    ) -> None:
+        """Say when the fence sent a batch back to artist similarity.
+
+        Info rather than debug on the crowd path, because it turns the
+        whole of the song-seeding work off for that batch. The one time
+        it happened quietly it looked exactly like a broken era filter,
+        when the filter had simply never been reached.
+        """
+        if from_crowd:
+            _LOGGER.info(
+                "Every artist %s suggests is outside %s degrees of %s; "
+                "this batch falls back to artist similarity",
+                subject,
+                cap,
+                origin,
+            )
+        else:
+            _LOGGER.debug("Nothing within %s degrees of %s; falling back", cap, subject)
 
     async def _async_draw_in_lane(
         self,

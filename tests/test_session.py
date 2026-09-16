@@ -66,6 +66,28 @@ def test_unknown_parent_is_treated_as_the_frontier():
     assert s.eligible("Some Stranger", ["Metallica"], 3) == []
 
 
+def test_the_parent_decides_the_hop_which_is_why_it_must_be_the_right_one():
+    """The Hank Williams Jr. refill, 16 Sep.
+
+    A crowd is reached from a record already playing in the station, so
+    its artists are one hop from THAT artist. Judging them against the
+    artist the pool happened to be seeded on counted a hop nothing took:
+    Colter Wall sat at the fence edge, so every name his record's crowd
+    offered was refused, and the station fell back to artist similarity
+    with the whole of the song-seeding work silently switched off.
+
+    Same candidates, same session, same cap. Only the parent differs.
+    """
+    s = ListeningSession.start("Hank Williams Jr.")
+    s.admit("Colter Wall", 2)
+    crowd = ["Tyler Childers", "Charley Crockett"]
+    # Judged from the far-flung artist the pool was seeded on: refused.
+    assert s.eligible("Colter Wall", crowd, 2) == []
+    # Judged from the artist whose record the crowd actually came from,
+    # which in this case is the origin itself: admitted.
+    assert s.eligible("Hank Williams Jr.", crowd, 2) == crowd
+
+
 def test_re_anchoring_defeats_the_fence():
     """Why a false manual pick was worse than no fence at all.
 
