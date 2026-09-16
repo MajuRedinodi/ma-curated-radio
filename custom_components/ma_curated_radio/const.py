@@ -426,3 +426,39 @@ def with_style_value(
 # few seconds after each batch, batched with any other change.
 STATION_STORAGE_VERSION: Final = 1
 STATION_SAVE_DELAY: Final = 10
+
+# --- What is known about a record ---------------------------------------
+
+# One store for every player, rather than one per config entry. A release
+# year is a fact about a record, not about a room, so the living room and
+# the phone would otherwise each pay to learn it. The consequence is that
+# removing a player must not delete this file, which async_remove_entry
+# has to know about.
+FACTS_STORAGE_KEY: Final = f"{DOMAIN}.music_facts"
+
+# The schema version, carried from the first write. Adding a field never
+# needs it, because every read defaults and a record written before a
+# field existed simply reads as not knowing it. It is here for the changes
+# that do break old data: renaming the key format, changing what a field
+# means, or dropping one something still reads. The skip memory shipped
+# without one and its shape can therefore never change.
+FACTS_STORAGE_VERSION: Final = 1
+
+# Longer than the station's ten seconds, because this file grows while
+# the station's does not, and one write per batch is plenty. Store
+# rewrites the whole file on every save, so the delay is what keeps a
+# batch's twenty lookups down to a single write.
+FACTS_SAVE_DELAY: Final = 30
+
+# How long a failed lookup stays believed, and why one failed, both live
+# in facts.py alongside the record they describe. That module imports
+# nothing from this integration so the rules can be tested without Home
+# Assistant, which is the same reason decide.py and session.py hold their
+# own figures.
+
+# How many records one batch may look up for the first time. Everything
+# past the budget falls back to what album tags say, as it did before
+# this existed, and is looked up by a later batch instead. A first batch
+# on an empty store would otherwise want a lookup for every candidate it
+# considers, including the ones it goes on to reject.
+FACTS_LOOKUPS_PER_BATCH: Final = 25

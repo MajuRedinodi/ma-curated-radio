@@ -24,7 +24,7 @@ from typing import Any
 
 import aiohttp
 
-from .filters import best_article, earliest_year
+from .filters import best_article, earliest_year, infobox_genres
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ TIMEOUT = aiohttp.ClientTimeout(total=20)
 # Wikipedia asks that a client identify itself and says so in its own
 # API etiquette; an anonymous agent is the one thing that gets throttled.
 USER_AGENT = (
-    "ma-curated-radio/0.50 "
+    "ma-curated-radio/0.51 "
     "( https://github.com/MajuRedinodi/ma-curated-radio )"
 )
 
@@ -102,16 +102,22 @@ async def async_find_article(
     return best_article(hits, title, artist)
 
 
-async def async_get_years(
+async def async_get_facts(
     session: aiohttp.ClientSession, articles: list[str]
-) -> dict[str, int]:
-    """The earliest Released or Recorded year for each article given.
+) -> dict[str, tuple[int | None, tuple[str, ...]]]:
+    """The year and genres each article gives, by article name.
 
     Fifty at a time, which is the API's own ceiling and means a whole
-    batch usually costs one request. Articles with no date in the infobox
-    are simply absent from the result rather than present with a guess.
+    batch usually costs one request. Both halves come out of the same
+    infobox, so asking for them together is free and asking separately
+    would double the traffic for nothing.
+
+    An article that answered neither is still present in the result, as
+    ``(None, ())``. That is the distinction the caller needs: an article
+    with a thin infobox is the right page and wants a different field,
+    while an article that was never found wants a better search.
     """
-    found: dict[str, int] = {}
+    found: dict[str, tuple[int | None, tuple[str, ...]]] = {}
     wanted = [name for name in articles if name]
     for start in range(0, len(wanted), ARTICLES_PER_FETCH):
         chunk = wanted[start : start + ARTICLES_PER_FETCH]
@@ -141,11 +147,13 @@ async def async_get_years(
             if not revisions:
                 continue
             text = ((revisions[0].get("slots") or {}).get("main") or {}).get("content")
-            year = earliest_year(str(text or ""))
-            if year is None:
-                continue
+            wikitext = str(text or "")
+            detail = (
+                earliest_year(wikitext),
+                tuple(sorted(infobox_genres(wikitext))),
+            )
             name = str(page.get("title") or "")
-            found[name] = year
+            found[name] = detail
             if name in renamed:
-                found[renamed[name]] = year
+                found[renamed[name]] = detail
     return found

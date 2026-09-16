@@ -49,6 +49,9 @@ from .const import (
     DEFAULT_PLAYLIST_NAME,
     DEFAULT_SEARCH_RESULTS,
     DOMAIN,
+    FACTS_SAVE_DELAY,
+    FACTS_STORAGE_KEY,
+    FACTS_STORAGE_VERSION,
     LEGACY_SEED_LEANS,
     MODE_REPLACE,
     MODES,
@@ -64,6 +67,7 @@ from .const import (
 from .coordinator import CuratedRadioDetector
 from .engine import CuratedRadioEngine
 from .entry_data import resolve_player
+from .facts import FactBook
 from .feedback import STORAGE_VERSION as SKIP_STORAGE_VERSION
 from .feedback import SkipMemory
 from .settings import Settings
@@ -232,7 +236,12 @@ async def async_setup_entry(
     await skips.async_load()
 
     engine = CuratedRadioEngine(
-        hass, settings, async_get_clientsession(hass), skips, entry.entry_id
+        hass,
+        settings,
+        async_get_clientsession(hass),
+        skips,
+        entry.entry_id,
+        await _async_facts(hass),
     )
     await engine.async_load()
     detector = CuratedRadioDetector(hass, settings, engine, skips)
@@ -254,25 +263,33 @@ async def async_unload_entry(
 ) -> bool:
     """Unload a config entry, writing out anything still pending.
 
-    Both stores batch their writes over ten seconds, and a delayed write
-    outlives the objects that scheduled it. Flushing here keeps a skip
-    recorded moments before a reload, and stops a write landing after a
-    deleted entry's files have been removed and recreating them.
+    Every store batches its writes, and a delayed write outlives the
+    objects that scheduled it. Flushing here keeps a skip recorded moments
+    before a reload, and stops a write landing after a deleted entry's
+    files have been removed and recreating them.
     """
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     runtime = getattr(entry, "runtime_data", None)
     if runtime is not None:
         await runtime.skips.async_flush()
         await runtime.engine.async_flush()
+    await _async_flush_facts(hass)
     return unloaded
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Forget what a removed player remembered.
 
-    Both stores are keyed by entry id, so nothing else can ever read them
-    again, and leaving them behind means a player deleted and re-added
-    inherits nothing while the files stay in .storage for good.
+    Both stores listed here are keyed by entry id, so nothing else can
+    ever read them again, and leaving them behind means a player deleted
+    and re-added inherits nothing while the files stay in .storage for
+    good.
+
+    What is known about records is deliberately not in that list. It is
+    one file for every player, so deleting a player must not take it: the
+    release year of a record is not something the living room owns, and
+    removing one of two players would otherwise throw away everything
+    both of them had learned.
     """
     stores = (
         (f"{DOMAIN}.{entry.entry_id}", SKIP_STORAGE_VERSION),
@@ -280,6 +297,52 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     )
     for key, version in stores:
         await Store(hass, version, key).async_remove()
+
+
+async def _async_facts(hass: HomeAssistant) -> FactBook:
+    """What is known about records, loaded once however many players exist.
+
+    Held in hass.data rather than on a config entry, because it outlives
+    any one of them. The second player to set up gets the book the first
+    one loaded, so a year learned in the living room is already known on
+    the phone.
+
+    Writes are scheduled rather than immediate. Store rewrites the whole
+    file on every save and one batch learns about twenty records in a
+    burst, so the delay is what turns those into a single write.
+    """
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    if (known := domain_data.get("facts")) is not None:
+        return known
+    store: Store[dict[str, Any]] = Store(
+        hass, FACTS_STORAGE_VERSION, FACTS_STORAGE_KEY
+    )
+    try:
+        data = await store.async_load()
+    except Exception as err:  # noqa: BLE001 - a bad cache must not block setup
+        # Losing it costs lookups, not correctness, so setup carries on
+        # with an empty book and fills it again.
+        _LOGGER.warning("Could not read what is known about records: %s", err)
+        data = None
+    known = FactBook.from_dict(data)
+    known.bind(lambda: store.async_delay_save(known.as_dict, FACTS_SAVE_DELAY))
+    domain_data["facts"] = known
+    domain_data["facts_store"] = store
+    _LOGGER.debug("Know something about %s records", len(known))
+    return known
+
+
+async def _async_flush_facts(hass: HomeAssistant) -> None:
+    """Write out what was learned, rather than in thirty seconds.
+
+    A delayed write outlives whatever scheduled it, so a player unloading
+    seconds after a batch would otherwise drop what that batch learned.
+    """
+    domain_data = hass.data.get(DOMAIN) or {}
+    store = domain_data.get("facts_store")
+    known = domain_data.get("facts")
+    if store is not None and known is not None:
+        await store.async_save(known.as_dict())
 
 
 @callback

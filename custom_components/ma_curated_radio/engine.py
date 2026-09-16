@@ -28,6 +28,7 @@ from .const import (
     DEPTH_TOP_TRACKS,
     EXPLICIT_CLEAN,
     EXPLICIT_PREFER,
+    FACTS_LOOKUPS_PER_BATCH,
     FAMILIARITY_EXPONENT,
     HEARD_MINUTES,
     LASTFM_POOL_SIZE,
@@ -50,6 +51,7 @@ from .const import (
     signal_update,
 )
 from .decide import leading_pool, starts_station
+from .facts import MISS_NO_ARTICLE, MISS_NO_DATE, Fact, FactBook
 from .feedback import SkipMemory
 from .filters import (
     FOOTNOTE_SHARE,
@@ -108,6 +110,7 @@ from .ma import (
 )
 from .session import ListeningSession
 from .settings import Settings
+from .wikipedia import async_find_article, async_get_facts
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -189,6 +192,7 @@ class CuratedRadioEngine:
         session: aiohttp.ClientSession,
         skips: SkipMemory,
         entry_id: str,
+        facts: FactBook | None = None,
     ) -> None:
         """Set up the engine and its per-player memory."""
         self._hass = hass
@@ -196,6 +200,16 @@ class CuratedRadioEngine:
         self._settings = settings
         self._session = session
         self._skips = skips
+        # What is known about records, shared with every other player
+        # rather than learned again per room. Defaulted so a test can
+        # build an engine without one, in which case nothing is
+        # remembered past the session and the lane falls back to album
+        # tags exactly as it did before any of this existed.
+        self._facts = facts if facts is not None else FactBook()
+        # How many records this batch may still look up for the first
+        # time. Reset per batch, since the point is to bound one batch
+        # rather than the evening.
+        self._lookups_left = FACTS_LOOKUPS_PER_BATCH
         self._history = TitleHistory(settings.history_minutes, HEARD_MINUTES)
         self._native = NativeClient(hass, settings.ma_config_entry_id)
         self._lock = asyncio.Lock()
@@ -426,6 +440,7 @@ class CuratedRadioEngine:
 
     async def _async_build(self, mode: str, *, continuing: bool = True) -> BatchResult:
         """Do the work of one batch."""
+        self._lookups_left = FACTS_LOOKUPS_PER_BATCH
         settings = self._settings
         queue = await async_get_queue(self._hass, settings.player)
         if queue is None:
@@ -1362,13 +1377,36 @@ class CuratedRadioEngine:
     async def _async_lane(self, artist: str, title: str) -> tuple[set[int], set[str]]:
         """The era and genres of one record, cached for the entry's life.
 
-        Two lookups the first time and none afterwards. Albums recur
-        heavily inside a lane, so the second batch of an evening pays
-        almost nothing.
+        Two sources, and they fail in opposite directions. Album tags are
+        cheap and cover nearly everything, but the era they give is the
+        era of whatever album a song sits on now, which is how Hank
+        Williams' 1951 recording came to read as the undated compilation
+        carrying it. A release year from Wikipedia is the record's own, so
+        where it exists it wins outright.
+
+        Neither source is asked twice. The in-memory cache covers a
+        session and the fact book covers a restart, which is why the first
+        batch after one no longer re-learns the evening before it.
         """
         key = (artist.lower(), base_title(title))
         if key in self._lanes:
             return self._lanes[key]
+        decades, genres = await self._async_tag_lane(artist, title)
+        if (fact := await self._async_fact(artist, title, key[1])) is not None:
+            if fact.decade is not None:
+                # One known decade in place of whatever the album claimed,
+                # rather than both: the point is to correct the compilation,
+                # and keeping its decade too would leave the record matching
+                # the era it was reissued in.
+                decades = {fact.decade}
+            genres |= set(fact.genres)
+        self._lanes[key] = (decades, genres)
+        return self._lanes[key]
+
+    async def _async_tag_lane(
+        self, artist: str, title: str
+    ) -> tuple[set[int], set[str]]:
+        """What this record's album tags claim about it."""
         api_key = self._settings.lastfm_api_key
         album = await async_get_album_of(self._session, api_key, artist, title)
         tags = (
@@ -1376,8 +1414,59 @@ class CuratedRadioEngine:
             if album
             else []
         )
-        self._lanes[key] = lane_of(tags, artist)
-        return self._lanes[key]
+        return lane_of(tags, artist)
+
+    async def _async_fact(self, artist: str, title: str, base: str) -> Fact | None:
+        """What is known about one record, looking it up if nothing is.
+
+        Both spellings of the title are needed and they are not
+        interchangeable. ``base`` is what the record is filed under, so a
+        remaster and an album cut share one entry. ``title`` is what goes
+        to Wikipedia, because the folding strips the punctuation and
+        "Hey, Good Lookin'" is a better search than "hey good lookin".
+
+        Held to a budget per batch. A first batch against an empty book
+        would otherwise want two Wikipedia requests for every candidate it
+        considers, including the ones it goes on to reject, and while a
+        batch tops up a queue that still has tracks left to play rather
+        than blocking one, that is not a reason to spend fifty requests on
+        it.
+        """
+        if not self._facts.needs_lookup(artist, base):
+            return self._facts.touch(artist, base)
+        if self._lookups_left <= 0:
+            # Deliberately records nothing, so the next batch tries again.
+            # Album tags carry the lane in the meantime.
+            return self._facts.get(artist, base)
+        self._lookups_left -= 1
+        return await self._async_learn(artist, title, base)
+
+    async def _async_learn(self, artist: str, title: str, base: str) -> Fact:
+        """Ask Wikipedia about one record and write down what it said.
+
+        A failure is recorded as carefully as a success, because the two
+        kinds want different fixes and an undifferentiated pile of misses
+        is no use as a work list. No article found means the search needs
+        help; an article with no date is the right page and a thin
+        infobox.
+        """
+        article = await async_find_article(self._session, artist, title)
+        if not article:
+            return self._facts.remember(artist, base, miss=MISS_NO_ARTICLE)
+        detail = (await async_get_facts(self._session, [article])).get(article)
+        year, genres = detail if detail else (None, ())
+        if year is not None:
+            _LOGGER.debug(
+                "%s by %s is a %s record, from %s", title, artist, year, article
+            )
+        return self._facts.remember(
+            artist,
+            base,
+            year=year,
+            genres=genres,
+            article=article,
+            miss="" if year is not None else MISS_NO_DATE,
+        )
 
     async def _async_lookup_similar(self, seed: str) -> list[tuple[str, float]]:
         """Ask Last.fm about a seed, under its resolved name if it has one."""
