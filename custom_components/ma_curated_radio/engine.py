@@ -70,6 +70,7 @@ from .filters import (
     select_fresh_first,
     select_tracks,
     sequence_tiered,
+    song_shares,
     strong_artists,
     tier_of,
     too_deep,
@@ -116,6 +117,11 @@ class _Pools:
     per_artist: list[list[str]] = field(default_factory=list)
     title_by_uri: dict[str, str] = field(default_factory=dict)
     rank: dict[str, int] = field(default_factory=dict)
+    # Each song's listeners as a fraction of its artist's biggest, where
+    # Last.fm has the song. The tiering used to guess this from position
+    # and the guess inverted on deep positions; the numbers arrive here
+    # anyway for the depth limit, so they are kept rather than discarded.
+    share: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -479,7 +485,7 @@ class CuratedRadioEngine:
             (artist, uris, sizes.get(artist, 0))
             for artist, uris in zip(pool_artists, per_artist, strict=True)
         ]
-        tiers = tier_of(sized, TIER_DECAY, rank)
+        tiers = tier_of(sized, TIER_DECAY, rank, pools.share)
         ordered = sequence_tiered(
             per_artist,
             tiers,
@@ -500,7 +506,9 @@ class CuratedRadioEngine:
         if enqueued:
             self._history.add([title_by_uri[uri] for uri in enqueued])
 
-        reach_median, reach_low, counts = self._summarise(enqueued, sized, tiers, rank)
+        reach_median, reach_low, counts = self._summarise(
+            enqueued, sized, tiers, rank, pools.share
+        )
         if enqueued:
             self._last_pool = list(pool_artists)
             self._last_lead = lead
@@ -578,7 +586,9 @@ class CuratedRadioEngine:
             if uris:
                 pools.artists.append(artist)
                 pools.per_artist.append(uris)
-                pools.title_by_uri.update(zip(uris, titles, strict=True))
+                titled = dict(zip(uris, titles, strict=True))
+                pools.title_by_uri.update(titled)
+                pools.share.update(song_shares(titled, known.get(artist)))
         return pools
 
     async def _async_top_tracks(
@@ -611,6 +621,7 @@ class CuratedRadioEngine:
         sized: list[tuple[str, list[str], int]],
         tiers: dict[str, str],
         rank: dict[str, int],
+        share: dict[str, float] | None = None,
     ) -> tuple[int, int, dict[str, int]]:
         """Median reach, weakest reach, and the tier split of a batch.
 
@@ -619,7 +630,7 @@ class CuratedRadioEngine:
         compare across stations; the tier counts are relative to their
         own pool and only describe the texture within one.
         """
-        reach = reach_of(sized, TIER_DECAY, rank)
+        reach = reach_of(sized, TIER_DECAY, rank, share)
         played = sorted(reach.get(uri, 0) for uri in enqueued)
         counts: dict[str, int] = {}
         for uri in enqueued:
@@ -939,6 +950,7 @@ class CuratedRadioEngine:
         pool_artists: list[str],
         per_artist: list[list[str]],
         rank: dict[str, int],
+        share: dict[str, float] | None = None,
     ) -> list[str]:
         """Order one playlist round the same way the live queue is.
 
@@ -953,7 +965,7 @@ class CuratedRadioEngine:
         ]
         return sequence_tiered(
             per_artist,
-            tier_of(sized, TIER_DECAY, rank),
+            tier_of(sized, TIER_DECAY, rank, share),
             TIER_PATTERN,
             max_consecutive=self._settings.max_consecutive,
         )
@@ -1166,7 +1178,9 @@ class CuratedRadioEngine:
             seen_titles.update(pools.title_by_uri.values())
             artists_used.extend(a for a in pools.artists if a not in artists_used)
             ordered.extend(
-                await self._async_program(pools.artists, pools.per_artist, pools.rank)
+                await self._async_program(
+                    pools.artists, pools.per_artist, pools.rank, pools.share
+                )
             )
             previous_round = list(pools.artists)
             previous_lead = lead

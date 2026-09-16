@@ -9,6 +9,7 @@ import random
 
 import pytest
 from filters import (
+    TIER_DEEP,
     TIER_POWER,
     base_title,
     clean_similar_artists,
@@ -30,6 +31,7 @@ from filters import (
     neighbourhood_strength,
     reach_of,
     sequence_tiered,
+    song_shares,
     strong_artists,
     tier_of,
     too_deep,
@@ -939,6 +941,93 @@ def test_true_rank_also_decides_the_tiers():
     tiers = tier_of(pool, 0.7, {"big-5th": 5, "small-1st": 0, "mid-1st": 0})
     assert tiers["mid-1st"] == TIER_POWER
     assert tiers["big-5th"] != TIER_POWER
+
+
+# --- Real per-song counts, where the position guess was wrong -------------
+
+
+def test_the_guess_inverts_a_giants_deep_hit_against_a_one_hit_wonder():
+    """The measured case, and the reason share exists.
+
+    Both figures are real, from 2026-09-15. The Beatles' twentieth song
+    is 54% of their biggest; Dexys Midnight Runners' second is 4% of
+    theirs. Guessing the fraction as 0.7 ** position says the opposite,
+    and by a wide margin, so the clock spent Power slots on the dud and
+    filed the Beatles record as Deep.
+    """
+    pool = [
+        ("The Beatles", ["beatles-20th"], 1_600_000),
+        ("Dexys Midnight Runners", ["dexys-2nd"], 1_300_000),
+    ]
+    rank = {"beatles-20th": 19, "dexys-2nd": 1}
+
+    guessed = reach_of(pool, 0.7, rank)
+    assert guessed["dexys-2nd"] > guessed["beatles-20th"]
+
+    share = {"beatles-20th": 0.54, "dexys-2nd": 0.04}
+    honest = reach_of(pool, 0.7, rank, share)
+    assert honest["beatles-20th"] > honest["dexys-2nd"]
+
+
+def test_tiers_follow_the_real_share_not_the_position():
+    """The same inversion where it actually costs something: the hour."""
+    pool = [
+        ("The Beatles", ["beatles-20th"], 1_600_000),
+        ("Dexys Midnight Runners", ["dexys-2nd"], 1_300_000),
+        ("Filler", ["filler"], 100_000),
+    ]
+    rank = {"beatles-20th": 19, "dexys-2nd": 1, "filler": 0}
+    share = {"beatles-20th": 0.54, "dexys-2nd": 0.04, "filler": 1.0}
+    tiers = tier_of(pool, 0.7, rank, share)
+    assert tiers["beatles-20th"] == TIER_POWER
+    assert tiers["dexys-2nd"] == TIER_DEEP
+
+
+def test_an_artists_top_track_still_scores_their_whole_audience():
+    """What keeps reach figures recorded before this comparable with after.
+
+    A share of 1.0 is exactly what 0.7 ** 0 already gave, so a first
+    batch, where almost every track sits at position 0, does not move.
+    """
+    pool = [("Erasure", ["top"], 575_377)]
+    assert reach_of(pool, 0.7, {"top": 0}, {"top": 1.0}) == reach_of(
+        pool, 0.7, {"top": 0}
+    )
+
+
+def test_a_song_lastfm_never_saw_falls_back_to_the_guess():
+    """Tidal and Last.fm disagree on classical spellings especially, so a
+    partial share must not drag the unmatched tracks to zero."""
+    pool = [("Mixed", ["known", "unknown"], 800_000)]
+    reach = reach_of(pool, 0.7, {"known": 1, "unknown": 1}, {"known": 0.5})
+    assert reach["known"] == 400_000
+    assert reach["unknown"] == int(800_000 * 0.7)
+
+
+def test_shares_are_measured_against_the_artists_own_biggest():
+    """Genre neutrality, using the real Hank Williams Jr figures.
+
+    His biggest song has 38,490 listeners, a fraction of any rock act
+    here, and his curve is as flat as a giant's. Measured against himself
+    he keeps his catalogue; against any absolute number he loses it.
+    """
+    known = [("Family Tradition", 38_490), ("A Country Boy Can Survive", 31_947)]
+    shares = song_shares({"a": "Family Tradition", "b": "A Country Boy Can Survive"},
+                         known)
+    assert shares["a"] == 1.0
+    assert shares["b"] > 0.8
+
+
+def test_a_remaster_matches_the_record_it_is_a_remaster_of():
+    known = [("In the Air Tonight", 900_000)]
+    shares = song_shares({"u": "In the Air Tonight (2015 Remaster)"}, known)
+    assert shares["u"] == 1.0
+
+
+def test_no_lastfm_data_means_no_shares_rather_than_zero_shares():
+    """An outage must leave the tiering on its guess, not flatten it."""
+    assert song_shares({"u": "Anything"}, None) == {}
+    assert song_shares({"u": "Anything"}, []) == {}
 
 
 # --- Which credited artist leads a pick ----------------------------------

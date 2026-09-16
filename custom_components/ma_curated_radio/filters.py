@@ -564,20 +564,48 @@ def matches_provider(uri: str, provider_filter: str) -> bool:
     return any(scheme == p or scheme.startswith(p) for p in allowed)
 
 
+def _song_share(
+    uri: str,
+    position: int,
+    decay: float,
+    share: Mapping[str, float] | None,
+) -> float:
+    """How big a song is within its own artist's catalogue, 0 to 1.
+
+    The real figure where Last.fm has the song, the geometric guess where
+    it does not. Both are fractions of the artist's own audience, so the
+    two can sit side by side in one pool: a track the two services spell
+    differently falls back to the guess without changing the scale.
+    """
+    known = share.get(uri) if share else None
+    return known if known is not None else decay**position
+
+
 def tier_of(
     sized: list[tuple[str, list[str], int]],
     decay: float,
     rank: Mapping[str, int] | None = None,
+    share: Mapping[str, float] | None = None,
 ) -> dict[str, str]:
     """Label each track Power, Secondary or Deep, relative to this pool.
 
-    Scores a track as its artist's size decayed by its position in that
-    artist's own ordering, so no per-track lookup is needed: the provider
-    already ranks an artist's tracks by relevance, and one listener count
-    per artist is enough. Checked against real per-track counts on a nine
-    artist pool it agreed 66% of the time against 33% for chance, and
-    confused Power with Deep exactly once in 66 tracks. Adjacent
-    misreadings are cheap; inversions would not be.
+    Scores a track as its artist's size scaled by how big that song is
+    within that artist's own catalogue. ``share`` carries the real figure
+    where Last.fm has it: the song's listeners over the artist's biggest
+    song's, so the artist's own top track scores their full audience and
+    everything else a real fraction of it.
+
+    Without it the fraction is guessed at as ``decay ** position``, and
+    that guess inverts on deep positions. Measured on real data: a
+    one-hit wonder's second song scores 70% of their audience when its
+    true share is 4%, while the Beatles' twentieth scores 0.1% when its
+    true share is 54%. So the clock was filing duds in Power and real
+    hits in Deep. The 66%-agreement this rule used to claim was measured
+    at two tracks per artist, positions 0 and 1, where the decay barely
+    acts and so cannot be wrong.
+
+    A share of 1.0 at position 0 is exactly what the decay gave, so the
+    two agree on a first batch and only diverge where the guess was bad.
 
     Terciles of the pool in front of it, never absolute numbers. A fixed
     threshold tuned on rock would mark an entire country station as deep
@@ -599,7 +627,7 @@ def tier_of(
         weight = size if size > 0 else fallback
         for index, uri in enumerate(uris):
             position = rank.get(uri, index) if rank else index
-            scored.append((uri, weight * (decay**position)))
+            scored.append((uri, weight * _song_share(uri, position, decay, share)))
     scored.sort(key=lambda pair: pair[1], reverse=True)
     third = len(scored) // 3
     tiers: dict[str, str] = {}
@@ -614,14 +642,21 @@ def reach_of(
     sized: list[tuple[str, list[str], int]],
     decay: float,
     rank: Mapping[str, int] | None = None,
+    share: Mapping[str, float] | None = None,
 ) -> dict[str, int]:
     """Estimated audience for each track, on an absolute scale.
 
-    An artist's own audience, decayed by how far down that artist's
-    ordering the track sits. The same score the tiering sorts on, kept
+    An artist's own audience, scaled by how big the song is within that
+    artist's catalogue. The same score the tiering sorts on, kept
     unnormalised so batches can be compared with each other: tiers are
     relative to their own pool and say nothing across pools, while this
     does.
+
+    ``share`` is the real fraction where Last.fm has the song; see
+    ``tier_of`` for why the guess it replaces was wrong. An artist's top
+    track has a share of 1.0, which is what the guess already gave at
+    position 0, so figures recorded for first batches before this existed
+    remain comparable with figures recorded after it.
 
     Unknown artist sizes take the pool median, for the same reason they
     do when tiering: a lookup miss is not evidence that an artist is
@@ -642,7 +677,7 @@ def reach_of(
         weight = size if size > 0 else fallback
         for index, uri in enumerate(uris):
             position = rank.get(uri, index) if rank else index
-            reach[uri] = int(weight * (decay**position))
+            reach[uri] = int(weight * _song_share(uri, position, decay, share))
     return reach
 
 
@@ -1269,6 +1304,43 @@ def depth_bar(sizes: Mapping[str, int]) -> int:
     known = sorted(size for size in sizes.values() if size > 0)
     typical = known[len(known) // 2] if known else 0
     return int(typical * DEPTH_BAR_SHARE)
+
+
+def song_shares(
+    title_by_uri: Mapping[str, str],
+    known: Sequence[tuple[str, int]] | None,
+) -> dict[str, float]:
+    """Each song's listeners as a fraction of its artist's biggest song.
+
+    The figure the tiering wants and used to guess at. Genre-neutral by
+    construction, because the numerator and denominator are the same
+    artist: Hank Williams Jr's biggest song has 38,490 listeners and his
+    curve is as flat as a giant's, so measuring him against himself gives
+    him his catalogue where any absolute threshold would erase it.
+
+    Titles the two services spell differently are simply absent from the
+    result, which leaves the caller on its geometric guess for those. The
+    same base-title folding as ``too_deep``, so a remaster matches the
+    record it is a remaster of.
+    """
+    if not known:
+        return {}
+    listeners: dict[str, int] = {}
+    for title, count in known:
+        key = base_title(title)
+        if key:
+            listeners[key] = max(count, listeners.get(key, 0))
+    if not listeners:
+        return {}
+    biggest = max(listeners.values())
+    if biggest <= 0:
+        return {}
+    shares: dict[str, float] = {}
+    for uri, title in title_by_uri.items():
+        count = listeners.get(base_title(title))
+        if count:
+            shares[uri] = count / biggest
+    return shares
 
 
 def too_deep(
