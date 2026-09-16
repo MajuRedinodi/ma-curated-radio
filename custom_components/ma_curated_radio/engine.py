@@ -284,6 +284,11 @@ class CuratedRadioEngine:
         self._listening = ListeningSession.from_dict(data.get("session"))
         self._last_pool = [str(a) for a in data.get("last_pool") or []]
         self._last_lead = str(data.get("last_lead") or "")
+        saved_lane = data.get("origin_lane") or [[], []]
+        self._origin_lane = (
+            {int(d) for d in saved_lane[0]},
+            {str(g) for g in saved_lane[1]},
+        )
         self._played = {
             str(who): int(count)
             for who, count in (data.get("played") or {}).items()
@@ -330,6 +335,11 @@ class CuratedRadioEngine:
             "last_lead": self._last_lead,
             "last_power": [list(pair) for pair in self._last_power],
             "played": self._played,
+            # Sets are not JSON, so the station lane travels as lists.
+            "origin_lane": [
+                sorted(self._origin_lane[0]),
+                sorted(self._origin_lane[1]),
+            ],
             "alias": self._alias,
             "lead_override": self._lead_override,
             "queued": list(self._queued),
@@ -1199,7 +1209,7 @@ class CuratedRadioEngine:
         ] or self._last_power
         if not candidates:
             return "", ""
-        if self._origin_lane and self._origin_lane != (set(), set()):
+        if self._origin_lane != (set(), set()):
             # Permissive about what plays, strict about what seeds. A
             # record from the wrong era is one song; the same record as a
             # seed carries its era into every track of the next hour and
@@ -1274,7 +1284,21 @@ class CuratedRadioEngine:
         failed Power slot out of the tail gives the right number of
         tracks and the wrong evening.
         """
-        lane = await self._async_lane(artist, title)
+        # The lane the STATION started in, not the lane of whichever record
+        # seeded this hop. Taking it from the hop let the era walk: a
+        # station begun on a 1992 record was judging candidates against
+        # 1970 four refills later, because John Denver's record had seeded
+        # that one, and it refused Alan Jackson for being two decades from
+        # a lane the station had never been in. Each hop was then fencing
+        # out the artists that belonged to the hour before it. Same reason
+        # the degree fence counts from the origin rather than from
+        # wherever the music has got to.
+        lane = self._origin_lane
+        if lane == (set(), set()):
+            # No origin lane: a station restored from before this existed,
+            # or a pick whose album Last.fm cannot place. Fall back to the
+            # hop's own lane, which is what this used to do always.
+            lane = await self._async_lane(artist, title)
         bands = stratified_bands(eligible, count, len(TIER_PATTERN), self._rng)
         if lane == (set(), set()):
             _LOGGER.debug("No lane for %s; drawing without one", title)
@@ -1724,6 +1748,7 @@ class CuratedRadioEngine:
                 self._last_pool = []
                 self._last_lead = ""
                 self._last_power = []
+                self._origin_lane = (set(), set())
                 # And last night's artists are available again. Retirement
                 # is about not exhausting an act within one evening, not a
                 # month-long ban; the skip memory is what does that.

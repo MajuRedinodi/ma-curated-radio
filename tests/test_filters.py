@@ -1217,6 +1217,23 @@ def test_a_wrong_era_record_is_a_clash_rather_than_merely_unknown():
     assert lane_match(lane_of(THIRD_ALBUM, "The Jackson 5"), lane) == LANE_CLASH
 
 
+def test_the_lane_must_be_the_stations_not_the_hops():
+    """The Alan Jackson rejection, 16 Sep, four refills into a country
+    station begun on a 1992 record.
+
+    The lane was being taken from whichever record seeded the hop, so by
+    refill four it read 1970 (John Denver's) and refused Alan Jackson for
+    being two decades from an era the station had never been in. Each hop
+    was fencing out the artists that belonged to the hour before it.
+    """
+    station = lane_of(["country", "outlaw country", "90s"], "Hank Williams Jr.")
+    drifted = lane_of(["country", "folk", "70s"], "John Denver")
+    jackson = lane_of(["country", "90s"], "Alan Jackson")
+
+    assert in_lane(jackson, station) is True
+    assert in_lane(jackson, drifted) is False
+
+
 def test_where_nothing_is_dated_the_ranking_flattens_rather_than_guesses():
     """Country albums are largely not decade-tagged, so on a country lane
     almost everything ranks the same and this stops having an opinion."""
