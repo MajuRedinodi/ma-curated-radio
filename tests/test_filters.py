@@ -39,6 +39,7 @@ from filters import (
     strong_artists,
     tier_of,
     too_deep,
+    usable_songs,
     weighted_sample,
     without_backing_band,
 )
@@ -1032,6 +1033,49 @@ def test_no_lastfm_data_means_no_shares_rather_than_zero_shares():
     """An outage must leave the tiering on its guess, not flatten it."""
     assert song_shares({"u": "Anything"}, None) == {}
     assert song_shares({"u": "Anything"}, []) == {}
+
+
+# --- How much of an artist a station can spend in one evening ------------
+
+
+def _curve(top, *shares):
+    """An artist's ranking, as fractions of their own biggest song."""
+    return [("#1", top), *((f"#{i}", int(top * s)) for i, s in enumerate(shares, 2))]
+
+
+def test_a_one_hit_wonder_is_spent_after_its_one_hit():
+    """Real figures: Dexys' second song is 4% of their first, Norman
+    Greenbaum's 1%, The Knack's 6%. Playing the hit is the whole act."""
+    assert usable_songs(_curve(1_326_634, 0.04, 0.03), 0.05) == 1
+    assert usable_songs(_curve(667_892, 0.01, 0.01), 0.05) == 1
+    assert usable_songs(_curve(765_390, 0.06, 0.02), 0.05) == 2
+
+
+def test_a_giant_can_be_returned_to_all_evening():
+    """The Beatles' twentieth is still 54% of their biggest."""
+    beatles = _curve(1_593_785, *[0.9 - i * 0.01 for i in range(30)])
+    assert usable_songs(beatles, 0.05) == 31
+
+
+def test_a_small_artist_with_a_flat_curve_keeps_their_catalogue():
+    """Hank Williams Jr's biggest has 38,490 listeners, and his curve
+    reads 83%, 65%, 42%, 31%. Measured against himself he is a giant;
+    measured against a rock station he does not exist."""
+    hank = _curve(38_490, 0.83, 0.65, 0.52, 0.42, 0.36, 0.31)
+    assert usable_songs(hank, 0.05) == 7
+
+
+def test_the_bar_is_loose_enough_for_one_enormous_first_song():
+    """a-ha's "Take on Me" is 2.9 million, which leaves their genuinely
+    known second at 11%. A tight bar would retire them after one."""
+    aha = _curve(2_941_370, 0.11, 0.09, 0.08, 0.07)
+    assert usable_songs(aha, 0.05) > 1
+
+
+def test_no_data_means_no_opinion_rather_than_nothing_left():
+    """A Last.fm outage must cost variety, not the batch."""
+    assert usable_songs(None, 0.05) == 0
+    assert usable_songs([], 0.05) == 0
 
 
 # --- The era and genre lane -----------------------------------------------

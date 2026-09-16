@@ -80,6 +80,15 @@ CROWD_SIZE: Final = 100
 # benefit of the doubt the depth limit gives a song it cannot price.
 CROWD_CHECKED: Final = 40
 
+# How big one of an artist's songs has to be, against their own biggest,
+# to count as a record they are still known for. Only ever decides
+# whether an act has anything left to play tonight, never which record
+# plays, so it runs loose: a tight bar punishes an artist whose first
+# song is enormous, and a-ha's second lands at 11% behind a "Take on Me"
+# with 2.9 million listeners. At this figure the one-hit wonders measured
+# on 2026-09-15 keep exactly one song each, and The Beatles keep dozens.
+USABLE_SHARE: Final = 0.05
+
 # How many similar artists to ask Last.fm for, regardless of how many end
 # up in a batch. Last.fm ranks by match score, and the goal is a station
 # format rather than an artist's three nearest neighbours, so the shuffle

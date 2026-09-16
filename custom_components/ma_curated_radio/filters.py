@@ -1490,6 +1490,46 @@ def prefer_titles(tracks: list[Any], wanted: Sequence[str]) -> list[Any]:
     )
 
 
+def usable_songs(
+    known: Sequence[tuple[str, int]] | None, share: float
+) -> int:
+    """How many of an artist's songs a station can play before it is past
+    their hits.
+
+    Counts down their ranking while each song still reaches ``share`` of
+    their biggest, so it is measured against the artist rather than
+    against the station and genre cancels out. Hank Williams Jr's biggest
+    song has 38,490 listeners and his curve is flat: 83%, 65%, 42%, 31%,
+    18% at positions 2, 3, 5, 10 and 20, so he keeps his catalogue where
+    an absolute threshold would erase it.
+
+    Measured on real curves, 2026-09-15. At a 10% share the one-hit
+    wonders collapse to exactly one song each, Dexys' second being 4% of
+    their first, Norman Greenbaum's 1%, The Knack's 6%; while The Beatles
+    hold seventy-five and Michael Jackson thirty-eight. That is what the
+    caller wants it for: an act with one record retires after playing it,
+    and an act with fifty can be returned to all evening.
+
+    Run it loose. It only decides whether an artist has anything left,
+    never which record plays, and a tight bar penalises an artist whose
+    first song is enormous: a-ha's "Take on Me" has 2.9 million
+    listeners, which leaves their genuinely well-known second at 11%.
+
+    Zero when nothing is known, meaning "no opinion", not "nothing left".
+    """
+    if not known:
+        return 0
+    biggest = max((count for _, count in known), default=0)
+    if biggest <= 0:
+        return 0
+    kept = 0
+    for _, count in known:
+        if count / biggest < share:
+            break
+        kept += 1
+    return kept
+
+
 def song_shares(
     title_by_uri: Mapping[str, str],
     known: Sequence[tuple[str, int]] | None,

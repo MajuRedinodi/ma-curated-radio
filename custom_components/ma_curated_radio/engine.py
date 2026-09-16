@@ -11,7 +11,7 @@ import asyncio
 import logging
 import random
 from collections import deque
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field, fields
 from functools import partial
 from typing import Any
@@ -47,6 +47,7 @@ from .const import (
     STATION_SAVE_DELAY,
     STATION_STORAGE_VERSION,
     TIER_DECAY,
+    USABLE_SHARE,
     signal_update,
 )
 from .decide import leading_pool, starts_station
@@ -81,6 +82,7 @@ from .filters import (
     strong_artists,
     tier_of,
     too_deep,
+    usable_songs,
     weighted_sample,
     without_backing_band,
 )
@@ -236,6 +238,10 @@ class CuratedRadioEngine:
         # an evening track-level instead of handing hour two back to the
         # artist graph.
         self._last_power: list[tuple[str, str]] = []
+        # How many songs by each artist this station has played, so an act
+        # with one record retires after playing it while an act with fifty
+        # can be returned to all evening. Cleared with the session.
+        self._played: dict[str, int] = {}
         # Set when a pick arrives while a batch is building. The build in
         # progress is then for a song the listener has already left.
         self._superseded = False
@@ -263,6 +269,10 @@ class CuratedRadioEngine:
         self._listening = ListeningSession.from_dict(data.get("session"))
         self._last_pool = [str(a) for a in data.get("last_pool") or []]
         self._last_lead = str(data.get("last_lead") or "")
+        self._played = {
+            str(who): int(count)
+            for who, count in (data.get("played") or {}).items()
+        }
         self._last_power = [
             (str(who), str(song))
             for who, song in (data.get("last_power") or [])
@@ -304,6 +314,7 @@ class CuratedRadioEngine:
             "last_pool": self._last_pool,
             "last_lead": self._last_lead,
             "last_power": [list(pair) for pair in self._last_power],
+            "played": self._played,
             "alias": self._alias,
             "lead_override": self._lead_override,
             "queued": list(self._queued),
@@ -557,20 +568,7 @@ class CuratedRadioEngine:
         if enqueued:
             self._last_pool = list(pool_artists)
             self._last_lead = lead
-            # The strongest records of this batch, so the next one can be
-            # seeded from a song rather than from an artist. Kept as
-            # (artist, title) because that is what Last.fm is asked about;
-            # a URI would be no use to it.
-            artist_of = {
-                uri: artist
-                for artist, uris in zip(pool_artists, per_artist, strict=True)
-                for uri in uris
-            }
-            self._last_power = [
-                (artist_of[uri], title_by_uri[uri])
-                for uri in enqueued
-                if tiers.get(uri) == TIER_POWER and uri in artist_of
-            ]
+            self._remember(enqueued, pool_artists, per_artist, title_by_uri, tiers)
 
         _LOGGER.debug(
             "Queued %s track(s) in %s mode, led by %s, neighbours from %s, via %s; "
@@ -628,6 +626,14 @@ class CuratedRadioEngine:
         covered: set[str] = set()
         known = await self._async_top_tracks(artists) if bar else {}
         for index, artist in enumerate(artists):
+            if self._spent(artist, known.get(artist)):
+                # Everything this act is known for has already played
+                # tonight. Reaching further into them is how hour four
+                # turns into album tracks; letting the slot go is how a
+                # station narrows onto the artists who still have records
+                # left, which is what a real one does.
+                _LOGGER.debug("%s has nothing left tonight", artist)
+                continue
             tracks = await self._async_tracks_for(artist, cache)
             if wanted:
                 tracks = prefer_titles(tracks, wanted.get(artist, ()))
@@ -1013,6 +1019,57 @@ class CuratedRadioEngine:
             sum(len(titles) for titles in wanted.values()),
         )
         return names, wanted
+
+    def _remember(
+        self,
+        enqueued: list[str],
+        pool_artists: list[str],
+        per_artist: list[list[str]],
+        title_by_uri: dict[str, str],
+        tiers: dict[str, str],
+    ) -> None:
+        """What the next batch needs to know about the one just queued.
+
+        Its strongest records, as (artist, title), because the next batch
+        reseeds its crowd from one of them and Last.fm is asked by name
+        rather than by URI. And how many songs each artist has now had,
+        which is what retires an act once its hits are spent.
+        """
+        artist_of = {
+            uri: artist
+            for artist, uris in zip(pool_artists, per_artist, strict=True)
+            for uri in uris
+        }
+        for uri in enqueued:
+            if who := artist_of.get(uri):
+                key = who.strip().lower()
+                self._played[key] = self._played.get(key, 0) + 1
+        self._last_power = [
+            (artist_of[uri], title_by_uri[uri])
+            for uri in enqueued
+            if tiers.get(uri) == TIER_POWER and uri in artist_of
+        ]
+
+    def _spent(self, artist: str, known: Sequence[tuple[str, int]] | None) -> bool:
+        """Whether this artist has any record left worth playing tonight.
+
+        A one-hit wonder has one, and once it has played, reaching further
+        into them means their second song, which is 4% the size of their
+        first. A giant has dozens, all of them real, so the same rule lets
+        a station come back to Prince three times and to Rockwell once
+        without either being told to.
+
+        Only ever a veto on an artist, never on a record: which song plays
+        is the crowd's decision. So the bar is deliberately loose, because
+        a tight one penalises an artist whose first record is enormous.
+
+        False when nothing is known, so a Last.fm outage costs variety
+        rather than the batch.
+        """
+        if not self._settings.seed_from_song or not known:
+            return False
+        played = self._played.get(artist.strip().lower(), 0)
+        return played >= usable_songs(known, USABLE_SHARE) > 0
 
     def _crowd_seed(
         self, starting: bool, seed: str, playing: str, lead: str
@@ -1511,6 +1568,11 @@ class CuratedRadioEngine:
                 # Last night's batch is not something to reseed from.
                 self._last_pool = []
                 self._last_lead = ""
+                self._last_power = []
+                # And last night's artists are available again. Retirement
+                # is about not exhausting an act within one evening, not a
+                # month-long ban; the skip memory is what does that.
+                self._played = {}
         else:
             self._listening.touch()
 
