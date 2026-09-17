@@ -1808,6 +1808,86 @@ _CREDIT_NOISE: Final = frozenset(
 )
 
 
+# {{Single chart|Billboardhot100|3}} and its relatives, where the second
+# positional parameter is the peak.
+_SINGLE_CHART = re.compile(r"\{\{\s*single chart\s*\|\s*([^|}]+?)\s*\|\s*(\d+)", re.I)
+# A hand-built chart table row: "| US [[Billboard Hot 100]] || 3".
+_CHART_ROW = re.compile(
+    r"\|\s*(?:scope=\"?row\"?\s*\|\s*)?([^|\n]*?(?:hot 100|billboard|uk singles|"
+    r"modern rock|alternative airplay|mainstream rock)[^|\n]*?)\s*\|\|?\s*"
+    r"(?:align=\"?center\"?\s*\|\s*)?(\d{1,3})\b",
+    re.I,
+)
+
+# Past this a "peak" is a year, a catalogue number or a chart nobody
+# means. Chart positions below 200 exist; 1996 is not one of them.
+_HIGHEST_PEAK: Final = 200
+
+# Which chart family a name belongs to. Only these three, because they
+# are the ones whose names are written consistently enough to match.
+_CHART_FAMILIES: Final = (
+    ("US", ("billboardhot100", "hot 100", "us hot 100")),
+    ("rock", ("alternative", "modern rock", "mainstream rock")),
+    ("UK", ("uk", "ukchartstats", "uk singles", "official charts")),
+)
+
+
+def chart_peaks(wikitext: str) -> tuple[tuple[str, int], ...]:
+    """Where a record charted and how high, best position per chart.
+
+    **Collected and never filtered on**, and the distinction is the whole
+    point. A peak that is present is reliable: spot-checked against known
+    values, "All Star" comes back US 4, "Chasing Cars" US 5, "Shiny Happy
+    People" US 10, all correct.
+
+    A peak that is *absent* means nothing at all. Measured against
+    sixteen records nobody would call obscure, only five returned one:
+    Elvis Presley's "Heartbreak Hotel", a number one, has none, and so do
+    "Johnny B. Goode", "Kaw-Liga" and "Mama Tried". The Hot 100 began in
+    August 1958 and the UK chart in 1952, so much of the catalogue
+    predates them, and older articles give placings in prose that no
+    regex recovers. The gap falls on older and country material first,
+    the same way an absolute listener threshold erases country.
+
+    So a peak may confirm and must never demote, which is the asymmetry
+    already load-bearing in ``in_lane``, ``too_deep`` and the year
+    lookup. See docs/chart-probe-2026-09-17.md for the measurement.
+    """
+    best: dict[str, int] = {}
+    found = _SINGLE_CHART.findall(wikitext or "") + _CHART_ROW.findall(wikitext or "")
+    for name, peak in found:
+        position = int(peak)
+        if not 1 <= position <= _HIGHEST_PEAK:
+            continue
+        lowered = name.lower()
+        for family, keys in _CHART_FAMILIES:
+            if any(key in lowered for key in keys):
+                best[family] = min(best.get(family, _HIGHEST_PEAK + 1), position)
+                break
+    return tuple(sorted(best.items()))
+
+
+_SONG_INFOBOX = re.compile(r"\{\{\s*infobox\s+(?:song|single)\b", re.I)
+
+
+def is_song_article(wikitext: str) -> bool:
+    """Whether this article is about a record at all.
+
+    The net under ``best_article``, and it catches what picking the right
+    article by name cannot. A film, a discography, a tour, a compilation
+    and a disambiguation page all match a song's name closely enough to
+    win a search, and every one of them carries dates that look like
+    release dates. Oasis' "Don't Look Back in Anger" resolved to a 2026
+    documentary and came back as a 2026 record.
+
+    Checked rather than inferred from the artist field, because plenty of
+    genuine song articles have no artist in the infobox and rejecting
+    those would cost far more than it saves. What every song article does
+    have is the infobox itself.
+    """
+    return bool(_SONG_INFOBOX.search(wikitext or ""))
+
+
 def infobox_artist(wikitext: str) -> str:
     """Who the song's own Wikipedia infobox says recorded it.
 
@@ -1877,27 +1957,49 @@ def best_article(results: Sequence[str], title: str, artist: str) -> str:
     Prefers a result whose name carries the song disambiguator, then one
     matching the title once punctuation is folded, then the top hit.
     Rejects a result that is merely the artist's own page, which is what
-    comes back when a track has no article of its own.
+    comes back when a track has no article of its own, and a
+    disambiguation page, which carries no dates by definition.
+
+    **Ties break toward the shorter title**, which is the fix for the
+    mirror image of the bug above. Searching "Don't Look Back in Anger
+    Oasis" returns the 2026 documentary "Oasis: Don't Look Back in
+    Anger" ahead of the song, and that name contains the title *and* the
+    artist, so it scores exactly what the song's own article scores and
+    won on search order alone. The era lane then had a 1996 record in the
+    2020s.
+
+    Shorter rather than exact, deliberately. Exact would have picked the
+    film's rival correctly here and broken Hank Williams again, because
+    there the article wanted is "Hey, Good Lookin' (song)" and the exact
+    match is a different page entirely. The disambiguator bonus settles
+    that pair before length is ever consulted.
     """
     if not results:
         return ""
     wanted = _folded(title)
     performer = _folded(artist)
-    scored: list[tuple[int, str]] = []
+    kept: list[tuple[int, int, str]] = []
     for name in results:
         folded = _folded(name)
         if folded == performer:
             continue  # the artist's page, not the song's
+        if "disambiguation" in name.lower():
+            continue
         rank = 0
         if wanted and wanted in folded:
             rank += 2
         if "song" in name.lower() or "single" in name.lower():
             rank += 1
-        scored.append((rank, name))
-    if not scored:
+        kept.append((rank, len(name), name))
+    if not kept:
         return ""
-    best = max(scored, key=lambda pair: pair[0])
-    return best[1] if best[0] else scored[0][1]
+    # Highest rank, then shortest name. The fallback when nothing ranks
+    # at all is the top hit of what survived, in search order, and it has
+    # to come from ``kept`` rather than from ``results``: the entries
+    # dropped above are dropped precisely because they are never the
+    # answer, and an earlier version of this reached past them.
+    best = max(kept, key=lambda item: (item[0], -item[1]))
+    return best[2] if best[0] else kept[0][2]
 
 
 def crowd_pool(

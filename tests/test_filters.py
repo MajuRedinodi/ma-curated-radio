@@ -17,6 +17,7 @@ from filters import (
     TIER_SECONDARY,
     base_title,
     best_article,
+    chart_peaks,
     clean_similar_artists,
     close_to_home,
     credits_artist,
@@ -33,6 +34,7 @@ from filters import (
     is_live,
     is_non_song,
     is_remix,
+    is_song_article,
     is_too_short,
     keep_one_act,
     lane_match,
@@ -2165,3 +2167,123 @@ def test_no_floor_leaves_the_old_behaviour_exactly():
     tracks = [_Track("u1", "Come On Eileen"), _Track("u2", "Geno")]
     known = [("Come On Eileen", 1_326_634), ("Geno", 53_065)]
     assert too_deep(tracks, {"u1": 0, "u2": 1}, known, 0, 2) == set()
+
+
+# --- Picking the article, when the wrong one looks right -----------------
+
+
+def test_a_documentary_named_after_the_song_does_not_win():
+    """Found live on 2026-09-17, and it put a 1996 record in the 2020s.
+
+    Searching "Don't Look Back in Anger Oasis" returns the 2026
+    documentary "Oasis: Don't Look Back in Anger" ahead of the song. That
+    name contains the title AND the artist, so it scored exactly what the
+    song's own article scored and won on search order alone.
+    """
+    hits = [
+        "Oasis: Don't Look Back in Anger",
+        "Don't Look Back in Anger",
+        "Don't Look Back in Anger (disambiguation)",
+    ]
+    assert best_article(hits, "Don't Look Back in Anger", "Oasis") == (
+        "Don't Look Back in Anger"
+    )
+
+
+def test_the_song_disambiguator_still_beats_a_shorter_exact_match():
+    """The original bug, which the tiebreak must not reinstate. A plain
+    lookup of "Hey, Good Lookin'" lands on a real but different article
+    with no dates, and that failure is what searching was added to fix."""
+    hits = ["Hey, Good Lookin'", "Hey, Good Lookin' (song)"]
+    assert best_article(hits, "Hey, Good Lookin'", "Hank Williams") == (
+        "Hey, Good Lookin' (song)"
+    )
+
+
+def test_a_disambiguation_page_is_never_the_answer():
+    """It carries no dates by definition."""
+    hits = ["Crazy (disambiguation)", "Crazy (Patsy Cline song)"]
+    assert best_article(hits, "Crazy", "Patsy Cline") == "Crazy (Patsy Cline song)"
+
+
+def test_the_artists_own_page_is_not_the_songs():
+    """What comes back when a track has no article of its own."""
+    assert best_article(["Buffalo Tom"], "Taillights Fade", "Buffalo Tom") == ""
+
+
+def test_nothing_matching_falls_back_to_the_top_hit():
+    hits = ["Some Unrelated Article", "Another One"]
+    assert best_article(hits, "Taillights Fade", "Buffalo Tom") == (
+        "Some Unrelated Article"
+    )
+
+
+def test_only_a_song_article_can_supply_a_release_year():
+    """The net under best_article. A film, a tour and a discography all
+    match a song's name closely enough to win a search, and all of them
+    carry dates that read like release dates."""
+    assert is_song_article("{{Infobox song\n| name = Everlong\n}}")
+    assert is_song_article("{{infobox single|name=Parklife}}")
+    assert not is_song_article("{{Infobox film\n| name = Oasis: Don't Look...\n}}")
+    assert not is_song_article("{{Infobox musical artist\n| name = Oasis\n}}")
+    assert not is_song_article("")
+
+
+def test_a_song_article_without_an_artist_field_is_still_a_song_article():
+    """Plenty of genuine ones have no artist, which is why this checks
+    for the infobox rather than inferring it from the performer."""
+    text = "{{Infobox song\n| name = Taillights Fade\n| released = 1992\n}}"
+    assert is_song_article(text)
+    assert infobox_artist(text) == ""
+
+
+# --- Reading chart placings off an article ------------------------------
+
+ALL_STAR = """
+{{Infobox song
+| name = All Star
+| artist = [[Smash Mouth]]
+| released = {{start date|1999|5|4}}
+}}
+==Charts==
+{{Single chart|Billboardhot100|4|artist=Smash Mouth|song=All Star}}
+{{Single chart|UK|24}}
+"""
+
+TABLE_FORM = """
+{{Infobox song|name=Everlong|artist=[[Foo Fighters]]}}
+{| class="wikitable"
+! Chart (1997) !! Peak<br />position
+|-
+| scope="row" | US [[Alternative Airplay|Modern Rock Tracks]] || 3
+|-
+| scope="row" | UK Singles Chart || 18
+|}
+"""
+
+
+def test_a_chart_template_gives_its_peak():
+    assert chart_peaks(ALL_STAR) == (("UK", 24), ("US", 4))
+
+
+def test_a_hand_built_chart_table_gives_its_peak_too():
+    """Both forms are in use and neither is rare."""
+    peaks = dict(chart_peaks(TABLE_FORM))
+    assert peaks["rock"] == 3
+
+
+def test_the_best_position_per_chart_is_kept():
+    """An article can list a re-entry at a worse position."""
+    text = "{{Single chart|Billboardhot100|40}}\n{{Single chart|Billboardhot100|4}}"
+    assert chart_peaks(text) == (("US", 4),)
+
+
+def test_a_year_is_not_mistaken_for_a_chart_position():
+    """The guard that stops a date in a chart row reading as a peak."""
+    assert chart_peaks("{{Single chart|Billboardhot100|1996}}") == ()
+
+
+def test_an_article_with_no_charts_gives_nothing():
+    """Which is silence, not a claim that the record never charted."""
+    assert chart_peaks("{{Infobox song|name=Fuzzy|artist=Grant Lee Buffalo}}") == ()
+    assert chart_peaks("") == ()

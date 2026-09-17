@@ -329,3 +329,64 @@ def test_pruning_reports_a_change_only_when_it_dropped_something() -> None:
     assert changes == []
     assert book.prune(30) == 1
     assert changes == [1]
+
+
+# --- Chart placings, collected and never filtered on --------------------
+
+
+def test_the_best_placing_is_the_highest_one_anywhere():
+    """Lowest number wins: a number one beats a number four."""
+    fact = Fact(charts=(("UK", 4), ("US", 1)))
+    assert fact.best_chart == ("US", 1)
+
+
+def test_no_placing_found_is_not_a_claim_that_it_never_charted():
+    """Eleven of sixteen canonical records have no peak on Wikipedia,
+    "Heartbreak Hotel" among them, so absence has to read as silence."""
+    assert Fact(year=1956).best_chart is None
+
+
+def test_placings_round_trip_through_the_file():
+    """JSON gives lists back where tuples went in."""
+    fact = Fact(year=1998, charts=(("UK", 24), ("US", 4)), seen=1)
+    assert Fact.from_dict(fact.as_dict()) == fact
+    assert fact.as_dict()["charts"] == [["UK", 24], ["US", 4]]
+
+
+def test_placings_are_put_in_a_canonical_order_on_the_way_in():
+    """Both ways in sort them, so two records that know the same thing
+    compare equal. Building a Fact directly does not, which is a test
+    convenience rather than a path anything real takes: the engine goes
+    through remember and the store through from_dict."""
+    assert Fact.from_dict({"charts": [["US", 4], ["UK", 24]]}).charts == (
+        ("UK", 24),
+        ("US", 4),
+    )
+    book = FactBook()
+    assert book.remember("a", "b", charts=[("US", 4), ("UK", 24)]).charts == (
+        ("UK", 24),
+        ("US", 4),
+    )
+
+
+def test_the_best_of_two_placings_on_one_chart_is_kept():
+    """An article can list a re-entry at a worse position."""
+    assert Fact.from_dict({"charts": [["US", 40], ["US", 4]]}).charts == (("US", 4),)
+
+
+def test_a_record_with_no_placings_writes_no_charts_field():
+    """Defaults stay out of the file, which is most of why a record is
+    150 bytes rather than twice that."""
+    assert "charts" not in Fact(year=1998, seen=1).as_dict()
+
+
+def test_junk_placings_are_dropped_rather_than_raised_over():
+    """A cache, so a lost placing costs nothing."""
+    assert Fact.from_dict({"charts": ["nonsense", ["US"], ["US", "x"], 7]}).charts == ()
+
+
+def test_placings_are_remembered_alongside_everything_else():
+    book = FactBook()
+    book.remember(*HANK, year=1951, charts=[("US", 63)])
+    assert (fact := book.get(*HANK)) is not None
+    assert fact.charts == (("US", 63),)

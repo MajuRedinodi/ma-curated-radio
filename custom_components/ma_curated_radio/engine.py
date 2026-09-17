@@ -126,6 +126,23 @@ from .wikipedia import ArticleFacts, async_find_article, async_get_facts
 _LOGGER = logging.getLogger(__name__)
 
 
+def _note(fact: Fact) -> tuple[str, ...]:
+    """What to show beside a track in the batch listing.
+
+    Its year, and where it charted if anything says so. Both are omitted
+    rather than filled in when unknown: a record with no placing shown
+    has not been shown to have missed the charts, only that Wikipedia
+    does not say, and eleven of sixteen canonical records fall in that
+    gap.
+    """
+    parts: list[str] = []
+    if fact.year is not None:
+        parts.append(str(fact.year))
+    if (chart := fact.best_chart) is not None:
+        parts.append(f"{chart[0]} {chart[1]}")
+    return tuple(parts)
+
+
 @dataclass(slots=True)
 class PlaylistResult:
     """What one playlist build actually did."""
@@ -606,7 +623,8 @@ class CuratedRadioEngine:
         # record is the throwback before it chooses where to put it. The
         # cost is looking up the few drawn records that will not be
         # played, which is four in a batch of twenty.
-        years = await self._async_years(pool_artists, per_artist, title_by_uri)
+        known = await self._async_known(pool_artists, per_artist, title_by_uri)
+        years = {uri: fact.year for uri, fact in known.items() if fact.year is not None}
         self._mark_gold(
             pool_artists, per_artist, title_by_uri, years, tiers, pools.share
         )
@@ -637,7 +655,9 @@ class CuratedRadioEngine:
             self._last_pool = list(pool_artists)
             self._last_lead = lead
             self._remember(enqueued, pool_artists, per_artist, title_by_uri, tiers)
-        played_years = {uri: year for uri, year in years.items() if uri in set(enqueued)}
+        playing = set(enqueued)
+        played_years = {uri: y for uri, y in years.items() if uri in playing}
+        notes = {uri: _note(f) for uri, f in known.items() if uri in playing}
 
         _LOGGER.debug(
             "Queued %s track(s) in %s mode, led by %s, neighbours from %s, via %s; "
@@ -658,7 +678,7 @@ class CuratedRadioEngine:
             artists=artists,
             queued=len(enqueued),
             tracks=self._listed(
-                enqueued, pool_artists, per_artist, title_by_uri, tiers, played_years
+                enqueued, pool_artists, per_artist, title_by_uri, tiers, notes
             ),
             reach_median=reach_median,
             reach_low=reach_low,
@@ -1131,7 +1151,7 @@ class CuratedRadioEngine:
         per_artist: list[list[str]],
         title_by_uri: dict[str, str],
         tiers: dict[str, str],
-        years: dict[str, int] | None = None,
+        notes: dict[str, tuple[str, ...]] | None = None,
     ) -> list[str]:
         """The batch as a person would read it, in playing order.
 
@@ -1163,8 +1183,16 @@ class CuratedRadioEngine:
             who = artist_of.get(uri)
             label = tiers.get(uri, "?")
             line = f"[{label}] {who} - {title}" if who else f"[{label}] {title}"
-            if year := (years or {}).get(uri):
-                line = f"{line} ({year})"
+            # The year, and the chart placing where one was found. Shown
+            # only where present, deliberately: a record with no placing
+            # here has not been shown to have missed the charts, it has
+            # been shown that Wikipedia does not say, and a blank is the
+            # honest rendering of that.
+            note = ", ".join(
+                str(part) for part in (notes or {}).get(uri, ()) if part
+            )
+            if note:
+                line = f"{line} ({note})"
             listed.append(line)
         return listed
 
@@ -1507,6 +1535,20 @@ class CuratedRadioEngine:
         for the wrong decade.
         """
         found = detail or ArticleFacts()
+        if found.year is not None and not found.song:
+            # Not an article about a record, so whatever date it carries
+            # is not a release date. This is the one the performer check
+            # cannot catch: a film has no song infobox at all, so there
+            # is no artist field to disagree with and the year would sail
+            # through looking perfectly reasonable.
+            _LOGGER.debug(
+                "%s is not a song article, so %s is not a release year",
+                article,
+                found.year,
+            )
+            return self._facts.remember(
+                artist, base, article=article, miss=MISS_NO_ARTICLE
+            )
         if found.year is not None and not performs(artist, found.performer):
             _LOGGER.debug(
                 "%s is a cover: %s is about %s, not %s, so its %s is not ours",
@@ -1528,6 +1570,7 @@ class CuratedRadioEngine:
             base,
             year=found.year,
             genres=found.genres,
+            charts=found.charts,
             article=article,
             miss="" if found.year is not None else MISS_NO_DATE,
         )
@@ -1592,7 +1635,7 @@ class CuratedRadioEngine:
             )
         return best
 
-    async def _async_years(
+    async def _async_known(
         self,
         pool_artists: list[str],
         per_artist: list[list[str]],
@@ -1630,12 +1673,12 @@ class CuratedRadioEngine:
         await self._async_learn_all(
             [(who, title) for who, title, _ in drawn], PLAYED_LOOKUPS_PER_BATCH
         )
-        years: dict[str, int] = {}
+        known: dict[str, Fact] = {}
         for who, title, uri in drawn:
             fact = self._facts.get(who, base_title(title))
-            if fact is not None and fact.year is not None:
-                years[uri] = fact.year
-        return years
+            if fact is not None:
+                known[uri] = fact
+        return known
 
     async def _async_learn_all(
         self, pairs: list[tuple[str, str]], budget: int

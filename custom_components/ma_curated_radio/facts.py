@@ -104,6 +104,26 @@ def _genres(raw: Iterable[Any]) -> tuple[str, ...]:
     return tuple(seen)
 
 
+def _charts(raw: Iterable[Any]) -> tuple[tuple[str, int], ...]:
+    """Chart placings as the file holds them, best position per chart.
+
+    Accepts the pairs the parser produces and the lists JSON gives back,
+    since a tuple does not survive a round trip through the store.
+    Anything unreadable is dropped rather than raised over: this is a
+    cache, and a lost placing costs nothing.
+    """
+    best: dict[str, int] = {}
+    for item in raw:
+        try:
+            name, peak = item
+            chart, position = str(name).strip(), int(peak)
+        except (TypeError, ValueError):
+            continue
+        if chart and position > 0:
+            best[chart] = min(best.get(chart, position), position)
+    return tuple(sorted(best.items()))
+
+
 @dataclass(frozen=True)
 class Fact:
     """Everything known about one record.
@@ -122,6 +142,13 @@ class Fact:
     # Which Wikipedia article answered, so a wrong match is visible later
     # rather than being an inexplicable year.
     article: str = ""
+    # Where the record charted and how high, as (chart, peak) pairs.
+    # Collected because a peak is reliable where it exists and costs
+    # nothing to read off an article we already fetched, and never used
+    # to reject anything: measured on 2026-09-17, eleven of sixteen
+    # canonical records have no peak on Wikipedia at all, "Heartbreak
+    # Hotel" among them. Absence proves nothing here.
+    charts: tuple[tuple[str, int], ...] = ()
     # Why there is no year, when there is no year. One of MISS_KINDS.
     miss: str = MISS_NONE
     # Set when a person entered this by hand. Nothing automatic may
@@ -143,6 +170,17 @@ class Fact:
         """The decade this record belongs to, if its year is known."""
         return None if self.year is None else self.year // 10 * 10
 
+    @property
+    def best_chart(self) -> tuple[str, int] | None:
+        """The highest position this record reached, and where.
+
+        None where nothing was found, which is not the same as saying it
+        never charted. See the note on ``charts``.
+        """
+        if not self.charts:
+            return None
+        return min(self.charts, key=lambda pair: pair[1])
+
     def stale(self, *, today: int | None = None) -> bool:
         """Whether a failed lookup is old enough to be worth retrying.
 
@@ -163,6 +201,7 @@ class Fact:
         return cls(
             year=int(year) if year is not None else None,
             genres=_genres(data.get("genres") or ()),
+            charts=_charts(data.get("charts") or ()),
             article=str(data.get("article") or ""),
             miss=miss if miss in MISS_KINDS else MISS_NONE,
             fixed=bool(data.get("fixed")),
@@ -180,6 +219,8 @@ class Fact:
         data: dict[str, Any] = {"seen": self.seen}
         if self.year is not None:
             data["year"] = self.year
+        if self.charts:
+            data["charts"] = [list(pair) for pair in self.charts]
         if self.genres:
             data["genres"] = list(self.genres)
         if self.article:
@@ -247,6 +288,7 @@ class FactBook:
         *,
         year: int | None = None,
         genres: Iterable[str] = (),
+        charts: Iterable[tuple[str, int]] = (),
         article: str = "",
         miss: str = MISS_NONE,
         fixed: bool = False,
@@ -265,6 +307,7 @@ class FactBook:
         fact = Fact(
             year=int(year) if year is not None else None,
             genres=_genres(genres),
+            charts=_charts(charts),
             article=str(article or ""),
             miss=miss if miss in MISS_KINDS else MISS_NONE,
             fixed=fixed,

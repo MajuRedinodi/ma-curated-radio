@@ -24,7 +24,14 @@ from typing import Any, NamedTuple
 
 import aiohttp
 
-from .filters import best_article, earliest_year, infobox_artist, infobox_genres
+from .filters import (
+    best_article,
+    chart_peaks,
+    earliest_year,
+    infobox_artist,
+    infobox_genres,
+    is_song_article,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -34,7 +41,7 @@ TIMEOUT = aiohttp.ClientTimeout(total=20)
 # Wikipedia asks that a client identify itself and says so in its own
 # API etiquette; an anonymous agent is the one thing that gets throttled.
 USER_AGENT = (
-    "ma-curated-radio/0.55 "
+    "ma-curated-radio/0.56 "
     "( https://github.com/MajuRedinodi/ma-curated-radio )"
 )
 
@@ -111,6 +118,12 @@ class ArticleFacts(NamedTuple):
     # recording it asked about or the song as somebody else first made
     # it. Empty where the article has no artist field.
     performer: str = ""
+    # Whether the article is about a record at all. A film, a tour or a
+    # discography wins a song search often enough to matter, and every
+    # one of them carries dates that read like release dates.
+    song: bool = False
+    # Where it charted and how high, collected and never filtered on.
+    charts: tuple[tuple[str, int], ...] = ()
 
 
 async def async_get_facts(
@@ -163,6 +176,8 @@ async def async_get_facts(
                 year=earliest_year(wikitext),
                 genres=tuple(sorted(infobox_genres(wikitext))),
                 performer=infobox_artist(wikitext),
+                song=is_song_article(wikitext),
+                charts=chart_peaks(wikitext),
             )
             name = str(page.get("title") or "")
             found[name] = detail

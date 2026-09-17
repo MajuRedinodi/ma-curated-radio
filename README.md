@@ -811,9 +811,15 @@ The artist shown is the one whose slot the track filled rather than the
 credits on the record, which is deliberate: it makes a batch that has
 quietly become one act under three names obvious at a glance.
 
-**The year** is when the record was made, from Wikipedia, and a line
-without one is a record nothing has told us about rather than a modern
-one. **Covers are deliberately left undated.** A cover shares its title
+**The year** is when the record was made, and **the chart placing** where
+one was found, both from Wikipedia. A line without a year is a record
+nothing has told us about rather than a modern one, and a line without a
+placing is a record Wikipedia does not give one for, which is **not** the
+same as one that missed the charts: eleven of sixteen canonical records
+have no placing on Wikipedia at all, "Heartbreak Hotel" among them. So
+the placing is collected and shown, and nothing is ever rejected for
+lacking one. See
+[docs/chart-probe-2026-09-17.md](docs/chart-probe-2026-09-17.md). **Covers are deliberately left undated.** A cover shares its title
 with the original, whose article wins the search, so reading its year
 dates the cover to whenever somebody else first made the record: Wheatus'
 "A Little Respect" came back as 1988 off Erasure's page. The infobox
