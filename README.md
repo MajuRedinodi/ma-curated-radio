@@ -34,13 +34,17 @@ there is nothing else to set up. No helpers, no `rest_command`, no YAML.
    song has to be known well enough for the station it is on. The Beatles
    and Michael Jackson are effectively uncapped; a band with three hits
    plays its three hits, not its album tracks.
-5. Those candidates are then **programmed** rather than shuffled. Each is
-   scored by how large its artist is and how far down that artist's own
-   ordering it sits, and the batch is filled to a Power, Deep, Secondary
-   rotation. Plain round-robin plays everyone's biggest track and then
-   everyone's second, so an hour front-loads its hits and fades; rotating
-   spends the big records across the whole hour instead. No artist plays
-   more than twice in a row.
+5. Those candidates are then **programmed** rather than shuffled, to a
+   music clock borrowed from commercial radio. Each record is filed as
+   Power, Secondary or Deep by how much of its own artist's biggest song
+   it holds, which is genre-neutral because both numbers come from the
+   same artist. The hour is then built Power-first: a Balanced batch is
+   twelve Power, five Secondary, two Deep and one Gold across twenty
+   slots, every block opens on a Power, no two unfamiliar records are
+   ever adjacent, and it closes on a Power. Plain round-robin plays
+   everyone's biggest track and then everyone's second, so an hour
+   front-loads its hits and fades. No artist plays more than twice in a
+   row. See [The music clock](#the-music-clock).
 6. As the batch plays down to its last couple of tracks, it **refills**
    without touching what is already queued. The refill is built around an
    artist from the stronger half of the batch that just played, preferring
@@ -130,9 +134,9 @@ whichever style is selected, so tuning one cannot quietly retune another.
 
 | Option | What it does |
 |---|---|
-| Similar artists per batch | How many Last.fm-similar artists join the seed artist. Zero keeps every batch to the seed artist alone. Per station style: 3 for Artist radio, 8 for the others. Set from its own entity, not from Configure. |
-| Tracks per artist | How many tracks to draw from each artist. The seed draws more, by the station style's multiplier. Per station style: 3 everywhere. Set from its own entity, not from Configure. |
-| Tracks per batch | How many of the drawn tracks actually play, which is what lets a batch reach deeper without getting longer. Zero plays everything drawn. Per station style: 19 for Balanced and Discovery, 0 for Artist radio. Set from its own entity, not from Configure. |
+| Similar artists per batch | How many Last.fm-similar artists join the seed artist. Zero keeps every batch to the seed artist alone. **This is where Power comes from:** each artist supplies about one record they are known for, so twelve Power slots need about twelve artists. Per station style: 3 for Artist radio, 12 for Balanced, 8 for Discovery. Set from its own entity, not from Configure. |
+| Tracks per artist | How many tracks to draw from each artist. The seed draws more, by the station style's multiplier. Depth rather than breadth, and depth is where Deep tracks come from: an artist's third record is rarely one they are known for. Per station style: 3 for Artist radio and Discovery, 2 for Balanced. Set from its own entity, not from Configure. |
+| Tracks per batch | How many of the drawn tracks actually play, which is what lets a batch reach deeper without getting longer. Zero plays everything drawn. Per station style: 20 for Balanced and Discovery, 0 for Artist radio. Set from its own entity, not from Configure. |
 | Drop artists below [10%] | Drop a similar artist whose audience is below this share of the pool's own median. Catches a neighbour whose whole catalogue is obscure without penalising a genre Last.fm undercounts. Zero disables it. Set from its own entity, not from Configure. |
 | Station style [balanced] | **Artist radio** always builds from the artist you picked and never wanders. **Balanced** wanders but stays inside the degree fence below. **Discovery** wanders without limit, which is the point of it. |
 | Seed from the song [on] | Build the station from the songs people play alongside the one you picked, rather than from the artists people play alongside its artist. Asking about the artist returns a name and leaves the provider to choose the record, which is how a Michael Jackson station ends up playing Kool & the Gang's "Summer Madness" instead of "Cherish". Asking about the song returns the records themselves. Also holds the hour to the era and genre the pick came from, and reseeds each refill from a strong record of the batch before. Turn it off to get the artist-graph behaviour back, which is worth doing for a lane too obscure to have a crowd. Set from its own entity, not from Configure. |
@@ -664,6 +668,57 @@ direction, which is what a station does.
 
 A session starts on a manual pick and expires after six hours idle, so
 tonight is never still anchored to yesterday morning.
+
+## The music clock
+
+Commercial radio does not shuffle a category, it runs a **clock**: a fixed
+sequence of categories that every hour is built to, with the songs filled
+in underneath. Three of its rules are worth copying and this does.
+
+**The hour is Power-weighted, heavily.** A record is Power when it is one
+of the ones its artist is actually known for, measured as its share of
+that artist's biggest song. Balanced asks for twelve Power, five
+Secondary, two Deep and one Gold across twenty slots, so everything
+except the two Deeps is something you would recognise.
+
+| Category | What it is | Share of its artist's biggest |
+|---|---|---|
+| Power | one of the records this act is known for | 50% or more |
+| Secondary | a real hit, but not one of the big ones | 20% to 50% |
+| Deep | album material | under 20% |
+| Gold | a familiar record from outside the station's era | high share, wrong decade |
+
+Those lines are measured, not chosen. Against 49 artists' real Last.fm
+curves, second hits sit between 24% and 93% and filler sits between 1%
+and 10%, so the gap is wide. A one-hit wonder collapses to a single Power
+by itself, because the next thing it has is single figures. A giant keeps
+its depth for the same reason: the Beatles' twentieth song is still 54%
+of their first.
+
+**Power opens every block.** Radio does this because ratings were credited
+in quarter-hours, so the strongest record went right after :00, :15, :30
+and :45. The habit outlived the reason, and an hour that opens strongly
+and softens in the middle holds up.
+
+**No two unfamiliar records are ever adjacent**, and this is enforced as a
+rule rather than left to the pattern. A Deep or a Gold has a Power either
+side of it. A pattern can only promise that while the pool can still
+answer it, and the tail of a batch is exactly where it stops being able
+to.
+
+Each station style has its own clock, because the formats want different
+things. Artist radio is a showcase where depth is the point. Discovery
+asks for as much depth as the pool can honestly supply.
+
+**A clock is a ceiling, not a quota.** Because a record's category is
+about the record and not about where it ranks in tonight's pool, asking
+for a Deep in a pool of nothing but hits falls back to Secondary rather
+than demoting a hit to fill the slot. This used to work the other way:
+the pool was cut into terciles, so a third of every batch was Deep
+whatever was in it, and a batch of genuine smashes had five of them filed
+as album cuts by arithmetic. Simulated against the real curves, a
+Balanced 80s batch now comes out 95% recognisable where terciles made it
+67% by construction.
 
 ## Telling it a song is wrong
 

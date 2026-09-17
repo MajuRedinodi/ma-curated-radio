@@ -191,14 +191,66 @@ MIN_POOL_FOR_FLOOR: Final = 3
 TIER_POWER: Final = "P"
 TIER_SECONDARY: Final = "S"
 TIER_DEEP: Final = "D"
+# A familiar record from outside the era the station is holding to. What
+# commercial radio means by Gold, which is old rather than obscure, and
+# the one slot in an hour allowed to break the era fence. Nothing is
+# filed here yet; the label and its slot exist so the clock is the final
+# shape while what fills it is built.
+TIER_GOLD: Final = "G"
 
-# The rotation an hour is built to. Terciles supply each tier equally, so
-# a pattern asking for more Power than that spends them early and leaves
-# the closing third with nothing: measured on a real batch, a Power-heavy
-# pattern left its last six tracks entirely Secondary and Deep. Power
-# first so an hour opens strongly, then Deep while that opening is still
-# in the ear, then Secondary to recover.
-TIER_PATTERN: Final = [TIER_POWER, TIER_DEEP, TIER_SECONDARY]
+# How much of its own artist's biggest song a record has to hold to count
+# as one of the records that artist is known for. Measured against 49
+# artists on 2026-09-15, and the three verdicts already reached by ear
+# all land correctly:
+#
+#   Glenn Frey, "You Belong to the City"   #2   70.8%  -> Power
+#   Mr. Mister, "Kyrie"                    #2   39.0%  -> Secondary
+#   Sugar, "Candy from Strangers"          #27  10.0%  -> Deep
+#
+# The gap either side of these lines is wide rather than narrow. Real
+# second hits measured 24 to 93 percent; real filler measured 1 to 10.
+# A one-hit wonder collapses to a single Power by itself, because the
+# next thing it has is single figures: Dexys' second record is 4% of
+# their first, Soft Cell's 6%, Norman Greenbaum's 1%. A giant keeps its
+# depth for the same reason, since the Beatles' twentieth song is still
+# 54% of their first and Metallica's twentieth is 30%.
+POWER_SHARE: Final = 0.50
+SECONDARY_SHARE: Final = 0.20
+
+# What a slot takes when nothing of the tier it asked for is left. An
+# hour with a slightly wrong texture beats an hour with a hole in it, but
+# which way it goes wrong matters: an unfilled Gold or Power slot should
+# reach for the next most familiar thing, while an unfilled Deep slot
+# should not answer a request for texture with the biggest record in the
+# pool.
+TIER_FALLBACK: Final = {
+    TIER_GOLD: (TIER_GOLD, TIER_POWER, TIER_SECONDARY, TIER_DEEP),
+    TIER_POWER: (TIER_POWER, TIER_SECONDARY, TIER_GOLD, TIER_DEEP),
+    TIER_SECONDARY: (TIER_SECONDARY, TIER_POWER, TIER_GOLD, TIER_DEEP),
+    TIER_DEEP: (TIER_DEEP, TIER_SECONDARY, TIER_GOLD, TIER_POWER),
+}
+
+# Categories that have to be kept apart from each other, whatever the
+# clock asked for. A Deep next to a Deep is the thing that loses a
+# listener, and a Gold next to a Deep is two oddities in a row.
+#
+# A rule rather than a pattern, because a pattern can only promise this
+# while the pool can still answer it. Simulated against the real curves
+# of twelve one-hit wonders, the clock ran out of Power by the last few
+# slots and closed on "S S S D D": every clock in the file spaces its
+# own Deeps correctly and it made no difference at the tail, where only
+# the weak pools had anything left.
+SPACED_TIERS: Final = (TIER_DEEP, TIER_GOLD)
+
+# How many familiarity bands the artist draw is spread across, so a
+# batch reaches the well-known, the middling and the further-out parts
+# of a pool rather than clustering wherever the weighting points.
+#
+# Nothing to do with the length of a clock, though it used to be spelled
+# len(TIER_PATTERN) back when every clock was three slots long, which
+# made the coincidence invisible. A twenty-slot clock would have asked
+# for twenty bands of one candidate each.
+CANDIDATE_BANDS: Final = 3
 
 # Spoken-word and filler entries that search returns alongside the real
 # tracks, and that nobody wants queued. Duration catches most of it;
@@ -587,54 +639,57 @@ def tier_of(
     rank: Mapping[str, int] | None = None,
     share: Mapping[str, float] | None = None,
 ) -> dict[str, str]:
-    """Label each track Power, Secondary or Deep, relative to this pool.
+    """Label each track Power, Secondary or Deep by how well known it is.
 
-    Scores a track as its artist's size scaled by how big that song is
-    within that artist's own catalogue. ``share`` carries the real figure
-    where Last.fm has it: the song's listeners over the artist's biggest
-    song's, so the artist's own top track scores their full audience and
-    everything else a real fraction of it.
+    A record's category is how much of its own artist's biggest song it
+    holds, and nothing else. ``share`` carries the real figure where
+    Last.fm has it: the song's listeners over the artist's biggest song's.
+    Genre cancels, because the numerator and denominator are the same
+    artist, which is what lets a country station work at all when Last.fm
+    undercounts the genre tenfold.
 
     Without it the fraction is guessed at as ``decay ** position``, and
     that guess inverts on deep positions. Measured on real data: a
     one-hit wonder's second song scores 70% of their audience when its
     true share is 4%, while the Beatles' twentieth scores 0.1% when its
-    true share is 54%. So the clock was filing duds in Power and real
-    hits in Deep. The 66%-agreement this rule used to claim was measured
-    at two tracks per artist, positions 0 and 1, where the decay barely
-    acts and so cannot be wrong.
+    true share is 54%. A share of 1.0 at position 0 is exactly what the
+    decay gives, so the two agree at the head of a catalogue and diverge
+    only where the guess was bad.
 
-    A share of 1.0 at position 0 is exactly what the decay gave, so the
-    two agree on a first batch and only diverge where the guess was bad.
+    **This used to cut terciles of the pool**, which is why an hour came
+    out a third Deep whatever was in it. A tercile makes the category a
+    statement about rank rather than about the record, so a pool of
+    genuine smashes had five of them filed as Deep by arithmetic, and a
+    thin pool had a third of it promoted to Power for the same reason.
+    Commercial radio tests a title and files it on the answer; the pool
+    it happens to sit in that hour has nothing to do with it.
 
-    Terciles of the pool in front of it, never absolute numbers. A fixed
-    threshold tuned on rock would mark an entire country station as deep
-    cuts, because Last.fm undercounts the genre by about ten times.
+    The consequence worth knowing: **the clock can no longer manufacture
+    a tier that is not there.** Asking for Deep in a pool of hits now
+    falls back to Secondary rather than demoting a hit, and asking for
+    Power in a thin pool cannot invent one.
+
+    Artist size is deliberately unused. It was the other half of the old
+    score, and it is why a giant's fifth record outranked a mid-sized
+    act's biggest. Median reach was separately measured not to predict
+    recognisability at all: 575k scored 80%, 3.3M scored 70 to 75%, and
+    140k scored 94%. It stays in ``reach_of`` for the sensor, where it
+    describes a batch rather than deciding one.
 
     ``rank`` gives each track's position in its artist's ordering when that
     differs from its position in this batch; see ``reach_of``.
     """
-    # An unknown size means the lookup missed, not that the artist is
-    # tiny. Scoring it as zero would put every one of its tracks in the
-    # Deep tier, and the artist most likely to be missing is the one just
-    # picked, so the station would file what you asked for as its weakest
-    # material. Treat unknown as typical instead.
-    known = sorted(size for _, _, size in sized if size > 0)
-    fallback = known[len(known) // 2] if known else 1
-
-    scored: list[tuple[str, float]] = []
-    for _, uris, size in sized:
-        weight = size if size > 0 else fallback
+    tiers: dict[str, str] = {}
+    for _, uris, _size in sized:
         for index, uri in enumerate(uris):
             position = rank.get(uri, index) if rank else index
-            scored.append((uri, weight * _song_share(uri, position, decay, share)))
-    scored.sort(key=lambda pair: pair[1], reverse=True)
-    third = len(scored) // 3
-    tiers: dict[str, str] = {}
-    for index, (uri, _) in enumerate(scored):
-        tiers[uri] = TIER_POWER if index < third else (
-            TIER_SECONDARY if index < third * 2 else TIER_DEEP
-        )
+            held = _song_share(uri, position, decay, share)
+            if held >= POWER_SHARE:
+                tiers[uri] = TIER_POWER
+            elif held >= SECONDARY_SHARE:
+                tiers[uri] = TIER_SECONDARY
+            else:
+                tiers[uri] = TIER_DEEP
     return tiers
 
 
@@ -708,7 +763,11 @@ def sequence_tiered(
 
     The pattern is a preference. When no artist can supply the tier a
     slot wants, the best available plays anyway: an hour with a slightly
-    wrong texture beats an hour with a hole in it.
+    wrong texture beats an hour with a hole in it. Which way it gives is
+    set by TIER_FALLBACK rather than left to chance, so an unfilled Gold
+    slot reaches for a Power and an unfilled Deep slot reaches for a
+    Secondary instead of answering a request for texture with the biggest
+    record in the pool.
     """
     pools = [list(items) for items in lists if items]
     if not pools:
@@ -721,15 +780,24 @@ def sequence_tiered(
     played: dict[int, int] = {}
     last: int | None = leading
     run = 1 if leading is not None else 0
+    previous = ""
 
     while len(ordered) < wanted and any(pools):
         want = pattern[len(ordered) % len(pattern)]
+        order = TIER_FALLBACK.get(want, (want,))
         pick = None
         best: tuple[int, ...] | None = None
         for index, pool in enumerate(pools):
             if not pool or (index == last and run >= max_consecutive):
                 continue
-            fit = 0 if tiers.get(pool[0]) == want else 1
+            held = tiers.get(pool[0], "")
+            # Sorted ahead of the clock's own preference, so keeping two
+            # unfamiliar records apart outranks filling the slot the
+            # clock asked for. A preference that only holds while the
+            # pool can answer it is not a rule, and the tail of a batch
+            # is exactly where it stops being able to.
+            stacked = int(held in SPACED_TIERS and previous in SPACED_TIERS)
+            fit = order.index(held) if held in order else len(order)
             # Uncapped, every pool has to be emptied, so take from the
             # fullest to avoid stranding one artist's tracks at the end.
             # Capped, there is no such obligation, and preferring the
@@ -737,16 +805,18 @@ def sequence_tiered(
             # artist drew most, which is the seed. Spread by who has
             # played least instead.
             key = (
-                (fit, played.get(index, 0), -len(pool))
+                (stacked, fit, played.get(index, 0), -len(pool))
                 if capped
-                else (fit, -len(pool))
+                else (stacked, fit, -len(pool))
             )
             if best is None or key < best:
                 best, pick = key, index
         if pick is None:
             pick = next(i for i, pool in enumerate(pools) if pool)
 
-        ordered.append(pools[pick].pop(0))
+        taken = pools[pick].pop(0)
+        ordered.append(taken)
+        previous = tiers.get(taken, "")
         played[pick] = played.get(pick, 0) + 1
         run = run + 1 if pick == last else 1
         last = pick

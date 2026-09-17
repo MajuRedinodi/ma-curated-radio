@@ -62,6 +62,7 @@ from .const import (
     FAMILIARITIES,
     LEGACY_SEED_LEANS,
     SEED_LEANS,
+    STYLE_CLOCK,
     style_value,
 )
 
@@ -90,6 +91,9 @@ class Settings:
     filter_holiday: bool
     seed_from_song: bool
     seed_lean: str
+    # The music clock for the selected style, resolved here with the rest
+    # of the batch shape so nothing downstream has to know about styles.
+    clock: list[str]
     familiarity: str
     explicit: str
     degrees: int
@@ -113,6 +117,7 @@ class Settings:
             lastfm_api_key=str(merged.get(CONF_LASTFM_API_KEY, "")),
             max_artists=style_value(merged, style, CONF_MAX_ARTISTS),
             batch_length=style_value(merged, style, CONF_BATCH_LENGTH),
+            clock=list(STYLE_CLOCK[style]),
             popularity_floor=int(
                 merged.get(CONF_POPULARITY_FLOOR, DEFAULT_POPULARITY_FLOOR)
             ),

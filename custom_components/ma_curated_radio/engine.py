@@ -55,12 +55,12 @@ from .decide import leading_pool, starts_station
 from .facts import MISS_NO_ARTICLE, MISS_NO_DATE, Fact, FactBook
 from .feedback import SkipMemory
 from .filters import (
+    CANDIDATE_BANDS,
     FOOTNOTE_SHARE,
     LANE_CLASH,
     LANE_MATCH,
     LANE_UNKNOWN,
     NEIGHBOURHOOD_SIZE,
-    TIER_PATTERN,
     TIER_POWER,
     SelectionRules,
     base_title,
@@ -595,7 +595,7 @@ class CuratedRadioEngine:
         ordered = sequence_tiered(
             per_artist,
             tiers,
-            TIER_PATTERN,
+            self._settings.clock,
             max_consecutive=self._settings.max_consecutive,
             leading=leading,
             length=self._settings.batch_length,
@@ -1339,7 +1339,7 @@ class CuratedRadioEngine:
             # or a pick whose album Last.fm cannot place. Fall back to the
             # hop's own lane, which is what this used to do always.
             lane = await self._async_lane(artist, title)
-        bands = stratified_bands(eligible, count, len(TIER_PATTERN), self._rng)
+        bands = stratified_bands(eligible, count, CANDIDATE_BANDS, self._rng)
         if lane == (set(), set()):
             _LOGGER.debug("No lane for %s; drawing without one", title)
             return [name for quota, order in bands for name in order[:quota]]
@@ -1669,7 +1669,7 @@ class CuratedRadioEngine:
         return sequence_tiered(
             per_artist,
             tier_of(sized, TIER_DECAY, rank, share),
-            TIER_PATTERN,
+            self._settings.clock,
             max_consecutive=self._settings.max_consecutive,
         )
 

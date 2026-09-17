@@ -220,16 +220,66 @@ STYLE_DEFAULTS: Final = {
         CONF_TRACKS_PER_ARTIST: 3,
         CONF_BATCH_LENGTH: 0,
     },
+    # Twelve artists at two tracks each, rather than eight at three.
+    # Power comes from breadth and not from depth: a record is Power when
+    # it is one of the ones its artist is known for, which is mostly
+    # their first and sometimes their second, so twelve Powers in an hour
+    # needs about twelve artists and no pattern can conjure a thirteenth
+    # out of eight. Drawing 24 to play 20 is the same search volume as
+    # eight at three, spent on breadth instead. The same move from three
+    # artists to eight was the single biggest improvement to how this
+    # sounded, measured by ear on 2026-09-10.
     SEED_LEAN_BALANCED: {
-        CONF_MAX_ARTISTS: 8,
-        CONF_TRACKS_PER_ARTIST: 3,
-        CONF_BATCH_LENGTH: 19,
+        CONF_MAX_ARTISTS: 12,
+        CONF_TRACKS_PER_ARTIST: 2,
+        CONF_BATCH_LENGTH: 20,
     },
     SEED_LEAN_DISCOVERY: {
         CONF_MAX_ARTISTS: 8,
         CONF_TRACKS_PER_ARTIST: 3,
-        CONF_BATCH_LENGTH: 19,
+        CONF_BATCH_LENGTH: 20,
     },
+}
+
+# The music clock each station style is built to, one letter per slot,
+# repeating. The letters are filters.TIER_* and a test holds them to it;
+# they are spelled out here because this is where per-style settings
+# live and filters.py deliberately imports nothing.
+#
+# Three rules out of commercial radio practice, which all three clocks
+# keep:
+#
+#   1. Every block opens on a Power. Radio does this because ratings were
+#      credited in quarter hours, so the strongest record went right
+#      after :00, :15, :30 and :45. The habit outlived the reason: an
+#      hour that opens strongly and softens in the middle holds up.
+#   2. No two unfamiliar records are ever adjacent. A Deep or a Gold has
+#      a Power either side of it. Two in a row is how a listener leaves.
+#   3. The hour closes on a Power. Terciles used to put the remainder in
+#      Deep, so a batch ended on its weakest material.
+#
+# Balanced is 12 Power, 5 Secondary, 2 Deep and 1 Gold across 20 slots,
+# which is 60/25/10/5. Everything except the Deeps is a record somebody
+# would recognise, so the hour is 90% familiar, which is the target this
+# whole project has been aimed at.
+#
+# Because tiers are now absolute rather than terciles, a clock is a
+# ceiling and not a quota: asking for Deep in a pool of nothing but hits
+# falls back to Secondary rather than demoting a hit to fill the slot.
+# That is why Discovery can ask for a third and get less.
+STYLE_CLOCK: Final = {
+    # A showcase, so depth is the point rather than a cost. One Deep
+    # every six, still Power-led.
+    SEED_LEAN_ARTIST: ["P", "S", "P", "D", "S", "P"],
+    SEED_LEAN_BALANCED: [
+        "P", "S", "P", "P", "D",
+        "P", "S", "P", "P", "S",
+        "P", "S", "P", "P", "G",
+        "P", "S", "P", "D", "P",
+    ],
+    # Asks for as much depth as the pool can honestly supply, which on a
+    # pool of hits is none: a clock is a ceiling now, not a quota.
+    SEED_LEAN_DISCOVERY: ["P", "S", "D", "P", "S", "D", "S", "P"],
 }
 DEFAULT_MAX_CONSECUTIVE: Final = 2
 DEFAULT_TRACK_SUPPRESS_DAYS: Final = 30

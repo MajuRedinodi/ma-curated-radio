@@ -14,6 +14,7 @@ from filters import (
     LANE_UNKNOWN,
     TIER_DEEP,
     TIER_POWER,
+    TIER_SECONDARY,
     base_title,
     best_article,
     clean_similar_artists,
@@ -512,18 +513,37 @@ def test_floor_never_drops_an_artist_of_unknown_size():
     assert dropped == []
 
 
-def test_tiers_are_relative_so_a_small_genre_still_gets_power_tracks():
-    """An all-country pool must not come out entirely Deep."""
+def test_a_small_genre_gets_power_tracks_like_any_other():
+    """An all-country pool must not come out entirely Deep.
+
+    Last.fm undercounts country roughly tenfold: Hank Williams Jr's
+    biggest record has 38,490 listeners against Michael Jackson's 3.4
+    million, and every one of Hank's is known. Comparing a record to its
+    own artist's biggest is what cancels that, so each act's own top
+    track is a Power whatever the act's size, and Hank's second lands in
+    Power too because his measured curve is flat at 83%.
+
+    This used to pass for the wrong reason. Terciles guaranteed a Power
+    and a Deep in every pool by arithmetic, so the assertion held on an
+    all-country pool without demonstrating anything about country.
+    """
     pool = [
         ("The Highwaymen", ["hw1", "hw2"], 380679),
         ("David Allan Coe", ["dac1", "dac2"], 136180),
         ("Johnny Paycheck", ["jp1", "jp2"], 128366),
         ("Hank Williams Jr.", ["hank1", "hank2"], 38490),
     ]
-    tiers = tier_of(pool, 0.7)
-    assert "P" in tiers.values()
-    assert "D" in tiers.values()
-    assert tiers["hw1"] == "P"
+    share = {
+        "hw1": 1.0, "hw2": 0.30,
+        "dac1": 1.0, "dac2": 0.22,
+        "jp1": 1.0, "jp2": 0.08,
+        "hank1": 1.0, "hank2": 0.83,
+    }
+    tiers = tier_of(pool, 0.7, None, share)
+    assert tiers["hw1"] == tiers["dac1"] == tiers["jp1"] == TIER_POWER
+    assert tiers["hank1"] == tiers["hank2"] == TIER_POWER
+    assert tiers["hw2"] == tiers["dac2"] == TIER_SECONDARY
+    assert tiers["jp2"] == TIER_DEEP
 
 
 def test_tiered_order_spreads_the_big_tracks_across_the_hour():
@@ -1882,3 +1902,97 @@ def test_year_span_of_nothing_known_is_empty():
 def test_year_span_ignores_a_missing_year():
     """A zero is the absence of a year, not the year zero."""
     assert year_span([0, 1974, 0, 1978]) == "1974-1978"
+
+
+# --- Which rotation category a record belongs to -------------------------
+
+# Shares measured on 2026-09-15 against 49 artists' real Last.fm curves,
+# in docs/artist-curves-2026-09-15.json. These are the numbers, not
+# illustrations of them.
+
+
+def _tier(share_of_biggest: float) -> str:
+    """The category one record falls in, given what it holds."""
+    return tier_of(
+        [("act", ["track"], 100_000)], 0.7, {"track": 0}, {"track": share_of_biggest}
+    )["track"]
+
+
+def test_the_three_verdicts_already_reached_by_ear():
+    """The only three records anyone has actually ruled on.
+
+    Glenn Frey's second record is a co-equal hit, Mr. Mister's is known
+    but is not "Broken Wings", and Sugar's twenty-seventh is filler. The
+    categories have to agree with all three or the thresholds are wrong.
+    """
+    assert _tier(0.708) == TIER_POWER
+    assert _tier(0.390) == TIER_SECONDARY
+    assert _tier(0.100) == TIER_DEEP
+
+
+def test_an_artist_is_always_a_power_at_their_own_biggest():
+    """Whatever else is in the pool, and whatever size the act is."""
+    assert _tier(1.0) == TIER_POWER
+
+
+def test_a_one_hit_wonder_collapses_to_one_power():
+    """Dexys 4%, Soft Cell 6%, The Knack 6%, Norman Greenbaum 1%."""
+    for second in (0.04, 0.06, 0.06, 0.01):
+        assert _tier(second) == TIER_DEEP
+
+
+def test_a_giant_keeps_its_depth():
+    """The Beatles' twentieth is 54% of their first, Metallica's 30%."""
+    assert _tier(0.54) == TIER_POWER
+    assert _tier(0.30) == TIER_SECONDARY
+
+
+def test_an_outsized_first_record_does_not_promote_its_second():
+    """a-ha's second is 11% behind a 2.9 million "Take on Me".
+
+    A real limit rather than a bug: for most listeners a-ha is one
+    record, so filing the second as Deep is the honest answer.
+    """
+    assert _tier(0.11) == TIER_DEEP
+
+
+def test_country_is_not_erased_by_an_absolute_number():
+    """Hank Williams Jr's biggest has 38,490 listeners and every one of
+    his records is known. His curve is 83/65/42/31/18, so the share rule
+    keeps them where any listener-count threshold would erase the lot."""
+    assert _tier(0.83) == TIER_POWER
+    assert _tier(0.65) == TIER_POWER
+    assert _tier(0.42) == TIER_SECONDARY
+
+
+def test_artist_size_does_not_decide_the_category():
+    """It used to be half the score, which is how a giant's fifth record
+    outranked a mid-sized act's biggest. Median reach was separately
+    measured not to predict recognisability: 575k scored 80%, 3.3M scored
+    70-75%, 140k scored 94%."""
+    tiny = tier_of([("act", ["t"], 900)], 0.7, {"t": 0}, {"t": 1.0})
+    huge = tier_of([("act", ["t"], 9_000_000)], 0.7, {"t": 0}, {"t": 1.0})
+    assert tiny["t"] == huge["t"] == TIER_POWER
+
+
+def test_a_pool_of_nothing_but_hits_has_no_deep_tracks():
+    """The glut Jeff heard: terciles filed a third of every batch as Deep
+    whatever was in it, so a batch of genuine smashes had five of them
+    demoted by arithmetic."""
+    smashes = {f"t{i}": 1.0 - i * 0.02 for i in range(15)}
+    tiers = tier_of(
+        [("act", list(smashes), 500_000)],
+        0.7,
+        dict.fromkeys(smashes, 0),
+        smashes,
+    )
+    assert set(tiers.values()) == {TIER_POWER}
+
+
+def test_a_thin_pool_is_not_promoted_to_power_either():
+    """The same arithmetic in the other direction."""
+    filler = {f"t{i}": 0.05 for i in range(9)}
+    tiers = tier_of(
+        [("act", list(filler), 500_000)], 0.7, dict.fromkeys(filler, 0), filler
+    )
+    assert set(tiers.values()) == {TIER_DEEP}
