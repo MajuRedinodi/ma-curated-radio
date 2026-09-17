@@ -33,6 +33,7 @@ async def async_setup_entry(
     async_add_entities(
         [
             BuildBatchButton(entry),
+            RejectPlayingButton(entry),
             UnmuteAllButton(entry),
             UnmuteSelectedButton(entry),
             AllowSelectedTrackButton(entry),
@@ -54,6 +55,41 @@ class BuildBatchButton(CuratedRadioEntity, ButtonEntity):
     async def async_press(self) -> None:
         """Replace the queue tail with a fresh batch."""
         await self.runtime.engine.async_run(MODE_REPLACE)
+
+
+class RejectPlayingButton(CuratedRadioEntity, ButtonEntity):
+    """Skip this song and hold it off, rather than merely skipping it.
+
+    Pressing next on the player used to mean this by implication, and it
+    was the wrong reading: not being in the mood for a song is the
+    ordinary reason to skip it and is no reason to lose it for a month.
+    So the ordinary skip went back to meaning nothing and the verdict
+    moved here, where it has to be meant.
+
+    Not a config entity. It is pressed while listening, alongside the
+    transport controls, rather than found in a settings panel.
+    """
+
+    _attr_translation_key = "reject_playing"
+    _attr_icon = "mdi:thumb-down-outline"
+
+    def __init__(self, entry: MaCuratedRadioConfigEntry) -> None:
+        """Bind to the detector, which is what knows the current song."""
+        super().__init__(entry, "reject_playing")
+
+    async def async_press(self) -> None:
+        """Hold the song off and move on.
+
+        Raises when nothing is playing, so the press reports rather than
+        silently doing nothing. A button that always looks like it worked
+        is worse than one that says it could not.
+        """
+        if self.runtime.detector.playing is None:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN, translation_key="nothing_playing"
+            )
+        await self.runtime.detector.async_reject_playing()
+        async_dispatcher_send(self.hass, signal_update(self._entry.entry_id))
 
 
 class UnmuteAllButton(CuratedRadioEntity, ButtonEntity):

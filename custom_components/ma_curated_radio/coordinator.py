@@ -28,14 +28,12 @@ from .const import (
     MODE_REFILL,
     MODE_REPLACE,
     RESTART_TOLERANCE_SECONDS,
-    SKIP_BURST_SECONDS,
     SKIP_GRACE_SECONDS,
 )
 from .decide import (
     Decision,
     PlaybackSnapshot,
     QueueFacts,
-    SkipLedger,
     decide,
     is_transitional,
     track_restarted,
@@ -44,7 +42,7 @@ from .decide import (
 from .engine import CuratedRadioEngine
 from .feedback import SkipMemory
 from .filters import base_title
-from .ma import async_get_queue
+from .ma import async_get_queue, async_next_track
 from .settings import Settings
 
 _LOGGER = logging.getLogger(__name__)
@@ -120,9 +118,6 @@ class CuratedRadioDetector:
         # this rather than against the update before, because some players
         # change the track and start playing it in two separate updates.
         self._playing_track: str | None = None
-        # Which skips are verdicts and which are somebody hunting through
-        # the queue. The rules live in decide.py, where they can be tested.
-        self._ledger = SkipLedger()
         # Who the song now playing is credited to, as the provider lists
         # them, read from the queue rather than from the joined string
         # Home Assistant shows.
@@ -349,61 +344,72 @@ class CuratedRadioDetector:
         await asyncio.shield(run)
 
     async def _async_record_feedback(self, outgoing: PlaybackSnapshot | None) -> None:
-        """Record whether the track that just ended was skipped.
+        """Note that a track played all the way through.
 
-        A skip is a verdict on one song, but somebody hunting through the
-        queue produces a run of them that says nothing about any of the
-        songs passed over. Observed at one in the morning with a house full
-        of kids: two songs were suppressed for a month by somebody holding
-        the next button. So a skip is held back until the listener's next
-        verdict, and a second skip seconds later throws both away.
+        **Pressing next is no longer a verdict on anything.** It used to
+        be: a skip suppressed the song for a month and counted toward
+        muting its artist, with a whole apparatus for telling a real
+        verdict from somebody hunting through the queue. The apparatus
+        worked and the premise was wrong. Not being in the mood for a song
+        is the ordinary reason to skip it, and it is not a reason to lose
+        it for a month. Saying so is now a deliberate press of its own
+        button.
 
-        A second skip that is not part of a run confirms the one before it
-        rather than replacing it. Skipping three songs over a quarter of an
-        hour is three verdicts, and muting an artist depends on counting
-        them: holding each skip until the next track played through, with
-        nothing to commit them in between, left the run permanently at one
-        and made muting unreachable.
+        What is left is the other half, which still matters: a song that
+        played to the end resets the run of consecutive rejections, so
+        three of them have to be genuinely consecutive to mute an artist.
+        A skip neither confirms nor resets that run. It says nothing, so
+        it does nothing.
         """
-        if outgoing is None:
+        if outgoing is None or outgoing.was_skipped(SKIP_GRACE_SECONDS):
             return
-        if not outgoing.was_skipped(SKIP_GRACE_SECONDS):
-            await self._async_commit(self._ledger.played())
-            await self._skips.async_record_played()
-            return
+        await self._skips.async_record_played()
 
-        confirmed = self._ledger.skipped(
-            outgoing, dt_util.utcnow().timestamp(), SKIP_BURST_SECONDS
+    @property
+    def playing(self) -> PlaybackSnapshot | None:
+        """What is on the player right now, or None if nothing is.
+
+        Built from the player's state and the credits read off the queue,
+        which is the same pair a track change is judged on, so the button
+        and the listener see one song rather than two views of it.
+        """
+        return _snapshot(
+            self._hass.states.get(self._settings.player), self._playing_credits
         )
-        if not confirmed:
-            _LOGGER.debug("Holding the skip of %s until the next one", outgoing.title)
-        await self._async_commit(confirmed)
 
-    async def _async_commit(self, skips: list[PlaybackSnapshot]) -> None:
-        """Record the skips the ledger has confirmed as verdicts."""
-        for outgoing in skips:
-            await self._async_record_skip(outgoing)
+    async def async_reject_playing(self) -> str | None:
+        """Hold off whatever is playing, and move on from it.
 
-    async def _async_record_skip(self, outgoing: PlaybackSnapshot) -> None:
-        """Push one skipped song off, and mute its artist if that is a run."""
+        The deliberate version of what pressing next used to do by
+        implication. Returns an artist name if this was the press that
+        muted one.
+
+        Recorded before the player is moved on rather than after, because
+        the track has to still be the one being judged when it is read.
+        """
+        playing = self.playing
+        if playing is None:
+            return None
         _LOGGER.debug(
-            "Skipped %s by %s at %.0fs of %.0fs",
-            outgoing.title,
-            outgoing.artist,
-            outgoing.elapsed,
-            outgoing.duration,
+            "Holding off %s by %s at %.0fs of %.0fs",
+            playing.title,
+            playing.artist,
+            playing.elapsed,
+            playing.duration,
         )
         muted = await self._skips.async_record_skip(
-            base_title(outgoing.title),
-            outgoing.credited,
-            label=" by ".join(p for p in (outgoing.title, outgoing.artist) if p),
+            base_title(playing.title),
+            playing.credited,
+            label=" by ".join(p for p in (playing.title, playing.artist) if p),
         )
         if muted:
             _LOGGER.info(
-                "%s will not be suggested for a while: %s skips in a row",
+                "%s will not be suggested for a while: %s rejections in a row",
                 muted,
                 self._settings.artist_strike_limit,
             )
+        await async_next_track(self._hass, self._settings.player)
+        return muted
 
     def _in_cooldown(self) -> bool:
         """True while a separate queue-rewriting routine is still settling.

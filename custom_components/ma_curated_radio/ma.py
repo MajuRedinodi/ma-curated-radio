@@ -231,6 +231,22 @@ async def async_play_media(
     )
 
 
+async def async_next_track(hass: HomeAssistant, player: str) -> None:
+    """Move the player on to the next track.
+
+    The media_player domain rather than Music Assistant's own, because
+    this is the ordinary transport control every player implements and
+    there is nothing Music Assistant specific about wanting the next
+    song.
+    """
+    await hass.services.async_call(
+        "media_player",
+        "media_next_track",
+        {"entity_id": player},
+        blocking=True,
+    )
+
+
 class NativeClient:
     """Best-effort access to the Music Assistant client object.
 

@@ -241,10 +241,11 @@ DEFAULT_ARTIST_STRIKE_LIMIT: Final = 3
 # skip, tight enough that bailing out of the last chorus does.
 SKIP_GRACE_SECONDS: Final = 15.0
 
-# Skips this close together are somebody hunting through the queue, not a
-# verdict on any of the songs passed over. Two of them at 1am, from a house
-# full of kids, suppressed two songs for a month.
-SKIP_BURST_SECONDS: Final = 30.0
+# There was a figure here for telling a run of skips apart from a verdict,
+# because two skips at 1am from a house full of kids had suppressed two
+# songs for a month. It is gone along with everything else that read a
+# skip as a judgement: a skip is now only a skip, and the judgement is a
+# button somebody has to mean to press.
 
 # How far the elapsed time has to jump backwards before the song counts as
 # having started again rather than drifted. Small, because the figure is

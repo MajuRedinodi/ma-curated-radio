@@ -112,7 +112,7 @@ created outside that device, and nothing is written to your configuration.
 | Sensors | Last batch seed, Last batch built, Last manual pick, Muted artists, Version |
 | Numbers | Similar artists per batch, Tracks per artist, Tracks per batch, Drop artists below, Degrees of separation, Most in a row from one artist, Refill threshold, Skips before muting an artist |
 | Selects | Station style, Familiarity, Explicit content, Muted artist to release, Song to release |
-| Buttons | Build a batch now, Build a playlist, Unmute selected artist, Unmute all artists, Allow selected song |
+| Buttons | Build a batch now, Skip and do not play again, Build a playlist, Unmute selected artist, Unmute all artists, Allow selected song |
 
 The rest of the settings live behind **Configure**, because they are set
 once and forgotten rather than reached for.
@@ -140,8 +140,8 @@ whichever style is selected, so tuning one cannot quietly retune another.
 | Familiarity [familiar] | How strongly the artist draw leans on Last.fm's match score, which tracks how recognisable an artist is. **Familiar** crowds selection to the top of that ranking, **Adventurous** ignores it, **Balanced** sits between. Applies to the artist draw only: a song's crowd is banded rather than weighted, because its tail is as strong as its head. |
 | Shortest track [90 s] | Anything shorter is treated as commentary, an interlude or a skit rather than a song, because search returns those alongside the real tracks. Zero accepts everything. |
 | Most in a row from one artist [2] | How many tracks by the same artist may play back to back. Two lets an artist station feel like an artist station without anyone monopolising the hour. |
-| Skipped song stays away for [30 days] | Skip a song and it will not be queued again for this long. |
-| Skips in a row before muting an artist [3] | Skip this many of one artist's tracks consecutively and they stop being suggested. Zero switches muting off. |
+| Skipped song stays away for [30 days] | How long a song turned down with **Skip and do not play again** stays out. An ordinary skip does not start this clock. |
+| Skips in a row before muting an artist [3] | Turn down this many of one artist's tracks consecutively and they stop being suggested. A track played through resets the run. Zero switches muting off. |
 | Muted artist stays away for [30 days] | How long a muted artist stays out of the similar-artist pool. |
 | Refill threshold [2] | Top the queue up once this many tracks or fewer remain after the one playing. |
 | Bulk load size [3 tracks] | A manual pick is one track; a playlist or album is many. A queue is left alone when it holds at least this many tracks nobody here chose, nothing after them is ours either, AND its size moved by at least this much. Both tests are needed: loading a playlist usually replaces the queue rather than adding to it, so growth alone misses it, while size alone cannot see a song picked from within a playlist, which barely moves the count and is still a pick. |
@@ -230,6 +230,12 @@ views:
             entity: button.family_room_stereo_build_a_batch_now
             name: Build a batch
             color: purple
+            hide_state: true
+            grid_options: {columns: 6}
+          - type: tile
+            entity: button.family_room_stereo_skip_and_do_not_play_again
+            name: Not this one
+            color: red
             hide_state: true
             grid_options: {columns: 6}
           - type: tile
@@ -659,35 +665,41 @@ direction, which is what a station does.
 A session starts on a manual pick and expires after six hours idle, so
 tonight is never still anchored to yesterday morning.
 
-## What it learns from skips
+## Telling it a song is wrong
 
-Skipping is the only feedback nobody has to be asked for, so it is the only
-feedback this collects. A track abandoned with more than fifteen seconds
-left counts as a skip; one that runs out counts as played.
+**Skipping a song does nothing.** Press next as often as you like: the song
+is not remembered, its artist is not judged, and nothing is held against
+either of them. Not being in the mood for a record is the ordinary reason
+to skip it, and it is no reason to lose it.
+
+Saying a song is actually wrong is a separate, deliberate act: the **Skip
+and do not play again** button. It moves the player on like an ordinary
+skip, and it also records the verdict.
 
 Two consequences, deliberately different in weight:
 
-- **The song goes away.** Skipped tracks are not queued again for a month
-  by default. Being wrong about one song out of an artist's catalogue is
-  cheap.
-- **Three skips in a row mutes the artist.** Consecutive is the whole
-  point. Three unlucky picks spread across an evening mean nothing; three
-  in a row means that artist is wrong for this room. A single track played
-  through resets the run.
+- **The song goes away.** It is not queued again for a month by default.
+  Being wrong about one song out of an artist's catalogue is cheap.
+- **Three in a row mutes the artist.** Consecutive is the whole point.
+  Three unlucky records spread across an evening mean nothing; three in a
+  row means that artist is wrong for this room. A single track played
+  through resets the run, and an ordinary skip neither confirms it nor
+  resets it, because it says nothing either way.
 
-Three things it deliberately does not treat as a skip. Jumping to a
-different song by hand is a choice about where to go, not a verdict on what
-was playing. The artist you pick yourself is never muted, however much of
-theirs you skip, because you asked for them. And a run of skips seconds
-apart is somebody hunting through the queue rather than judging it. A skip
-is held back until your next verdict: another skip within half a minute
-throws both away, while one later than that confirms the first, which is
-what lets a run of three deliberate skips mute an artist. Observed at one
-in the morning with a house full of kids, where holding the next button
-suppressed two songs for a month.
+Set **Skips in a row before muting an artist** to zero to switch artist
+muting off entirely and keep only the per-song memory.
 
-Skip memory survives a restart, since feedback that evaporates is not
-feedback. So does the station in progress: its origin, how far it has
+The artist you pick yourself is never muted, however many of their records
+you turn down, because you asked for them.
+
+This used to work the other way round. An ordinary skip was read as a
+verdict, which meant a whole apparatus for telling a real judgement from
+somebody hunting through the queue, and it still got it wrong in the
+direction that costs you music. It was also the wrong premise: the reason
+you skip a song is usually just that you want a different one right now.
+
+What is remembered survives a restart, since feedback that evaporates is
+not feedback. So does the station in progress: its origin, how far it has
 travelled, and what has played recently.
 
 ## Reading a batch

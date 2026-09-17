@@ -14,7 +14,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
 
 
 class Decision(Enum):
@@ -226,62 +225,6 @@ class PlaybackSnapshot:
         if self.duration <= 0:
             return False
         return self.elapsed < self.duration - grace_seconds
-
-
-@dataclass(slots=True)
-class SkipLedger:
-    """Which skips are verdicts on a song, and which are somebody hunting.
-
-    A skip means "not this one", but a run of them seconds apart means
-    somebody is looking for something, and says nothing about anything
-    passed over on the way. So a skip is held until the listener's next
-    verdict: another skip close behind throws both away, a later one
-    confirms it, and a song played through confirms it too.
-
-    Holding them is what makes muting an artist reachable. Committing a
-    skip only when a song later played through, and resetting the run at
-    the same moment, left the run permanently at one.
-    """
-
-    pending: Any = None
-    last_at: float | None = None
-
-    def played(self) -> list[Any]:
-        """A song was allowed to play. Returns skips to record now."""
-        return self._take()
-
-    def skipped(self, outgoing: Any, now: float, window: float) -> list[Any]:
-        """A song was skipped. Returns skips to record now.
-
-        ``window`` is how close together two skips have to be to count as
-        hunting rather than judging.
-        """
-        hunting = is_hunting(
-            None if self.last_at is None else now - self.last_at, window
-        )
-        self.last_at = now
-        if hunting:
-            self.pending = None
-            return []
-        confirmed = self._take()
-        self.pending = outgoing
-        return confirmed
-
-    def _take(self) -> list[Any]:
-        """Hand over whatever was waiting, and stop waiting for it."""
-        pending, self.pending = self.pending, None
-        return [pending] if pending is not None else []
-
-
-def is_hunting(since_last_skip: float | None, window: float) -> bool:
-    """True when a skip is part of a run rather than a verdict on one song.
-
-    Somebody holding the next button skips songs they never heard. Two of
-    those at one in the morning, from a house full of kids, suppressed two
-    songs for a month each. ``None`` means no skip has been seen yet, which
-    cannot be a run.
-    """
-    return since_last_skip is not None and since_last_skip < window
 
 
 def decide(

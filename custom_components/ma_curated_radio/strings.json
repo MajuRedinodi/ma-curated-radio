@@ -169,6 +169,9 @@
       "build_batch": {
         "name": "Build a batch now"
       },
+      "reject_playing": {
+        "name": "Skip and do not play again"
+      },
       "unmute_all": {
         "name": "Unmute all artists"
       },
@@ -314,6 +317,9 @@
     },
     "entry_required": {
       "message": "No single player could be chosen for you: either more than one is set up, or none of them is loaded. Name one with config_entry_id."
+    },
+    "nothing_playing": {
+      "message": "Nothing is playing, so there is nothing to hold off."
     },
     "not_muted": {
       "message": "{artist} is not currently muted."
