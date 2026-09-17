@@ -5,11 +5,15 @@ one pair of numbers, so tuning Balanced silently retuned Artist radio.
 """
 
 from const import (
+    CONF_BATCH_LENGTH,
     CONF_MAX_ARTISTS,
     CONF_STYLE_SETTINGS,
     CONF_TRACKS_PER_ARTIST,
+    LANE_LOOKUPS_PER_BATCH,
+    PLAYED_LOOKUPS_PER_BATCH,
     SEED_LEAN_ARTIST,
     SEED_LEAN_BALANCED,
+    STYLE_DEFAULTS,
     style_value,
     with_style_value,
 )
@@ -59,3 +63,31 @@ def test_both_styles_can_be_set_independently():
     options = with_style_value(options, SEED_LEAN_BALANCED, CONF_TRACKS_PER_ARTIST, 2)
     assert style_value(options, SEED_LEAN_ARTIST, CONF_TRACKS_PER_ARTIST) == 3
     assert style_value(options, SEED_LEAN_BALANCED, CONF_TRACKS_PER_ARTIST) == 2
+
+
+# --- What a batch can afford to look up ---------------------------------
+
+
+def test_a_full_batch_of_records_fits_its_lookup_budget():
+    """The two undated tracks of 16 Sep, pinned.
+
+    A Smiths refill came back with twelve of fourteen dated, missing
+    "Only You" and "Just Can't Get Enough", which Wikipedia covers
+    exhaustively. Selection and the batch shared one allowance and
+    selection spent it first, on candidates it went on to reject. The
+    records that play now have their own, and it has to stay big enough
+    for the longest batch any style can build or the same hole reopens
+    quietly.
+    """
+    longest = max(
+        values[CONF_BATCH_LENGTH]
+        or values[CONF_MAX_ARTISTS] * values[CONF_TRACKS_PER_ARTIST]
+        for values in STYLE_DEFAULTS.values()
+    )
+    assert longest <= PLAYED_LOOKUPS_PER_BATCH
+
+
+def test_selection_cannot_spend_what_the_batch_needs():
+    """Two budgets, not one pool with two claimants."""
+    assert LANE_LOOKUPS_PER_BATCH > 0
+    assert PLAYED_LOOKUPS_PER_BATCH > 0

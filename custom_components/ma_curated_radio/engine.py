@@ -28,13 +28,14 @@ from .const import (
     DEPTH_TOP_TRACKS,
     EXPLICIT_CLEAN,
     EXPLICIT_PREFER,
-    FACTS_LOOKUPS_PER_BATCH,
     FAMILIARITY_EXPONENT,
     HEARD_MINUTES,
+    LANE_LOOKUPS_PER_BATCH,
     LASTFM_POOL_SIZE,
     MODE_REFILL,
     MODE_REPLACE,
     PAIR_LISTENER_RATIO,
+    PLAYED_LOOKUPS_PER_BATCH,
     PLAYLIST_CHUNK,
     PLAYLIST_MAX_ROUNDS,
     QUEUED_MEMORY,
@@ -213,10 +214,12 @@ class CuratedRadioEngine:
         # remembered past the session and the lane falls back to album
         # tags exactly as it did before any of this existed.
         self._facts = facts if facts is not None else FactBook()
-        # How many records this batch may still look up for the first
-        # time. Reset per batch, since the point is to bound one batch
-        # rather than the evening.
-        self._lookups_left = FACTS_LOOKUPS_PER_BATCH
+        # How many candidates this batch may still look up while choosing
+        # what to play. Reset per batch, since the point is to bound one
+        # batch rather than the evening. The records it goes on to queue
+        # are dated out of a separate allowance this cannot touch, so a
+        # long selection can no longer leave the batch itself undated.
+        self._lane_lookups_left = LANE_LOOKUPS_PER_BATCH
         self._history = TitleHistory(settings.history_minutes, HEARD_MINUTES)
         self._native = NativeClient(hass, settings.ma_config_entry_id)
         self._lock = asyncio.Lock()
@@ -447,7 +450,7 @@ class CuratedRadioEngine:
 
     async def _async_build(self, mode: str, *, continuing: bool = True) -> BatchResult:
         """Do the work of one batch."""
-        self._lookups_left = FACTS_LOOKUPS_PER_BATCH
+        self._lane_lookups_left = LANE_LOOKUPS_PER_BATCH
         settings = self._settings
         queue = await async_get_queue(self._hass, settings.player)
         if queue is None:
@@ -1447,20 +1450,21 @@ class CuratedRadioEngine:
         to Wikipedia, because the folding strips the punctuation and
         "Hey, Good Lookin'" is a better search than "hey good lookin".
 
-        Held to a budget per batch. A first batch against an empty book
-        would otherwise want two Wikipedia requests for every candidate it
-        considers, including the ones it goes on to reject, and while a
-        batch tops up a queue that still has tracks left to play rather
-        than blocking one, that is not a reason to spend fifty requests on
-        it.
+        Held to selection's own budget, which is separate from the one
+        the chosen batch is dated out of and cannot be spent from it. A
+        first batch against an empty book would otherwise want two
+        Wikipedia requests for every candidate it considers, including
+        the ones it goes on to reject, and those are the requests worth
+        giving up first.
         """
         if not self._facts.needs_lookup(artist, base):
             return self._facts.touch(artist, base)
-        if self._lookups_left <= 0:
+        if self._lane_lookups_left <= 0:
             # Deliberately records nothing, so the next batch tries again.
-            # Album tags carry the lane in the meantime.
+            # Album tags carry the lane in the meantime, which is the
+            # whole reason this is the budget that runs out first.
             return self._facts.get(artist, base)
-        self._lookups_left -= 1
+        self._lane_lookups_left -= 1
         return await self._async_learn(artist, title, base)
 
     def _write_fact(
@@ -1534,7 +1538,7 @@ class CuratedRadioEngine:
             if (who := artist_of.get(uri))
         ]
         await self._async_learn_all(
-            [(who, title) for who, title, _ in queued]
+            [(who, title) for who, title, _ in queued], PLAYED_LOOKUPS_PER_BATCH
         )
         years: dict[str, int] = {}
         for who, title, uri in queued:
@@ -1543,18 +1547,25 @@ class CuratedRadioEngine:
                 years[uri] = fact.year
         return years
 
-    async def _async_learn_all(self, pairs: list[tuple[str, str]]) -> None:
+    async def _async_learn_all(
+        self, pairs: list[tuple[str, str]], budget: int
+    ) -> None:
         """Ask Wikipedia about several records in as few requests as it
-        can be done in."""
+        can be done in.
+
+        The budget is passed rather than held, because it belongs to one
+        batch and there is only ever one call per batch. A counter on the
+        engine would be state that has to be remembered to reset.
+        """
         wanted: list[tuple[str, str, str]] = []
         for artist, title in pairs:
             base = base_title(title)
             if not self._facts.needs_lookup(artist, base):
                 self._facts.touch(artist, base)
                 continue
-            if self._lookups_left <= 0:
+            if budget <= 0:
                 break
-            self._lookups_left -= 1
+            budget -= 1
             wanted.append((artist, title, base))
         found: list[tuple[str, str, str]] = []
         for artist, title, base in wanted:

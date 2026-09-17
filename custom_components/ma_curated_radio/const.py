@@ -457,8 +457,24 @@ FACTS_SAVE_DELAY: Final = 30
 # own figures.
 
 # How many records one batch may look up for the first time. Everything
-# past the budget falls back to what album tags say, as it did before
-# this existed, and is looked up by a later batch instead. A first batch
-# on an empty store would otherwise want a lookup for every candidate it
+# past a budget falls back to what album tags say, as it did before this
+# existed, and is looked up by a later batch instead. A first batch on an
+# empty store would otherwise want a lookup for every candidate it
 # considers, including the ones it goes on to reject.
-FACTS_LOOKUPS_PER_BATCH: Final = 25
+#
+# Two budgets rather than one, and the split is the point. Shared, the
+# work happened in the wrong order: selection checks the lane of every
+# candidate first, including the ones it rejects, so it spent the whole
+# allowance before the batch it had just chosen was dated at all. A
+# Smiths refill on 16 Sep came back with twelve of fourteen tracks dated
+# and the two missing were "Only You" and "Just Can't Get Enough", which
+# Wikipedia covers exhaustively. They were not looked up because nothing
+# was left to look them up with.
+#
+# So the records that will actually play get their own allowance, large
+# enough that a full batch always fits, and selection gets a separate
+# one it cannot overspend. Degrading is not symmetrical either: a lane
+# check with no year still has album tags and still works, just less
+# accurately, while a queued record with no year has nothing to show.
+LANE_LOOKUPS_PER_BATCH: Final = 20
+PLAYED_LOOKUPS_PER_BATCH: Final = 30
