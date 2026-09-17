@@ -34,7 +34,7 @@ TIMEOUT = aiohttp.ClientTimeout(total=20)
 # Wikipedia asks that a client identify itself and says so in its own
 # API etiquette; an anonymous agent is the one thing that gets throttled.
 USER_AGENT = (
-    "ma-curated-radio/0.54 "
+    "ma-curated-radio/0.55 "
     "( https://github.com/MajuRedinodi/ma-curated-radio )"
 )
 

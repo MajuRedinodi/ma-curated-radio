@@ -18,7 +18,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "custom_components" / "ma_curated_radio"))
 
-from const import STYLE_CLOCK, STYLE_DEFAULTS  # noqa: E402
+from const import STYLE_CLOCK, STYLE_DEFAULTS, USABLE_SHARE  # noqa: E402
 from filters import base_title, sequence_tiered, tier_of  # noqa: E402
 
 CURVES = ROOT / "docs" / "artist-curves-2026-09-15.json"
@@ -81,6 +81,7 @@ def run(label: str, artists: list[str], curves: dict, style: str) -> None:
     sized: list[tuple[str, list[str], int]] = []
     share: dict[str, float] = {}
     missing = []
+    cut = 0
     for artist in artists[: shape["max_artists"]]:
         curve = curves.get(artist)
         if not curve:
@@ -89,9 +90,17 @@ def run(label: str, artists: list[str], curves: dict, style: str) -> None:
         biggest = curve[0][1]
         uris = []
         for title, listeners in curve[:per_artist_cap]:
+            # What too_deep's share floor does in the engine. Without it
+            # this over-reports Deep on a thin pool, because a one-hit
+            # wonder's second record is drawn here and never drawn there.
+            if listeners / biggest < USABLE_SHARE:
+                cut += 1
+                continue
             uri = f"{artist}::{title}"
             uris.append(uri)
             share[uri] = listeners / biggest
+        if not uris:
+            continue
         per_artist.append(uris)
         sized.append((artist, uris, biggest))
 
@@ -108,6 +117,8 @@ def run(label: str, artists: list[str], curves: dict, style: str) -> None:
 
     print(f"\n{label}  [{style}]")
     print(f"  drawn {len(share)} from {len(per_artist)} artists, played {len(ordered)}")
+    if cut:
+        print(f"  {cut} record(s) cut by the share floor before the draw")
     if missing:
         print(f"  not in the curve file: {', '.join(missing)}")
     print(f"  clock asked for  P {asked['P']:2}  S {asked['S']:2}  "
@@ -120,6 +131,7 @@ def run(label: str, artists: list[str], curves: dict, style: str) -> None:
     runs = max_run(ordered, tiers)
     print(f"  longest run of unfamiliar records back to back: {runs}")
     print("  " + " ".join(tiers[uri] for uri in ordered))
+    print("  (Gold is not modelled here: it needs an origin lane and years)")
 
 
 def max_run(ordered: list[str], tiers: dict[str, str]) -> int:

@@ -67,6 +67,7 @@ from .filters import (
     LANE_MATCH,
     LANE_UNKNOWN,
     NEIGHBOURHOOD_SIZE,
+    TIER_GOLD,
     TIER_POWER,
     SelectionRules,
     base_title,
@@ -76,6 +77,7 @@ from .filters import (
     crowd_pool,
     depth_bar,
     drop_outliers,
+    is_gold,
     keep_one_act,
     lane_match,
     lane_of,
@@ -599,6 +601,15 @@ class CuratedRadioEngine:
             for artist, uris in zip(pool_artists, per_artist, strict=True)
         ]
         tiers = tier_of(sized, TIER_DECAY, rank, pools.share)
+        # Before the clock rather than after, because the Gold slot is
+        # decided on a release year and the clock has to know which
+        # record is the throwback before it chooses where to put it. The
+        # cost is looking up the few drawn records that will not be
+        # played, which is four in a batch of twenty.
+        years = await self._async_years(pool_artists, per_artist, title_by_uri)
+        self._mark_gold(
+            pool_artists, per_artist, title_by_uri, years, tiers, pools.share
+        )
         ordered = sequence_tiered(
             per_artist,
             tiers,
@@ -626,9 +637,7 @@ class CuratedRadioEngine:
             self._last_pool = list(pool_artists)
             self._last_lead = lead
             self._remember(enqueued, pool_artists, per_artist, title_by_uri, tiers)
-        years = await self._async_years(
-            enqueued, pool_artists, per_artist, title_by_uri
-        )
+        played_years = {uri: year for uri, year in years.items() if uri in set(enqueued)}
 
         _LOGGER.debug(
             "Queued %s track(s) in %s mode, led by %s, neighbours from %s, via %s; "
@@ -649,13 +658,13 @@ class CuratedRadioEngine:
             artists=artists,
             queued=len(enqueued),
             tracks=self._listed(
-                enqueued, pool_artists, per_artist, title_by_uri, tiers, years
+                enqueued, pool_artists, per_artist, title_by_uri, tiers, played_years
             ),
             reach_median=reach_median,
             reach_low=reach_low,
             tiers=counts,
-            year_span=year_span(years.values()),
-            years_known=len(years),
+            year_span=year_span(played_years.values()),
+            years_known=len(played_years),
             built_at=dt_util.utcnow().isoformat() if enqueued else "",
         )
 
@@ -711,7 +720,9 @@ class CuratedRadioEngine:
                 excluded_titles=recent_titles | set(pools.title_by_uri.values()),
                 heard=heard,
                 excluded_uris=already_queued
-                | too_deep(tracks, artist_rank, known.get(artist), bar, cap),
+                | too_deep(
+                    tracks, artist_rank, known.get(artist), bar, cap, floor=USABLE_SHARE
+                ),
                 excluded_artists=covered,
                 limit=cap,
             )
@@ -1529,47 +1540,98 @@ class CuratedRadioEngine:
         detail = (await async_get_facts(self._session, [article])).get(article)
         return self._write_fact(artist, base, article, detail)
 
+    def _mark_gold(
+        self,
+        pool_artists: list[str],
+        per_artist: list[list[str]],
+        title_by_uri: dict[str, str],
+        years: dict[str, int],
+        tiers: dict[str, str],
+        share: Mapping[str, float],
+    ) -> str:
+        """Promote at most one drawn record to Gold, and say which.
+
+        One, not every record that qualifies. Jeff's spec is a single
+        older record about every two hours, and labelling three of them
+        would leave two competing for one slot and then ranking below
+        Secondary everywhere else, which strands good records for no
+        reason.
+
+        The strongest qualifier wins, measured by the same share the
+        tiers use, because the slot wants the throwback everybody knows
+        rather than merely the oldest thing in the pool.
+
+        Only a record already filed as Power is eligible. Gold is old and
+        not obscure, and the tier is the familiarity test we already
+        have, so this needs no second one.
+        """
+        lane = self._origin_lane
+        if lane == (set(), set()):
+            return ""
+        artist_of = {
+            uri: artist
+            for artist, uris in zip(pool_artists, per_artist, strict=True)
+            for uri in uris
+        }
+        best, top = "", -1.0
+        for uri, artist in artist_of.items():
+            if tiers.get(uri) != TIER_POWER:
+                continue
+            fact = self._facts.get(artist, base_title(title_by_uri.get(uri, "")))
+            if fact is None or not is_gold(years.get(uri), fact.genres, lane):
+                continue
+            if (held := share.get(uri, 0.0)) > top:
+                best, top = uri, held
+        if best:
+            tiers[best] = TIER_GOLD
+            _LOGGER.debug(
+                "%s is this batch's Gold: a %s record in a lane of %s",
+                title_by_uri.get(best, best),
+                years.get(best),
+                ", ".join(str(decade) for decade in sorted(lane[0])) or "no decade",
+            )
+        return best
+
     async def _async_years(
         self,
-        enqueued: list[str],
         pool_artists: list[str],
         per_artist: list[list[str]],
         title_by_uri: dict[str, str],
     ) -> dict[str, int]:
-        """When each queued record was made, looking up what is not known.
+        """When each drawn record was made, looking up what is not known.
 
         One search per record, then a single content fetch covering every
         article found, which is what the fifty-article ceiling is for.
         Asking per record instead would double the traffic for the same
         answers.
 
-        Done after the batch is chosen rather than during selection, so
-        the requests are spent on records that will actually play instead
-        of on candidates that were considered and dropped. Selection only
-        ever looks one record up per artist, which is enough to place that
-        artist in a lane and nowhere near enough to say what era an hour
-        is.
+        Done after the batch is drawn but before the clock orders it, so
+        the requests are spent on records that were actually chosen rather
+        than on every candidate considered and dropped, while still
+        landing in time for the Gold slot to be decided on a year.
+        Selection itself only looks one record up per artist, which is
+        enough to place that artist in a lane and nowhere near enough to
+        date an hour.
+
+        The few drawn records that do not go on to play are looked up too,
+        four in a batch of twenty, and that is the price of knowing the
+        year before the running order is settled rather than after.
 
         Records are filed under the artist whose pool the track came from,
         which is the same name the lane check used, so the two agree.
         Anything still unknown afterwards is simply absent rather than
         present with a guess.
         """
-        artist_of = {
-            uri: artist
+        drawn = [
+            (artist, title_by_uri.get(uri, ""), uri)
             for artist, uris in zip(pool_artists, per_artist, strict=True)
             for uri in uris
-        }
-        queued = [
-            (who, title_by_uri.get(uri, ""), uri)
-            for uri in enqueued
-            if (who := artist_of.get(uri))
         ]
         await self._async_learn_all(
-            [(who, title) for who, title, _ in queued], PLAYED_LOOKUPS_PER_BATCH
+            [(who, title) for who, title, _ in drawn], PLAYED_LOOKUPS_PER_BATCH
         )
         years: dict[str, int] = {}
-        for who, title, uri in queued:
+        for who, title, uri in drawn:
             fact = self._facts.get(who, base_title(title))
             if fact is not None and fact.year is not None:
                 years[uri] = fact.year

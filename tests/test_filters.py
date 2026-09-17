@@ -28,6 +28,7 @@ from filters import (
     infobox_artist,
     infobox_genres,
     is_demo,
+    is_gold,
     is_holiday,
     is_live,
     is_non_song,
@@ -2068,3 +2069,99 @@ def test_an_article_with_no_performer_is_given_the_benefit_of_the_doubt():
     """Refusing every article without an artist field would cost far more
     years than covers ever will."""
     assert performs("Wheatus", "")
+
+
+# --- The one older record an hour may reach for -------------------------
+
+EIGHTIES = ({1980}, {"synth-pop", "new wave"})
+
+
+def test_gold_is_old_and_in_the_genre():
+    """A throwback: everybody knows it, it is from before this era, and
+    it is the same kind of record."""
+    assert is_gold(1968, ["new wave", "pop"], EIGHTIES)
+
+
+def test_gold_is_never_newer_than_the_lane():
+    """The one failure that would be worse than no Gold at all. A 2006
+    record on an 80s station is not a throwback, it is the drift this
+    exists to prevent, and the slot must not become a side door for it."""
+    assert not is_gold(2006, ["new wave"], EIGHTIES)
+
+
+def test_a_record_in_the_lanes_own_era_is_not_gold():
+    """It is just a record. Gold has to break the era to mean anything."""
+    assert not is_gold(1984, ["synth-pop"], EIGHTIES)
+
+
+def test_gold_has_to_hold_the_genre():
+    """Jeff's condition. An old record in the wrong genre is a wrong
+    record, and Gold breaks the era and nothing else."""
+    assert not is_gold(1968, ["bluegrass", "gospel"], EIGHTIES)
+
+
+def test_gold_needs_a_year_from_wikipedia():
+    """Album tags give whichever compilation a track now sits on, which
+    is exactly the error a Gold slot would otherwise institutionalise."""
+    assert not is_gold(None, ["new wave"], EIGHTIES)
+
+
+def test_gold_needs_known_genres_on_both_sides():
+    """Stricter than the benefit of the doubt in_lane gives, on purpose:
+    this admits a record the era rule would reject, so it clears a higher
+    bar than one that merely plays."""
+    assert not is_gold(1968, [], EIGHTIES)
+    assert not is_gold(1968, ["new wave"], ({1980}, set()))
+
+
+def test_gold_needs_an_era_to_break():
+    """No lane, nothing to be older than."""
+    assert not is_gold(1968, ["new wave"], (set(), {"synth-pop"}))
+
+
+# --- Depth on a first draw ----------------------------------------------
+
+
+class _Track:
+    """Just enough of a provider track for too_deep."""
+
+    def __init__(self, uri: str, name: str) -> None:
+        self.uri = uri
+        self.name = name
+
+
+def test_a_one_hit_wonder_loses_its_second_record_on_a_first_draw():
+    """The defect found on 2026-09-17. a_tracks is the number of tracks
+    about to be drawn, so the exemption covered the whole draw and this
+    check had never once fired the first time an artist was used.
+
+    Dexys' second record is 4% of their first, which is the measured
+    figure, and it was being drawn and then filed as a Deep track.
+    """
+    tracks = [_Track("u1", "Come On Eileen"), _Track("u2", "Geno")]
+    known = [("Come On Eileen", 1_326_634), ("Geno", 53_065)]
+    rank = {"u1": 0, "u2": 1}
+    assert too_deep(tracks, rank, known, 0, 2) == set()
+    assert too_deep(tracks, rank, known, 0, 2, floor=0.05) == {"u2"}
+
+
+def test_a_flat_country_curve_keeps_everything():
+    """Hank Williams Jr's biggest has 38,490 listeners and his curve is
+    83/65/42. An absolute bar erases him; a share floor cannot."""
+    tracks = [_Track("u1", "A Country Boy Can Survive"), _Track("u2", "All My Rowdy")]
+    known = [("A Country Boy Can Survive", 38_490), ("All My Rowdy", 31_946)]
+    assert too_deep(tracks, {"u1": 0, "u2": 1}, known, 0, 2, floor=0.05) == set()
+
+
+def test_the_floor_never_cuts_an_artists_biggest_record():
+    """Its share of itself is one, so a one-hit wonder keeps its hit
+    however loud the floor."""
+    tracks = [_Track("u1", "Spirit in the Sky")]
+    known = [("Spirit in the Sky", 667_892)]
+    assert too_deep(tracks, {"u1": 0}, known, 0, 1, floor=0.9) == set()
+
+
+def test_no_floor_leaves_the_old_behaviour_exactly():
+    tracks = [_Track("u1", "Come On Eileen"), _Track("u2", "Geno")]
+    known = [("Come On Eileen", 1_326_634), ("Geno", 53_065)]
+    assert too_deep(tracks, {"u1": 0, "u2": 1}, known, 0, 2) == set()

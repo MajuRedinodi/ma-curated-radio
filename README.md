@@ -30,10 +30,12 @@ there is nothing else to set up. No helpers, no `rest_command`, no YAML.
    content, karaoke, demos, commentary and anything played recently are
    filtered out. How deep into an artist a station goes depends on how well
    known each song actually is, from Last.fm's per-song listener counts:
-   every artist's own biggest songs are always allowed, but past those a
-   song has to be known well enough for the station it is on. The Beatles
-   and Michael Jackson are effectively uncapped; a band with three hits
-   plays its three hits, not its album tracks.
+   a song has to hold a share of that artist's own biggest to be drawn at
+   all, which is genre-neutral because both numbers come from the same
+   artist. The Beatles and Michael Jackson are effectively uncapped, and
+   Hank Williams Jr keeps his catalogue on a curve of 83/65/42 despite a
+   biggest record of only 38,000 listeners; a one-hit wonder contributes
+   its one hit, because the next thing it has is single figures.
 5. Those candidates are then **programmed** rather than shuffled, to a
    music clock borrowed from commercial radio. Each record is filed as
    Power, Secondary or Deep by how much of its own artist's biggest song
@@ -686,7 +688,7 @@ except the two Deeps is something you would recognise.
 | Power | one of the records this act is known for | 50% or more |
 | Secondary | a real hit, but not one of the big ones | 20% to 50% |
 | Deep | album material | under 20% |
-| Gold | a familiar record from outside the station's era | high share, wrong decade |
+| Gold | a familiar record from **before** the station's era | Power share, older decade, same genre |
 
 Those lines are measured, not chosen. Against 49 artists' real Last.fm
 curves, second hits sit between 24% and 93% and filler sits between 1%
@@ -705,6 +707,35 @@ rule rather than left to the pattern. A Deep or a Gold has a Power either
 side of it. A pattern can only promise that while the pool can still
 answer it, and the tail of a batch is exactly where it stops being able
 to.
+
+### Gold, the one slot that may break the era
+
+**Gold is old, not obscure.** It is the throwback a real station reaches
+for: a record everybody knows, from before the era this hour is holding
+to, and it is the only slot permitted through the era fence. One per
+batch at most, and the slot falls back to a Power when nothing qualifies,
+so the worst case is a slightly more familiar hour.
+
+Four conditions, each stopping a different wrong answer:
+
+- **Older, never newer.** Only a decade strictly before the lane's
+  earliest. A 2006 record on an 80s station is not a throwback, it is the
+  drift this exists to prevent, and the slot must not become a side door
+  for it.
+- **The genre has to hold.** An old record in the wrong genre is just a
+  wrong record. Gold breaks the era and nothing else.
+- **The year has to come from Wikipedia**, not from album tags, because
+  the tags give whichever compilation a track now sits on and that is the
+  error a Gold slot would otherwise institutionalise.
+- **The genres have to be known on both sides.** Elsewhere a missing tag
+  gets the benefit of the doubt; here it does not. This admits a record
+  the era rule would reject, so it clears a higher bar than one that
+  merely plays.
+
+Only a record already filed as Power is eligible, so familiarity needs no
+separate test. Where several qualify, the most familiar wins, because the
+slot wants the throwback everybody knows rather than the oldest thing in
+the pool.
 
 Each station style has its own clock, because the formats want different
 things. Artist radio is a showcase where depth is the point. Discovery

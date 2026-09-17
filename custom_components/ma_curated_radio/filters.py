@@ -1625,6 +1625,51 @@ def lane_match(
     return LANE_MATCH
 
 
+def is_gold(
+    year: int | None,
+    genres: Iterable[str],
+    lane: tuple[set[int], set[str]],
+) -> bool:
+    """Whether a record is the older one an hour is allowed to reach for.
+
+    Gold in the radio sense, which is **old rather than obscure**: a
+    record everybody knows, from before the era the station is holding
+    to. The one slot in an hour permitted to break the era fence, which
+    is what a throwback is on a real station.
+
+    Four conditions, and each of them is there to stop a different wrong
+    answer:
+
+    **Older, never newer.** A 2006 record on an 80s station is not a
+    throwback, it is the drift this whole thing exists to prevent. Only
+    a decade strictly before the lane's earliest qualifies, so the slot
+    cannot become a side door for modern material.
+
+    **The genre has to hold.** Jeff's condition, and the right one: an
+    old record in the wrong genre is just a wrong record. Gold breaks the
+    era and nothing else.
+
+    **The year has to be known**, from Wikipedia rather than from album
+    tags, because the tags give whichever compilation a track now sits on
+    and that is exactly the error this would otherwise institutionalise.
+
+    **The genres have to be known.** No genres means the genre cannot be
+    confirmed to hold, and the answer is no. That is stricter than the
+    benefit of the doubt ``in_lane`` gives, deliberately: this admits a
+    record the era rule would otherwise reject, so it has to clear a
+    higher bar than a record that merely plays.
+
+    Familiarity is the caller's to check, from the tier it already has.
+    """
+    want_decades, want_genres = lane
+    got_genres = {str(genre).strip().lower() for genre in genres if str(genre).strip()}
+    if year is None or not want_decades or not want_genres or not got_genres:
+        return False
+    if not got_genres & want_genres:
+        return False
+    return year // 10 * 10 < min(want_decades)
+
+
 _INFOBOX_DATE = re.compile(
     # Up to the next field, the end of the template, or the end of what
     # we were given: an infobox is usually followed by another field, but
@@ -2008,8 +2053,14 @@ def too_deep(
     known: Sequence[tuple[str, int]] | None,
     bar: int,
     a_tracks: int,
+    *,
+    floor: float = 0.0,
 ) -> set[str]:
     """The URIs of an artist's songs that are past what this station plays.
+
+    ``floor`` is the share of the artist's own biggest record a song must
+    hold, and it is the only one of these tests that fires on a first
+    draw. Zero, the default, leaves the old behaviour exactly.
 
     An artist's A-tracks are always allowed: their ``a_tracks`` biggest
     songs on Last.fm, however small the artist is. Every other song needs
@@ -2032,7 +2083,11 @@ def too_deep(
     This is also what stops a tight fence, refilling from the same artists,
     from reaching further down each of them every time it comes round.
     """
-    if not known or bar <= 0:
+    # The share floor works off ``known`` alone, so it must not be shut
+    # out by a missing bar. The bar is zero whenever no artist audience
+    # could be read, which is common, and returning here on it meant the
+    # floor silently did nothing in exactly those cases.
+    if not known:
         return set()
     listeners: dict[str, int] = {}
     for title, count in known:
@@ -2042,10 +2097,37 @@ def too_deep(
     if not titles & set(listeners):
         return set()
     biggest = {base_title(title) for title, _ in known[:a_tracks]}
+    # What the artist's own biggest record holds, for the share floor.
+    # Zero disables it, as does a missing count.
+    top = max(listeners.values(), default=0)
     cut: set[str] = set()
     for track in tracks:
         position = rank.get(track.uri)
         title = base_title(track.name)
+        # The one cut here that fires on a first draw. Everything below is
+        # gated on ``a_tracks``, which the caller passes as the number of
+        # tracks it is about to take, so that exemption has always covered
+        # the whole draw and the bar has never cut anything the first time
+        # an artist is used. Measured consequence: a one-hit wonder
+        # contributed two tracks, its hit and a record at four percent of
+        # that hit, and the clock then had to file the second somewhere.
+        #
+        # Share rather than listeners, because an absolute bar tuned on
+        # rock erases country outright: Hank Williams Jr's biggest record
+        # has 38,490 listeners and every one of his is known.
+        if (
+            floor > 0
+            and top > 0
+            and title in listeners
+            and listeners[title] / top < floor
+        ):
+            cut.add(track.uri)
+            continue
+        if bar <= 0:
+            # No audience could be read for this pool, so there is no
+            # relative bar to hold anything to. The floor above has
+            # already had its say.
+            continue
         if position is None or title in biggest or listeners.get(title, 0) >= bar:
             continue
         if position < a_tracks and title not in listeners:
