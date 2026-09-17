@@ -1747,6 +1747,78 @@ def infobox_genres(wikitext: str) -> set[str]:
     return found
 
 
+_INFOBOX_ARTIST = re.compile(
+    r"\|\s*artist\s*=\s*(.+?)(?=\n\s*\||\n\s*\}\}|\Z)", re.I | re.S
+)
+
+# Longest credit worth keeping. A malformed field can run to the rest of
+# the article, and nothing useful is decided past this.
+_LONGEST_CREDIT: Final = 120
+
+# Words that carry no identity when matching one credit against another.
+# Without them "The Beatles" would not match "Beatles", and "Elton John"
+# would not match "Elton John and Dua Lipa".
+_CREDIT_NOISE: Final = frozenset(
+    {"the", "a", "an", "and", "featuring", "feat", "ft", "with", "vs", "duet"}
+)
+
+
+def infobox_artist(wikitext: str) -> str:
+    """Who the song's own Wikipedia infobox says recorded it.
+
+    Read for one reason: to tell whether the article we found is about
+    the recording we asked about or about the song somebody else wrote
+    first. See ``performs``.
+    """
+    field = _INFOBOX_ARTIST.search(wikitext or "")
+    if not field:
+        return ""
+    text = _WIKI_REF.sub(" ", field.group(1))
+    text = _CITATION.sub(" ", text)
+    text = _WIKI_LINK.sub(r"\1", text)
+    text = text.replace("{{", " ").replace("}}", " ")
+    return " ".join(text.split())[:_LONGEST_CREDIT]
+
+
+def _credit_words(name: str) -> set[str]:
+    """The words of a credit that carry identity."""
+    return {
+        word for word in _folded(name).split() if word and word not in _CREDIT_NOISE
+    }
+
+
+def performs(credited: str, performer: str) -> bool:
+    """Whether an article's performer is who the provider credited.
+
+    This is what tells a recording from the song, and without it the era
+    data is quietly wrong on every cover. Searching "a little respect
+    Wheatus" returns the article *A Little Respect*, which is about
+    Erasure's 1988 record and mentions the cover in its body. The title
+    matches exactly so it wins the search, and its infobox then dates a
+    2000 recording to 1988. Observed in one real batch alongside
+    Counting Crows' "Big Yellow Taxi", dated to Joni Mitchell's 1970
+    original, which between them reported a 1990s indie hour as spanning
+    1970 to 2006.
+
+    Compared word by word rather than as strings, because a substring
+    test says Ash performs Richard Ashcroft's records. Every word of the
+    credit that carries identity has to appear on the other side, in
+    either direction, so "The Beatles" matches "Beatles" and "Elton
+    John" matches "Elton John and Dua Lipa".
+
+    An article with no artist field cannot answer, and answers yes.
+    Most of them have one, and refusing every article that does not
+    would cost far more years than covers ever will.
+    """
+    if not performer:
+        return True
+    wanted = _credit_words(credited)
+    found = _credit_words(performer)
+    if not wanted or not found:
+        return True
+    return wanted <= found or found <= wanted
+
+
 def best_article(results: Sequence[str], title: str, artist: str) -> str:
     """Which search result is the article for this recording.
 

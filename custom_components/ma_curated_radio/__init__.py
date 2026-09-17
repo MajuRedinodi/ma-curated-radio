@@ -299,6 +299,44 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         await Store(hass, version, key).async_remove()
 
 
+class _FactsStore(Store[dict[str, Any]]):
+    """The store for what is known about records, and its migration."""
+
+    async def _async_migrate_func(
+        self,
+        old_major_version: int,
+        old_minor_version: int,
+        old_data: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Bring an older file up to the current schema.
+
+        Adding a field never comes through here, because every read
+        defaults and a record written before a field existed reads as not
+        knowing it. This is for the other kind of change, where what a
+        field means has moved under it.
+
+        Version 1 stored a release year without checking that the article
+        it came from was about the recording we asked for. A cover shares
+        its title with the original, whose article wins the search, so
+        Wheatus' "A Little Respect" was filed as 1988 off Erasure's page
+        and Counting Crows' "Big Yellow Taxi" as 1970 off Joni
+        Mitchell's. Those look exactly like good years, a hit never
+        expires so they cannot age out, and there is no way after the
+        fact to tell which of a few hundred records they are.
+
+        So the file goes. A cache is rebuildable: losing it costs lookups
+        and not correctness, and refilling it is what the per-batch
+        lookup budget is for.
+        """
+        _LOGGER.info(
+            "Forgetting what was known about records: schema %s predates the "
+            "check that a year belongs to the recording rather than to the "
+            "song somebody else made first",
+            old_major_version,
+        )
+        return {"records": {}}
+
+
 async def _async_facts(hass: HomeAssistant) -> FactBook:
     """What is known about records, loaded once however many players exist.
 
@@ -314,7 +352,7 @@ async def _async_facts(hass: HomeAssistant) -> FactBook:
     domain_data = hass.data.setdefault(DOMAIN, {})
     if (known := domain_data.get("facts")) is not None:
         return known
-    store: Store[dict[str, Any]] = Store(
+    store: Store[dict[str, Any]] = _FactsStore(
         hass, FACTS_STORAGE_VERSION, FACTS_STORAGE_KEY
     )
     try:

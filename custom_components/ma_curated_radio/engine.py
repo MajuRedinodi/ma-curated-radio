@@ -52,7 +52,13 @@ from .const import (
     signal_update,
 )
 from .decide import leading_pool, starts_station
-from .facts import MISS_NO_ARTICLE, MISS_NO_DATE, Fact, FactBook
+from .facts import (
+    MISS_NO_ARTICLE,
+    MISS_NO_DATE,
+    MISS_WRONG_ARTIST,
+    Fact,
+    FactBook,
+)
 from .feedback import SkipMemory
 from .filters import (
     CANDIDATE_BANDS,
@@ -78,6 +84,7 @@ from .filters import (
     matches_provider,
     move_on,
     neighbourhood_strength,
+    performs,
     prefer_titles,
     reach_of,
     select_fresh_first,
@@ -112,7 +119,7 @@ from .ma import (
 )
 from .session import ListeningSession
 from .settings import Settings
-from .wikipedia import async_find_article, async_get_facts
+from .wikipedia import ArticleFacts, async_find_article, async_get_facts
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -1472,25 +1479,46 @@ class CuratedRadioEngine:
         artist: str,
         base: str,
         article: str,
-        detail: tuple[int | None, tuple[str, ...]] | None,
+        detail: ArticleFacts | None,
     ) -> Fact:
         """File what one article said about one record.
 
-        A failure is recorded as carefully as a success, because the two
-        kinds want different fixes and an undifferentiated pile of misses
-        is no use as a work list. Reaching here at all means the article
-        was found, so the only failure left is a thin infobox.
+        A failure is recorded as carefully as a success, because each kind
+        wants a different fix and an undifferentiated pile of misses is no
+        use as a work list. Reaching here at all means an article was
+        found, so what is left is a thin infobox or the wrong recording.
+
+        The wrong recording is the one worth watching for. A cover shares
+        its title with the original, whose article usually wins the search
+        outright, and taking its year silently dates the cover to whenever
+        somebody else first made the record. Nothing about that looks like
+        a failure downstream: it is a plausible year, from a real article,
+        for the wrong decade.
         """
-        year, genres = detail if detail else (None, ())
-        if year is not None:
-            _LOGGER.debug("%s by %s is a %s record, from %s", base, artist, year, article)
+        found = detail or ArticleFacts()
+        if found.year is not None and not performs(artist, found.performer):
+            _LOGGER.debug(
+                "%s is a cover: %s is about %s, not %s, so its %s is not ours",
+                base,
+                article,
+                found.performer,
+                artist,
+                found.year,
+            )
+            return self._facts.remember(
+                artist, base, article=article, miss=MISS_WRONG_ARTIST
+            )
+        if found.year is not None:
+            _LOGGER.debug(
+                "%s by %s is a %s record, from %s", base, artist, found.year, article
+            )
         return self._facts.remember(
             artist,
             base,
-            year=year,
-            genres=genres,
+            year=found.year,
+            genres=found.genres,
             article=article,
-            miss="" if year is not None else MISS_NO_DATE,
+            miss="" if found.year is not None else MISS_NO_DATE,
         )
 
     async def _async_learn(self, artist: str, title: str, base: str) -> Fact:

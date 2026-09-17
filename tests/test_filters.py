@@ -25,6 +25,7 @@ from filters import (
     drop_outliers,
     earliest_year,
     in_lane,
+    infobox_artist,
     infobox_genres,
     is_demo,
     is_holiday,
@@ -40,6 +41,7 @@ from filters import (
     matches_provider,
     move_on,
     neighbourhood_strength,
+    performs,
     prefer_titles,
     reach_of,
     sequence_tiered,
@@ -1996,3 +1998,73 @@ def test_a_thin_pool_is_not_promoted_to_power_either():
         [("act", list(filler), 500_000)], 0.7, dict.fromkeys(filler, 0), filler
     )
     assert set(tiers.values()) == {TIER_DEEP}
+
+
+# --- Telling a recording from the song ----------------------------------
+
+A_LITTLE_RESPECT = """
+{{Infobox song
+| name = A Little Respect
+| artist = [[Erasure]]
+| album = [[The Innocents (Erasure album)|The Innocents]]
+| released = 13 June 1988
+| genre = [[Synth-pop]]
+}}
+"A Little Respect" is a song by the English duo Erasure. [[Wheatus]]
+released a cover version in 2000 which charted in the UK.
+"""
+
+
+def test_the_performer_comes_off_the_infobox():
+    assert infobox_artist(A_LITTLE_RESPECT) == "Erasure"
+
+
+def test_no_artist_field_gives_nothing():
+    assert infobox_artist("{{Infobox song\n| name = Something\n}}") == ""
+
+
+def test_a_cover_is_not_the_recording_we_asked_about():
+    """Two real cases from one batch on 2026-09-17.
+
+    Searching "a little respect Wheatus" returns the Erasure article,
+    whose title matches exactly and whose infobox dates the song to 1988.
+    Wheatus recorded it in 2000. Counting Crows' "Big Yellow Taxi" was
+    dated to Joni Mitchell's 1970 original the same way, and between them
+    they reported a 1990s indie hour as spanning 1970 to 2006.
+    """
+    assert not performs("Wheatus", infobox_artist(A_LITTLE_RESPECT))
+    assert not performs("Counting Crows", "Joni Mitchell")
+
+
+def test_the_artist_who_did_record_it_still_matches():
+    assert performs("Erasure", infobox_artist(A_LITTLE_RESPECT))
+
+
+def test_a_leading_article_does_not_break_the_match():
+    """The provider and the wiki disagree about "The" constantly."""
+    assert performs("The Beatles", "Beatles")
+    assert performs("Beatles", "The Beatles")
+
+
+def test_a_collaboration_matches_either_credit():
+    """The provider credits one name where the infobox lists the pair."""
+    assert performs("Elton John", "Elton John and Dua Lipa")
+    assert performs("Elton John and Dua Lipa", "Elton John")
+
+
+def test_punctuation_in_a_name_does_not_break_the_match():
+    assert performs("R.E.M.", "R.E.M.")
+    assert performs("AC/DC", "AC/DC")
+
+
+def test_one_name_inside_another_is_not_a_match():
+    """A substring test would say Ash performs Richard Ashcroft's records,
+    and both were in the same batch."""
+    assert not performs("Ash", "Richard Ashcroft")
+    assert not performs("Richard Ashcroft", "Ash")
+
+
+def test_an_article_with_no_performer_is_given_the_benefit_of_the_doubt():
+    """Refusing every article without an artist field would cost far more
+    years than covers ever will."""
+    assert performs("Wheatus", "")

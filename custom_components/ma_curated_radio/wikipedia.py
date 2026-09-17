@@ -20,11 +20,11 @@ from __future__ import annotations
 
 import logging
 from http import HTTPStatus
-from typing import Any
+from typing import Any, NamedTuple
 
 import aiohttp
 
-from .filters import best_article, earliest_year, infobox_genres
+from .filters import best_article, earliest_year, infobox_artist, infobox_genres
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ TIMEOUT = aiohttp.ClientTimeout(total=20)
 # Wikipedia asks that a client identify itself and says so in its own
 # API etiquette; an anonymous agent is the one thing that gets throttled.
 USER_AGENT = (
-    "ma-curated-radio/0.51 "
+    "ma-curated-radio/0.54 "
     "( https://github.com/MajuRedinodi/ma-curated-radio )"
 )
 
@@ -102,22 +102,33 @@ async def async_find_article(
     return best_article(hits, title, artist)
 
 
+class ArticleFacts(NamedTuple):
+    """What one article says about the record it describes."""
+
+    year: int | None = None
+    genres: tuple[str, ...] = ()
+    # Who the infobox credits, so the caller can tell whether this is the
+    # recording it asked about or the song as somebody else first made
+    # it. Empty where the article has no artist field.
+    performer: str = ""
+
+
 async def async_get_facts(
     session: aiohttp.ClientSession, articles: list[str]
-) -> dict[str, tuple[int | None, tuple[str, ...]]]:
-    """The year and genres each article gives, by article name.
+) -> dict[str, ArticleFacts]:
+    """What each article says about its record, by article name.
 
     Fifty at a time, which is the API's own ceiling and means a whole
-    batch usually costs one request. Both halves come out of the same
+    batch usually costs one request. Every field comes out of the same
     infobox, so asking for them together is free and asking separately
-    would double the traffic for nothing.
+    would multiply the traffic for nothing.
 
-    An article that answered neither is still present in the result, as
-    ``(None, ())``. That is the distinction the caller needs: an article
-    with a thin infobox is the right page and wants a different field,
-    while an article that was never found wants a better search.
+    An article that answered nothing is still present in the result, with
+    everything empty. That is the distinction the caller needs: an
+    article with a thin infobox is the right page and wants a different
+    field, while an article that was never found wants a better search.
     """
-    found: dict[str, tuple[int | None, tuple[str, ...]]] = {}
+    found: dict[str, ArticleFacts] = {}
     wanted = [name for name in articles if name]
     for start in range(0, len(wanted), ARTICLES_PER_FETCH):
         chunk = wanted[start : start + ARTICLES_PER_FETCH]
@@ -148,9 +159,10 @@ async def async_get_facts(
                 continue
             text = ((revisions[0].get("slots") or {}).get("main") or {}).get("content")
             wikitext = str(text or "")
-            detail = (
-                earliest_year(wikitext),
-                tuple(sorted(infobox_genres(wikitext))),
+            detail = ArticleFacts(
+                year=earliest_year(wikitext),
+                genres=tuple(sorted(infobox_genres(wikitext))),
+                performer=infobox_artist(wikitext),
             )
             name = str(page.get("title") or "")
             found[name] = detail

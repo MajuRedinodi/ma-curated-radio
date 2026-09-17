@@ -47,11 +47,16 @@ MISS_EXPIRY_DAYS: Final = 30
 # misses are a work list already sorted by the kind of work.
 MISS_NO_ARTICLE: Final = "no_article"
 MISS_NO_DATE: Final = "no_date"
+# The article found is about somebody else's recording of the song, so
+# its year belongs to the original and not to this record. A third kind
+# because it wants a third fix: not a better search and not a fuller
+# infobox, but the article for this cover, or a hand-set year.
+MISS_WRONG_ARTIST: Final = "wrong_artist"
 
 # No reason was recorded, which is what a record that answered looks like.
 MISS_NONE: Final = ""
 
-MISS_KINDS: Final = (MISS_NO_ARTICLE, MISS_NO_DATE)
+MISS_KINDS: Final = (MISS_NO_ARTICLE, MISS_NO_DATE, MISS_WRONG_ARTIST)
 
 
 def _today() -> int:

@@ -493,7 +493,13 @@ FACTS_STORAGE_KEY: Final = f"{DOMAIN}.music_facts"
 # that do break old data: renaming the key format, changing what a field
 # means, or dropping one something still reads. The skip memory shipped
 # without one and its shape can therefore never change.
-FACTS_STORAGE_VERSION: Final = 1
+#
+# Raised to 2 when the year gained a condition it did not have before:
+# that the article it came from is about this recording and not about the
+# song as somebody else first made it. Every version 1 year was written
+# without that check, so the whole file is discarded rather than trusted.
+# See _FactsStore in __init__.py.
+FACTS_STORAGE_VERSION: Final = 2
 
 # Longer than the station's ten seconds, because this file grows while
 # the station's does not, and one write per batch is plenty. Store
