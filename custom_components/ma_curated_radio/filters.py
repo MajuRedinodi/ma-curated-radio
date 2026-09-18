@@ -2112,6 +2112,59 @@ def usable_songs(
     return kept
 
 
+def song_audience(
+    title_by_uri: Mapping[str, str],
+    known: Sequence[tuple[str, int]] | None,
+) -> dict[str, int]:
+    """How many people Last.fm says have heard each song, by URI.
+
+    The raw count, where ``song_shares`` returns the ratio. Both come off
+    the same fetched list and this one is currently thrown away, which is
+    a pity: ``reach`` reconstructs a song's audience as its artist's
+    listeners times that ratio, and the reconstruction distorts in a
+    known direction. It inflates a giant, whose artist count dwarfs any
+    one record, and deflates a small act whose biggest song is most of
+    their audience. Brett Young's "In Case You Didn't Know" is four times
+    platinum and reach scores it low, because Brett Young is a small act.
+
+    Absolute, so it does not compare across genres: Last.fm undercounts
+    country roughly tenfold. It compares perfectly well **within one
+    station**, where the genre is fixed, which is the only place anything
+    uses it.
+    """
+    if not known:
+        return {}
+    listeners: dict[str, int] = {}
+    for title, count in known:
+        key = base_title(title)
+        if key:
+            listeners[key] = max(count, listeners.get(key, 0))
+    return {
+        uri: listeners[key]
+        for uri, title in title_by_uri.items()
+        if (key := base_title(title)) in listeners
+    }
+
+
+def median_of(values: Iterable[int]) -> int:
+    """The middle value, or zero when there is nothing to take one of."""
+    ordered = sorted(values)
+    return ordered[len(ordered) // 2] if ordered else 0
+
+
+def fallen_by(now: int, before: int) -> int:
+    """How far a figure has fallen from an earlier one, as a percentage.
+
+    Never negative: a batch stronger than the one a session opened with
+    has not degraded, and reporting that as a negative drop invites a
+    threshold to be compared the wrong way round. Zero when there is no
+    baseline yet, which is what the first batch of a session sees.
+    """
+    if before <= 0 or now >= before:
+        return 0
+    return int(round(100 * (before - now) / before))
+
+
 def song_shares(
     title_by_uri: Mapping[str, str],
     known: Sequence[tuple[str, int]] | None,

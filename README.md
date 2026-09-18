@@ -116,7 +116,7 @@ created outside that device, and nothing is written to your configuration.
 |---|---|
 | Switches | Curated radio (the master switch), Seed from the song, Skip live recordings, Skip remixes, Skip holiday tracks |
 | Sensors | Last batch seed, Last batch built, Last manual pick, Muted artists, Version |
-| Numbers | Similar artists per batch, Tracks per artist, Tracks per batch, Drop artists below, Degrees of separation, Most in a row from one artist, Refill threshold, Skips before muting an artist |
+| Numbers | Similar artists per batch, Tracks per artist, Tracks per batch, Drop artists below, Degrees of separation, Most in a row from one artist, Refill threshold, Replay when weaker by, Skips before muting an artist |
 | Selects | Station style, Familiarity, Explicit content, Muted artist to release, Song to release |
 | Buttons | Build a batch now, Skip and do not play again, Build a playlist, Unmute selected artist, Unmute all artists, Allow selected song, Forget everything it learned |
 
@@ -150,6 +150,7 @@ whichever style is selected, so tuning one cannot quietly retune another.
 | Skips in a row before muting an artist [3] | Turn down this many of one artist's tracks consecutively and they stop being suggested. A track played through resets the run. Zero switches muting off. |
 | Muted artist stays away for [30 days] | How long a muted artist stays out of the similar-artist pool. |
 | Refill threshold [2] | Top the queue up once this many tracks or fewer remain after the one playing. |
+| Replay when weaker by [30%] | How far a station may fall below the batch it opened with before records it has already played are allowed back in. Measured against the session's own start, so it means the same in country as in rock where absolute listener counts never do, and judged on the batch about to be queued rather than the one just played. **Reported but not yet acted on:** two sessions have been watched and that is not enough to fix a number on. Set from its own entity. |
 | Bulk load size [3 tracks] | A manual pick is one track; a playlist or album is many. A queue is left alone when it holds at least this many tracks nobody here chose, nothing after them is ours either, AND its size moved by at least this much. Both tests are needed: loading a playlist usually replaces the queue rather than adding to it, so growth alone misses it, while size alone cannot see a song picked from within a playlist, which barely moves the count and is still a pick. |
 | Repeat memory [120 min] | How long a title cannot play again at all. Zero disables that window. Separately, and not adjustable, a song heard in the last eight hours waits until its artist has nothing fresh left, so a returning artist plays their other hits first. |
 | Settle delay [3 s] | How long to wait after a manual pick before rewriting the queue. |

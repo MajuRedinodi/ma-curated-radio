@@ -535,3 +535,23 @@ FACTS_SAVE_DELAY: Final = 30
 # accurately, while a queued record with no year has nothing to show.
 LANE_LOOKUPS_PER_BATCH: Final = 20
 PLAYED_LOOKUPS_PER_BATCH: Final = 30
+
+# --- Letting a station repeat itself -------------------------------------
+
+# How far a station may fall below where it started before records it has
+# already played are allowed back in, as a percentage.
+#
+# Jeff's figure, and deliberately a setting rather than a constant,
+# because there is not yet the evidence to fix it. Two sessions have been
+# watched. A Britpop evening fell 67% and sounded wrong; five hours of
+# country fell 46% and sounded right, then recovered to *above* where it
+# started. So the number is a starting point to be listened against, not
+# a measurement.
+#
+# Measured against the session's own opening batch, which makes it
+# genre-neutral: half of where this station started means the same thing
+# in country as in rock, where absolute listener counts never do. And
+# judged on the batch about to be queued rather than the one just played,
+# or the correction arrives an hour after the hour it was meant to fix.
+CONF_REPLAY_DROP: Final = "replay_drop"
+DEFAULT_REPLAY_DROP: Final = 30

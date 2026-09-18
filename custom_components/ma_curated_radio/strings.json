@@ -135,6 +135,9 @@
       "batch_length": {
         "name": "Tracks per batch"
       },
+      "replay_drop": {
+        "name": "Replay when weaker by"
+      },
       "degrees": {
         "name": "Degrees of separation"
       },

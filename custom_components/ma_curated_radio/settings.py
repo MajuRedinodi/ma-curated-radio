@@ -32,6 +32,7 @@ from .const import (
     CONF_POPULARITY_FLOOR,
     CONF_PROVIDER_FILTER,
     CONF_REFILL_THRESHOLD,
+    CONF_REPLAY_DROP,
     CONF_SEED_FROM_SONG,
     CONF_SEED_LEAN,
     CONF_SETTLE_SECONDS,
@@ -54,6 +55,7 @@ from .const import (
     DEFAULT_POPULARITY_FLOOR,
     DEFAULT_PROVIDER_FILTER,
     DEFAULT_REFILL_THRESHOLD,
+    DEFAULT_REPLAY_DROP,
     DEFAULT_SEED_FROM_SONG,
     DEFAULT_SEED_LEAN,
     DEFAULT_SETTLE_SECONDS,
@@ -102,6 +104,7 @@ class Settings:
     track_suppress_days: int
     artist_mute_days: int
     artist_strike_limit: int
+    replay_drop: int
 
     @classmethod
     def from_entry(cls, entry: ConfigEntry) -> Settings:
@@ -126,6 +129,7 @@ class Settings:
                 merged.get(CONF_REFILL_THRESHOLD, DEFAULT_REFILL_THRESHOLD)
             ),
             bulk_tracks=int(merged.get(CONF_BULK_TRACKS, DEFAULT_BULK_TRACKS)),
+            replay_drop=int(merged.get(CONF_REPLAY_DROP, DEFAULT_REPLAY_DROP)),
             history_minutes=int(
                 merged.get(CONF_HISTORY_MINUTES, DEFAULT_HISTORY_MINUTES)
             ),

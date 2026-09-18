@@ -25,6 +25,7 @@ from filters import (
     depth_bar,
     drop_outliers,
     earliest_year,
+    fallen_by,
     in_lane,
     infobox_artist,
     infobox_genres,
@@ -42,12 +43,14 @@ from filters import (
     lead_among_credits,
     lean_toward_strength,
     matches_provider,
+    median_of,
     move_on,
     neighbourhood_strength,
     performs,
     prefer_titles,
     reach_of,
     sequence_tiered,
+    song_audience,
     song_shares,
     stratified_bands,
     stratified_sample,
@@ -2287,3 +2290,55 @@ def test_an_article_with_no_charts_gives_nothing():
     """Which is silence, not a claim that the record never charted."""
     assert chart_peaks("{{Infobox song|name=Fuzzy|artist=Grant Lee Buffalo}}") == ()
     assert chart_peaks("") == ()
+
+
+# --- Watching a station degrade ------------------------------------------
+
+
+def test_a_drop_is_measured_against_where_the_session_started():
+    assert fallen_by(278_369, 511_397) == 46
+
+
+def test_a_batch_stronger_than_the_start_has_not_degraded():
+    """Never negative. One real session ran 511k, 564k, 456k, 278k: it
+    rose before it fell, and a negative drop invites a threshold to be
+    compared the wrong way round."""
+    assert fallen_by(563_839, 511_397) == 0
+    assert fallen_by(511_397, 511_397) == 0
+
+
+def test_no_baseline_yet_reads_as_no_drop():
+    """What the first batch of a session sees."""
+    assert fallen_by(278_369, 0) == 0
+
+
+def test_the_median_of_nothing_is_zero():
+    assert median_of([]) == 0
+    assert median_of([7]) == 7
+    assert median_of([1, 5, 9]) == 5
+
+
+def test_raw_song_audience_comes_back_by_uri():
+    """The number reach only reconstructs. Both come off the same list
+    and this one was being thrown away."""
+    known = [("Somebody Like You", 812_000), ("You'll Think of Me", 240_000)]
+    titles = {"u1": "Somebody Like You", "u2": "You'll Think of Me"}
+    assert song_audience(titles, known) == {"u1": 812_000, "u2": 240_000}
+
+
+def test_a_song_the_two_services_spell_differently_is_simply_absent():
+    """Left out rather than guessed at, exactly as song_shares does."""
+    known = [("Somebody Like You", 812_000)]
+    assert song_audience({"u1": "A Song Last.fm Never Heard Of"}, known) == {}
+
+
+def test_song_audience_folds_a_remaster_onto_the_record():
+    known = [("Take on Me", 2_941_370)]
+    assert song_audience({"u1": "Take on Me (2015 Remaster)"}, known) == {
+        "u1": 2_941_370
+    }
+
+
+def test_nothing_known_gives_nothing():
+    assert song_audience({"u1": "Anything"}, None) == {}
+    assert song_audience({"u1": "Anything"}, []) == {}

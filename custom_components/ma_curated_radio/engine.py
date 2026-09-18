@@ -77,6 +77,7 @@ from .filters import (
     crowd_pool,
     depth_bar,
     drop_outliers,
+    fallen_by,
     is_gold,
     keep_one_act,
     lane_match,
@@ -84,6 +85,7 @@ from .filters import (
     lead_among_credits,
     lean_toward_strength,
     matches_provider,
+    median_of,
     move_on,
     neighbourhood_strength,
     performs,
@@ -92,6 +94,7 @@ from .filters import (
     select_fresh_first,
     select_tracks,
     sequence_tiered,
+    song_audience,
     song_shares,
     stratified_bands,
     strong_artists,
@@ -168,6 +171,9 @@ class _Pools:
     # and the guess inverted on deep positions; the numbers arrive here
     # anyway for the depth limit, so they are kept rather than discarded.
     share: dict[str, float] = field(default_factory=dict)
+    # The same songs raw listener counts, which reach only reconstructs
+    # and distorts. Kept for judging whether a station is degrading.
+    audience: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -205,6 +211,26 @@ class BatchResult:
     # misleading in opposite directions.
     year_span: str = ""
     years_known: int = 0
+    # How far this batch has fallen from the one the session opened with,
+    # as a percentage, by two different measures of the same thing.
+    #
+    # Instrumentation only. Nothing reads these yet, and that is the
+    # point: the plan is to let replays back in once a station has
+    # degraded, and there is no honest way to pick the threshold without
+    # watching real sessions first. Two measures because they disagree,
+    # and the disagreement is the finding. Across five hours of country
+    # on 2026-09-18, reach fell 46% from the session's start while the
+    # hour still sounded right to the listener, because reach follows the
+    # size of the *artists* and the *records* stayed big.
+    reach_drop: int = 0
+    audience_drop: int = 0
+    audience_median: int = 0
+    # Power slots the clock asked for and the pool could not supply. The
+    # hard end of the same question: a station that cannot fill its hour
+    # has run out of material rather than merely drifted. Rarer than it
+    # sounds, because Power is a share of an artist's own biggest, so any
+    # artist's best record fills a slot however small the act.
+    power_short: int = 0
     # When the batch was queued, as ISO time. Kept because the sensor's own
     # timestamps restart with Home Assistant, and a restored batch would
     # otherwise look as though it had just been built.
@@ -288,6 +314,12 @@ class CuratedRadioEngine:
         # drifted to, so an off-era track can play without becoming the
         # seed that carries its era into the rest of the evening.
         self._origin_lane: tuple[set[int], set[str]] = (set(), set())
+        # What the session opened with, so later batches can be compared
+        # against where the listener started rather than against the last
+        # batch. Batch to batch is too noisy to threshold on: one real
+        # session ran 511k, 564k, 456k, 278k, rising once before falling.
+        self._origin_reach = 0
+        self._origin_audience = 0
         # Its own generator so reseed choices can be reproduced in tests.
         self._rng = random.Random()
         # Artists that actually contributed to the last batch. A refill
@@ -334,6 +366,8 @@ class CuratedRadioEngine:
         self._listening = ListeningSession.from_dict(data.get("session"))
         self._last_pool = [str(a) for a in data.get("last_pool") or []]
         self._last_lead = str(data.get("last_lead") or "")
+        self._origin_reach = int(data.get("origin_reach") or 0)
+        self._origin_audience = int(data.get("origin_audience") or 0)
         saved_lane = data.get("origin_lane") or [[], []]
         self._origin_lane = (
             {int(d) for d in saved_lane[0]},
@@ -386,6 +420,8 @@ class CuratedRadioEngine:
             "last_power": [list(pair) for pair in self._last_power],
             "played": self._played,
             # Sets are not JSON, so the station lane travels as lists.
+            "origin_reach": self._origin_reach,
+            "origin_audience": self._origin_audience,
             "origin_lane": [
                 sorted(self._origin_lane[0]),
                 sorted(self._origin_lane[1]),
@@ -644,12 +680,42 @@ class CuratedRadioEngine:
             return BatchResult(
                 mode=mode, seed_artist=lead, artists=artists, skipped_reason="superseded"
             )
+        # Judged on what is about to be queued rather than on what was,
+        # which is Jeff's point and the right one: a check that runs after
+        # the enqueue tells you an hour has degraded while that hour is
+        # already playing, and the correction arrives an hour late.
+        # ``ordered`` is the batch the clock built; enqueue only ever
+        # drops from it, so this is the same batch judged one step
+        # earlier.
+        audience_median = median_of(
+            pools.audience[uri] for uri in ordered if uri in pools.audience
+        )
+        scored = reach_of(sized, TIER_DECAY, rank, pools.share)
+        opening_reach = median_of(scored.get(uri, 0) for uri in ordered)
+        # A station that starts fresh is its own baseline, so the first
+        # batch of a session can never read as degraded.
+        if starting or not self._origin_reach:
+            self._origin_reach, self._origin_audience = opening_reach, audience_median
+        reach_drop = fallen_by(opening_reach, self._origin_reach)
+        audience_drop = fallen_by(audience_median, self._origin_audience)
+        if reach_drop or audience_drop:
+            _LOGGER.debug(
+                "Station has fallen %s%% by reach and %s%% by audience since it "
+                "started, before this batch plays",
+                reach_drop,
+                audience_drop,
+            )
         enqueued = await self._async_enqueue(ordered, mode)
         if enqueued:
             self._history.add([title_by_uri[uri] for uri in enqueued])
 
         reach_median, reach_low, counts = self._summarise(
             enqueued, sized, tiers, rank, pools.share
+        )
+        wanted_power = sum(
+            1
+            for index in range(len(enqueued))
+            if self._settings.clock[index % len(self._settings.clock)] == TIER_POWER
         )
         if enqueued:
             self._last_pool = list(pool_artists)
@@ -685,6 +751,10 @@ class CuratedRadioEngine:
             tiers=counts,
             year_span=year_span(played_years.values()),
             years_known=len(played_years),
+            reach_drop=reach_drop,
+            audience_drop=audience_drop,
+            audience_median=audience_median,
+            power_short=max(0, wanted_power - counts.get(TIER_POWER, 0)),
             built_at=dt_util.utcnow().isoformat() if enqueued else "",
         )
 
@@ -760,6 +830,7 @@ class CuratedRadioEngine:
                 titled = dict(zip(uris, titles, strict=True))
                 pools.title_by_uri.update(titled)
                 pools.share.update(song_shares(titled, known.get(artist)))
+                pools.audience.update(song_audience(titled, known.get(artist)))
         return pools
 
     async def _async_top_tracks(

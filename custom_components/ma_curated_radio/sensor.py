@@ -118,6 +118,21 @@ class LastBatchSensor(CuratedRadioEntity, SensorEntity):
             "reach_median": result.reach_median,
             "reach_low": result.reach_low,
             "tiers": result.tiers,
+            # How far this batch has fallen from the one the session
+            # opened with. Reported and acted on by nothing: the plan is
+            # to let replays back in once a station degrades, and the
+            # threshold has to be measured against real sessions rather
+            # than guessed. Two measures because they disagree, which is
+            # the whole reason to watch them. Reach follows how big the
+            # artists are; audience follows how well known the records
+            # are, and five hours of country moved them very differently.
+            "reach_drop": result.reach_drop,
+            "audience_drop": result.audience_drop,
+            "audience_median": result.audience_median,
+            # Power slots the pool could not fill. The hard end of the
+            # same question, and rare, because any artist's own biggest
+            # record fills one however small the act.
+            "power_short": result.power_short,
             # The era the batch covers, and how many of its records that
             # is drawn from. Read together: a tight span over three known
             # years says very little. This is the only way to see whether
