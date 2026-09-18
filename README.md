@@ -118,7 +118,7 @@ created outside that device, and nothing is written to your configuration.
 | Sensors | Last batch seed, Last batch built, Last manual pick, Muted artists, Version |
 | Numbers | Similar artists per batch, Tracks per artist, Tracks per batch, Drop artists below, Degrees of separation, Most in a row from one artist, Refill threshold, Skips before muting an artist |
 | Selects | Station style, Familiarity, Explicit content, Muted artist to release, Song to release |
-| Buttons | Build a batch now, Skip and do not play again, Build a playlist, Unmute selected artist, Unmute all artists, Allow selected song |
+| Buttons | Build a batch now, Skip and do not play again, Build a playlist, Unmute selected artist, Unmute all artists, Allow selected song, Forget everything it learned |
 
 The rest of the settings live behind **Configure**, because they are set
 once and forgotten rather than reached for.
@@ -420,24 +420,6 @@ views:
                 show_name: false
                 state_content: [suppressed_tracks]
 
-          - type: button
-            name: Forget all of it
-            icon: mdi:delete-sweep
-            show_state: false
-            grid_options: {columns: full}
-            tap_action:
-              action: perform-action
-              perform_action: ma_curated_radio.forget_feedback
-              confirmation:
-                text: >-
-                  Release every held-back song and unmute every artist?
-              target:
-                entity_id: sensor.family_room_stereo_muted_artists
-            visibility:
-              - condition: numeric_state
-                entity: sensor.family_room_stereo_muted_artists
-                above: -1
-
           - type: heading
             heading: Let one back in
             heading_style: subtitle
@@ -516,6 +498,23 @@ views:
               - condition: state
                 entity: select.family_room_stereo_muted_artist_to_release
                 state_not: Nothing to release
+          - type: tile
+            entity: button.family_room_stereo_forget_everything_it_learned
+            name: Forget all of it
+            icon: mdi:delete-sweep
+            color: amber
+            hide_state: true
+            grid_options: {columns: full}
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target:
+                entity_id: >-
+                  button.family_room_stereo_forget_everything_it_learned
+              confirmation:
+                text: >-
+                  Release every held-back song and unmute every artist?
+                  This cannot be undone.
 ```
 
 </details>
@@ -542,7 +541,7 @@ data:
 `ma_curated_radio.unmute_artist` lets one muted artist back in immediately
 and `ma_curated_radio.allow_track` releases one held-back song, either by
 the name shown on the dashboard or by its stored key.
-`ma_curated_radio.forget_feedback` wipes every remembered skip and mute.
+`ma_curated_radio.forget_feedback` wipes every remembered song and mute. On an install with more than one player it needs `config_entry_id`, because it cannot guess which is meant; the **Forget everything it learned** button is the same thing bound to one player, and takes no arguments.
 
 `ma_curated_radio.search` looks a song up in Music Assistant and returns
 the results without playing anything, which is what a dashboard search box

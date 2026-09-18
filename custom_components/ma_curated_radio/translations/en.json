@@ -172,6 +172,9 @@
       "reject_playing": {
         "name": "Skip and do not play again"
       },
+      "forget_everything": {
+        "name": "Forget everything it learned"
+      },
       "unmute_all": {
         "name": "Unmute all artists"
       },

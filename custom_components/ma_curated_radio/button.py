@@ -35,6 +35,7 @@ async def async_setup_entry(
             BuildBatchButton(entry),
             RejectPlayingButton(entry),
             UnmuteAllButton(entry),
+            ForgetEverythingButton(entry),
             UnmuteSelectedButton(entry),
             AllowSelectedTrackButton(entry),
             BuildPlaylistButton(entry),
@@ -106,6 +107,34 @@ class UnmuteAllButton(CuratedRadioEntity, ButtonEntity):
     async def async_press(self) -> None:
         """Lift every artist mute."""
         await self.runtime.skips.async_unmute_all()
+        async_dispatcher_send(self.hass, signal_update(self._entry.entry_id))
+
+
+class ForgetEverythingButton(CuratedRadioEntity, ButtonEntity):
+    """Release every held-back song and unmute every artist at once.
+
+    The same thing the forget_feedback action does, as an entity, which is
+    what makes it usable. The action takes an optional config_entry_id and
+    cannot guess which player is meant, so on any install with more than
+    one it fails with "no single player could be chosen for you" unless
+    the caller supplies an opaque id. A dashboard cannot reasonably carry
+    that, and the README cannot document somebody else's.
+
+    An entity is bound to its own player by construction, so a button
+    needs no arguments and there is nothing to get wrong.
+    """
+
+    _attr_translation_key = "forget_everything"
+    _attr_icon = "mdi:delete-sweep"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, entry: MaCuratedRadioConfigEntry) -> None:
+        """Bind to the skip memory."""
+        super().__init__(entry, "forget_everything")
+
+    async def async_press(self) -> None:
+        """Forget every song held back and every artist muted."""
+        await self.runtime.skips.async_clear()
         async_dispatcher_send(self.hass, signal_update(self._entry.entry_id))
 
 
