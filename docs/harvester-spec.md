@@ -67,6 +67,38 @@ Expect **on the order of 200,000 articles** and about 6 GB of wikitext.
 Do not compress anything by hand: Postgres compresses large text columns
 itself, which should land the database somewhere near 2 GB.
 
+## Deliverable: one file, `harvest.py`
+
+That is the whole deliverable. It runs in a container that is already
+written, so it needs to know nothing about the host.
+
+**Connect with `psycopg.connect()` and no arguments.** The standard libpq
+environment variables (`PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`,
+`PGPASSWORD`) are already set by the runner, so psycopg finds the
+database on its own. Do not hardcode a host, and do not read `.env`.
+
+**The only dependency is `psycopg[binary]`**, which the runner installs.
+Everything else must be standard library: use `urllib.request` rather
+than `requests`, so there is nothing else to install.
+
+**Write to stdout, unbuffered progress.** That is the log. Print which
+category is being walked, counts as they climb, and any backoff.
+
+**Exit 0 when `pending` reaches zero.** The container then stops on its
+own and `docker ps -a` shows it finished cleanly.
+
+Put the file at `~/docker/music-db/harvest.py` and start it with:
+
+```
+~/docker/music-db/run-harvest.sh     # detached, survives logout
+docker logs -f music-harvest         # watch
+docker stop music-harvest            # stop, safely, at any point
+```
+
+The runner is `~/docker/music-db/run-harvest.sh`, already in place. It
+puts the harvester on the database's own Docker network, so the host is
+`music-db`, not `localhost`.
+
 ## Schema, as applied
 
 Defined in `~/docker/music-db/schema.sql`. Reproduced here so the shape
