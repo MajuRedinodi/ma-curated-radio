@@ -2216,11 +2216,27 @@ def test_the_artists_own_page_is_not_the_songs():
     assert best_article(["Buffalo Tom"], "Taillights Fade", "Buffalo Tom") == ""
 
 
-def test_nothing_matching_falls_back_to_the_top_hit():
+def test_nothing_matching_the_title_is_not_an_answer():
+    """This used to return the top hit, and that was a real bug.
+
+    Caught in the wild on 2026-09-18, twice in one batch and both
+    plausible. A search for "(Keep Feeling) Fascination" by The Human
+    League matched no result's title and returned "Human (The Human
+    League song)", dating a 1983 record to 1986. "I Scare Myself" by
+    Thomas Dolby returned "Close but No Cigar", dating 1984 to 1992.
+
+    Nothing downstream can catch it: the performer check passes, because
+    the performer is right. It is the song that is wrong.
+    """
     hits = ["Some Unrelated Article", "Another One"]
-    assert best_article(hits, "Taillights Fade", "Buffalo Tom") == (
-        "Some Unrelated Article"
-    )
+    assert best_article(hits, "Taillights Fade", "Buffalo Tom") == ""
+
+
+def test_a_real_match_still_wins_over_an_unrelated_top_hit():
+    """The search puts the wrong thing first often enough that this is
+    the case that matters, not a hypothetical."""
+    hits = ["Some Unrelated Article", "Taillights Fade"]
+    assert best_article(hits, "Taillights Fade", "Buffalo Tom") == "Taillights Fade"
 
 
 def test_only_a_song_article_can_supply_a_release_year():

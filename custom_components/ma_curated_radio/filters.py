@@ -2076,13 +2076,24 @@ def best_article(results: Sequence[str], title: str, artist: str) -> str:
         kept.append((rank, len(name), name))
     if not kept:
         return ""
-    # Highest rank, then shortest name. The fallback when nothing ranks
-    # at all is the top hit of what survived, in search order, and it has
-    # to come from ``kept`` rather than from ``results``: the entries
-    # dropped above are dropped precisely because they are never the
-    # answer, and an earlier version of this reached past them.
+    # Highest rank, then shortest name. **Nothing matching the title is
+    # not an answer.** This used to fall back to the top hit, which meant
+    # a search that missed still returned a real article by the right
+    # artist about the wrong record, and there is no way to tell that
+    # from a good answer downstream: the performer check passes, because
+    # the performer is right.
+    #
+    # Caught in the wild on 2026-09-18, both plausible and both wrong.
+    # "(Keep Feeling) Fascination" resolved to "Human (The Human League
+    # song)" and came back 1986 instead of 1983; "I Scare Myself"
+    # resolved to "Close but No Cigar (Thomas Dolby song)" and came back
+    # 1992 instead of 1984. Same class as the Oasis documentary, and
+    # invisible for the same reason.
+    #
+    # So a miss now returns nothing, and the caller records not-found.
+    # No year beats a wrong one, which is the rule everywhere else here.
     best = max(kept, key=lambda item: (item[0], -item[1]))
-    return best[2] if best[0] else kept[0][2]
+    return best[2] if best[0] else ""
 
 
 def crowd_pool(
