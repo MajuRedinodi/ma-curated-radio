@@ -225,6 +225,13 @@ views:
               - type: media-player-volume-slider
                 show_mute_button: true
             grid_options: {columns: full}
+          - type: tile
+            entity: button.family_room_stereo_skip_and_do_not_play_again
+            name: Not this one
+            icon: mdi:thumb-down-outline
+            color: red
+            hide_state: true
+            grid_options: {columns: full}
 
       - type: grid
         background: {color: blue, opacity: 8}
@@ -236,12 +243,6 @@ views:
             entity: button.family_room_stereo_build_a_batch_now
             name: Build a batch
             color: purple
-            hide_state: true
-            grid_options: {columns: 6}
-          - type: tile
-            entity: button.family_room_stereo_skip_and_do_not_play_again
-            name: Not this one
-            color: red
             hide_state: true
             grid_options: {columns: 6}
           - type: tile
@@ -418,6 +419,24 @@ views:
                 show_state: true
                 show_name: false
                 state_content: [suppressed_tracks]
+
+          - type: button
+            name: Forget all of it
+            icon: mdi:delete-sweep
+            show_state: false
+            grid_options: {columns: full}
+            tap_action:
+              action: perform-action
+              perform_action: ma_curated_radio.forget_feedback
+              confirmation:
+                text: >-
+                  Release every held-back song and unmute every artist?
+              target:
+                entity_id: sensor.family_room_stereo_muted_artists
+            visibility:
+              - condition: numeric_state
+                entity: sensor.family_room_stereo_muted_artists
+                above: -1
 
           - type: heading
             heading: Let one back in
