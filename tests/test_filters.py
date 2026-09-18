@@ -50,6 +50,7 @@ from filters import (
     performs,
     prefer_titles,
     reach_of,
+    replays_wanted,
     sequence_tiered,
     song_audience,
     song_shares,
@@ -2385,3 +2386,53 @@ def test_the_gold_record_survives_its_own_decade():
 
 def test_a_lane_spanning_decades_accepts_either():
     assert off_era({"u1": 1986, "u2": 2016}, ({1980, 2010}, {"country"})) == set()
+
+
+# --- Letting a station replay its own best records -----------------------
+
+POOL = {"anthem": 900_000, "big": 700_000, "solid": 500_000, "minor": 90_000}
+
+
+def test_replays_come_back_biggest_first():
+    picks, exhausted = replays_wanted(POOL, [], 2, 55)
+    assert picks == ["anthem", "big"]
+    assert not exhausted
+
+
+def test_a_record_does_not_come_back_twice_while_others_wait():
+    """Jeff's rule, and what keeps this from becoming a rerun."""
+    picks, exhausted = replays_wanted(POOL, ["anthem", "big"], 2, 55)
+    assert picks == ["solid"]
+    assert not exhausted
+
+
+def test_nothing_below_the_floor_is_reached_for():
+    """At 55%, the floor is 405,000, so the 90,000 record never qualifies
+    on its own merits."""
+    picks, exhausted = replays_wanted(POOL, ["anthem", "big", "solid"], 2, 55)
+    assert exhausted
+    assert "minor" not in picks
+
+
+def test_a_worked_through_pool_starts_its_rotation_again():
+    """Rather than reaching below the floor for something nobody wanted
+    the first time."""
+    picks, exhausted = replays_wanted(POOL, ["anthem", "big", "solid"], 2, 55)
+    assert picks == ["anthem", "big"]
+    assert exhausted
+
+
+def test_a_tighter_floor_admits_more_of_the_pool():
+    """One number, moved by ear, decides both when a station counts as
+    degraded and how far down its own history it may reach."""
+    picks, _ = replays_wanted(POOL, ["anthem", "big", "solid"], 2, 95)
+    assert picks == ["minor"]
+
+
+def test_nothing_played_yet_means_nothing_to_replay():
+    assert replays_wanted({}, [], 3, 55) == ([], False)
+
+
+def test_a_cap_of_zero_brings_nothing_back():
+    """The Don Henley guard: thirteen of nineteen replayed once."""
+    assert replays_wanted(POOL, [], 0, 55) == ([], False)

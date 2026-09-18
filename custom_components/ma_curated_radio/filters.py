@@ -1625,6 +1625,41 @@ def lane_match(
     return LANE_MATCH
 
 
+def replays_wanted(
+    audience: Mapping[str, int],
+    already: Sequence[str],
+    limit: int,
+    floor_percent: int,
+) -> tuple[list[str], bool]:
+    """Which already-played records to bring back, best first.
+
+    Returns the picks and whether the replay pool was worked through, at
+    which point the caller forgets what it has replayed and starts again.
+
+    Jeff's rule, and the shape of it is what keeps this from becoming a
+    rerun. Records come back biggest first, and one cannot come back a
+    second time until everything within ``floor_percent`` of the best
+    record in the pool has had its turn. So a station gets its handful of
+    genuine anthems back, in order, and only loops once that handful is
+    spent.
+
+    The floor is the same percentage that decides a station has degraded
+    at all, deliberately: one number to move by ear rather than two.
+    """
+    if not audience or limit <= 0:
+        return [], False
+    ranked = sorted(audience.items(), key=lambda pair: (-pair[1], pair[0]))
+    floor = ranked[0][1] * (100 - max(0, min(100, floor_percent))) / 100
+    used = set(already)
+    fresh = [title for title, heard in ranked if title not in used and heard >= floor]
+    if fresh:
+        return fresh[:limit], False
+    # Everything worth replaying has had its turn. Start the rotation
+    # again rather than reaching below the floor for something nobody
+    # wanted the first time.
+    return [title for title, _ in ranked[:limit]], True
+
+
 def off_era(
     years: Mapping[str, int],
     lane: tuple[set[int], set[str]],

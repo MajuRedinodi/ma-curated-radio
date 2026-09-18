@@ -39,6 +39,7 @@ from .const import (
     PLAYLIST_CHUNK,
     PLAYLIST_MAX_ROUNDS,
     QUEUED_MEMORY,
+    REPLAYS_PER_BATCH,
     SEARCH_LIMIT,
     SEED_LEAN_ARTIST,
     SEED_LEAN_DISCOVERY,
@@ -92,6 +93,7 @@ from .filters import (
     performs,
     prefer_titles,
     reach_of,
+    replays_wanted,
     select_fresh_first,
     select_tracks,
     sequence_tiered,
@@ -324,6 +326,14 @@ class CuratedRadioEngine:
         # session ran 511k, 564k, 456k, 278k, rising once before falling.
         self._origin_reach = 0
         self._origin_audience = 0
+        # Records this station has played, by folded title, with how many
+        # people Last.fm says have heard each. The pool replays are drawn
+        # from once a station degrades.
+        self._replayable: dict[str, int] = {}
+        # Which of them have had their turn, in order. Cleared when the
+        # pool has been worked through, so the rotation starts again
+        # rather than reaching below the floor.
+        self._replayed: list[str] = []
         # Its own generator so reseed choices can be reproduced in tests.
         self._rng = random.Random()
         # Artists that actually contributed to the last batch. A refill
@@ -370,6 +380,11 @@ class CuratedRadioEngine:
         self._listening = ListeningSession.from_dict(data.get("session"))
         self._last_pool = [str(a) for a in data.get("last_pool") or []]
         self._last_lead = str(data.get("last_lead") or "")
+        self._replayable = {
+            str(title): int(heard)
+            for title, heard in (data.get("replayable") or {}).items()
+        }
+        self._replayed = [str(title) for title in data.get("replayed") or []]
         self._origin_reach = int(data.get("origin_reach") or 0)
         self._origin_audience = int(data.get("origin_audience") or 0)
         saved_lane = data.get("origin_lane") or [[], []]
@@ -424,6 +439,8 @@ class CuratedRadioEngine:
             "last_power": [list(pair) for pair in self._last_power],
             "played": self._played,
             # Sets are not JSON, so the station lane travels as lists.
+            "replayable": self._replayable,
+            "replayed": self._replayed,
             "origin_reach": self._origin_reach,
             "origin_audience": self._origin_audience,
             "origin_lane": [
@@ -606,6 +623,14 @@ class CuratedRadioEngine:
         # Recently played titles age out in hours; skipped ones are held off
         # for weeks. Both are just titles the batch must not contain.
         recent_titles = self._history.current() | self._skips.suppressed_titles
+        # Once a station has fallen past the threshold, its own best
+        # records are let back through the repeat window. Judged on the
+        # last batch's measured drop rather than on this one's, which is
+        # the point: a check made after this batch is queued would leave
+        # a degraded hour playing while the correction waited for the
+        # next one.
+        returning = self._replays_for(mode)
+        recent_titles -= returning
 
         # How deep into each artist a batch may reach: their A-tracks
         # always, and past those only songs enough people actually know. A
@@ -715,6 +740,9 @@ class CuratedRadioEngine:
         # batch of a session can never read as degraded.
         if starting or not self._origin_reach:
             self._origin_reach, self._origin_audience = opening_reach, audience_median
+            # A new station is not allowed to open by replaying the last
+            # one, so its replay memory starts empty too.
+            self._replayable, self._replayed = {}, []
         reach_drop = fallen_by(opening_reach, self._origin_reach)
         audience_drop = fallen_by(audience_median, self._origin_audience)
         if reach_drop or audience_drop:
@@ -740,6 +768,13 @@ class CuratedRadioEngine:
             self._last_pool = list(pool_artists)
             self._last_lead = lead
             self._remember(enqueued, pool_artists, per_artist, title_by_uri, tiers)
+            # What this station could bring back later, with how many
+            # people have heard each, so replays come back biggest first.
+            for uri in enqueued:
+                heard = pools.audience.get(uri)
+                folded = base_title(title_by_uri.get(uri, ""))
+                if heard and folded:
+                    self._replayable[folded] = heard
         playing = set(enqueued)
         played_years = {uri: y for uri, y in years.items() if uri in playing}
         notes = {uri: _note(f) for uri, f in known.items() if uri in playing}
@@ -1673,6 +1708,39 @@ class CuratedRadioEngine:
             return self._facts.remember(artist, base, miss=MISS_NO_ARTICLE)
         detail = (await async_get_facts(self._session, [article])).get(article)
         return self._write_fact(artist, base, article, detail)
+
+    def _replays_for(self, mode: str) -> set[str]:
+        """Titles to let back through the repeat window, if any.
+
+        Only on a refill. A manual pick is somebody starting a station,
+        and starting one by replaying yesterday is not what they asked
+        for.
+
+        Read from the last batch's measured drop rather than this one's,
+        which is the whole point of the timing: a check made after this
+        batch is queued would leave a degraded hour playing while the
+        correction waited for the hour after it.
+        """
+        threshold = self._settings.replay_drop
+        last = self._last_batch
+        if mode != MODE_REFILL or not threshold or not self._replayable:
+            return set()
+        if last is None or last.reach_drop < threshold:
+            return set()
+        picks, exhausted = replays_wanted(
+            self._replayable, self._replayed, REPLAYS_PER_BATCH, threshold
+        )
+        if exhausted:
+            _LOGGER.debug("Replay pool worked through; starting the rotation again")
+            self._replayed = []
+        self._replayed.extend(picks)
+        if picks:
+            _LOGGER.info(
+                "Station is %s%% below where it started, so bringing back %s",
+                last.reach_drop,
+                ", ".join(picks),
+            )
+        return set(picks)
 
     def _mark_gold(
         self,

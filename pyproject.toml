@@ -21,7 +21,7 @@ ignore = [
 # enqueue, report. Splitting it to satisfy a statement count would hide
 # the order things have to happen in, which is the only thing about it
 # that is hard.
-"custom_components/ma_curated_radio/engine.py" = ["BLE001", "PLR0913", "PLR0915", "PLR0917"]
+"custom_components/ma_curated_radio/engine.py" = ["BLE001", "PLR0912", "PLR0913", "PLR0915", "PLR0917"]
 # Every field of a record is optional and named at the call site, which
 # reads better than a Fact built in the caller and handed over.
 "custom_components/ma_curated_radio/facts.py" = ["PLR0913"]
