@@ -756,6 +756,35 @@ separate test. Where several qualify, the most familiar wins, because the
 slot wants the throwback everybody knows rather than the oldest thing in
 the pool.
 
+### The era check, at track level
+
+A station holds to the decade it started in, and that is checked twice:
+once on an **artist** joining the pool, and once on each **record** about
+to play.
+
+The second is the one that matters and it only became possible when
+records started carrying their own release years. The artist check runs
+on a single representative record and gives an artist the benefit of the
+doubt when it cannot place them, so an act joins a 2010s station on an
+unplaceable reading and then contributes something from 1986. Measured:
+five hours of country widened from 1999-2014 to 1986-2016 without a
+single rule firing.
+
+Three ways a record survives the check:
+
+- **Its year is unknown.** The same benefit of the doubt everything else
+  here gives, and for the same reason: older and country material lose
+  their years first and would be cut first.
+- **Its decade is adjacent.** One decade of slack, because album tags and
+  release years disagree at the edges.
+- **It is the Gold**, which exists precisely to reach back past the fence
+  once an hour.
+
+Anything else is dropped rather than moved, because a record from the
+wrong decade is wrong wherever the clock puts it. A batch may come out a
+track or two short, and a short hour beats a wrong-era one. The count is
+on the sensor as `off_era`.
+
 Each station style has its own clock, because the formats want different
 things. Artist radio is a showcase where depth is the point. Discovery
 asks for as much depth as the pool can honestly supply.

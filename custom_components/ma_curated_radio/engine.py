@@ -88,6 +88,7 @@ from .filters import (
     median_of,
     move_on,
     neighbourhood_strength,
+    off_era,
     performs,
     prefer_titles,
     reach_of,
@@ -231,6 +232,9 @@ class BatchResult:
     # sounds, because Power is a share of an artist's own biggest, so any
     # artist's best record fills a slot however small the act.
     power_short: int = 0
+    # Records dropped for being from outside the station's era. The
+    # track-level check that nothing did until release years existed.
+    off_era: int = 0
     # When the batch was queued, as ISO time. Kept because the sensor's own
     # timestamps restart with Home Assistant, and a restored batch would
     # otherwise look as though it had just been built.
@@ -661,9 +665,24 @@ class CuratedRadioEngine:
         # played, which is four in a batch of twenty.
         known = await self._async_known(pool_artists, per_artist, title_by_uri)
         years = {uri: fact.year for uri, fact in known.items() if fact.year is not None}
-        self._mark_gold(
+        gold = self._mark_gold(
             pool_artists, per_artist, title_by_uri, years, tiers, pools.share
         )
+        # The track-level era check, which nothing did until records
+        # carried their own years. Dropped rather than demoted: a record
+        # from the wrong decade is wrong wherever the clock puts it. The
+        # batch may come out a track or two short, and a short hour beats
+        # a wrong-era one.
+        stale = off_era(years, self._origin_lane, keep=gold)
+        if stale:
+            _LOGGER.debug(
+                "Dropping %s record(s) from outside the station's era: %s",
+                len(stale),
+                ", ".join(sorted(title_by_uri.get(uri, uri) for uri in stale)),
+            )
+            per_artist = [
+                [uri for uri in uris if uri not in stale] for uris in per_artist
+            ]
         ordered = sequence_tiered(
             per_artist,
             tiers,
@@ -755,6 +774,7 @@ class CuratedRadioEngine:
             audience_drop=audience_drop,
             audience_median=audience_median,
             power_short=max(0, wanted_power - counts.get(TIER_POWER, 0)),
+            off_era=len(stale),
             built_at=dt_util.utcnow().isoformat() if enqueued else "",
         )
 

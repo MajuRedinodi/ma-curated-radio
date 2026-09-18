@@ -133,6 +133,9 @@ class LastBatchSensor(CuratedRadioEntity, SensorEntity):
             # same question, and rare, because any artist's own biggest
             # record fills one however small the act.
             "power_short": result.power_short,
+            # Records dropped for being from outside the era the station
+            # started in, now that a release year can say so.
+            "off_era": result.off_era,
             # The era the batch covers, and how many of its records that
             # is drawn from. Read together: a tight span over three known
             # years says very little. This is the only way to see whether

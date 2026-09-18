@@ -1625,6 +1625,54 @@ def lane_match(
     return LANE_MATCH
 
 
+def off_era(
+    years: Mapping[str, int],
+    lane: tuple[set[int], set[str]],
+    *,
+    keep: str = "",
+    decade_slack: int = 1,
+) -> set[str]:
+    """The records whose own year puts them outside the station's era.
+
+    The lane check that was missing. ``in_lane`` and ``lane_match`` run at
+    **artist** level, on one representative record, and give an artist the
+    benefit of the doubt when they cannot be placed. Nothing then looked
+    at the tracks. So an artist joins a 2010s station on an unplaceable
+    reading and contributes a 1986 record, and a five-hour country session
+    widened from 1999-2014 to 1986-2016 without a single rule firing.
+
+    That was unfixable until records carried their own years. Album tags
+    describe whichever compilation a track sits on now, which is exactly
+    the error this would otherwise enforce; a release year is the
+    record's own.
+
+    Three ways a record survives, and each matters:
+
+    **A year nobody knows keeps it.** The same benefit of the doubt
+    ``in_lane``, ``too_deep`` and ``drop_outliers`` all give, and for the
+    same reason: absence of evidence is not evidence. Country and older
+    material are the first to lose their years, and they are the first
+    this would wrongly cut.
+
+    **A station with no era of its own enforces nothing.** Without lane
+    decades there is no era to be outside of.
+
+    **``keep`` survives whatever its year.** That is the Gold slot, which
+    exists precisely to reach back past the fence once an hour.
+    """
+    decades, _ = lane
+    if not decades:
+        return set()
+    return {
+        uri
+        for uri, year in years.items()
+        if uri != keep
+        and not any(
+            abs(year // 10 * 10 - want) <= decade_slack * 10 for want in decades
+        )
+    }
+
+
 def is_gold(
     year: int | None,
     genres: Iterable[str],

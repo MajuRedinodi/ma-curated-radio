@@ -46,6 +46,7 @@ from filters import (
     median_of,
     move_on,
     neighbourhood_strength,
+    off_era,
     performs,
     prefer_titles,
     reach_of,
@@ -2342,3 +2343,45 @@ def test_song_audience_folds_a_remaster_onto_the_record():
 def test_nothing_known_gives_nothing():
     assert song_audience({"u1": "Anything"}, None) == {}
     assert song_audience({"u1": "Anything"}, []) == {}
+
+
+# --- The era check nothing did until records carried years ---------------
+
+MODERN = ({2010}, {"country"})
+
+
+def test_a_record_from_the_wrong_decade_is_dropped():
+    """The drift found on 2026-09-18: five hours of country widened from
+    1999-2014 to 1986-2016 without a single rule firing, because the lane
+    is checked per artist and nothing looked at the tracks."""
+    assert off_era({"u1": 1986}, MODERN) == {"u1"}
+
+
+def test_an_adjacent_decade_is_kept():
+    """The same one-decade slack in_lane gives, and for the same reason:
+    album tags and release years disagree at the edges."""
+    assert off_era({"u1": 2005, "u2": 2016, "u3": 2022}, MODERN) == set()
+
+
+def test_two_decades_out_is_too_far():
+    assert off_era({"u1": 1995}, MODERN) == {"u1"}
+
+
+def test_a_record_with_no_year_is_kept():
+    """Absence of evidence, as everywhere else here. Country and older
+    material lose their years first and would be cut first."""
+    assert off_era({}, MODERN) == set()
+
+
+def test_a_station_with_no_era_enforces_none():
+    """Nothing to be outside of."""
+    assert off_era({"u1": 1951}, (set(), {"country"})) == set()
+
+
+def test_the_gold_record_survives_its_own_decade():
+    """The one slot that exists to reach back past the fence."""
+    assert off_era({"u1": 1986, "u2": 1986}, MODERN, keep="u1") == {"u2"}
+
+
+def test_a_lane_spanning_decades_accepts_either():
+    assert off_era({"u1": 1986, "u2": 2016}, ({1980, 2010}, {"country"})) == set()
