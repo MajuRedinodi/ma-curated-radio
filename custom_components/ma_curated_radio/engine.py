@@ -131,6 +131,11 @@ from .wikipedia import ArticleFacts, async_find_article, async_get_facts
 
 _LOGGER = logging.getLogger(__name__)
 
+# A replayable record is stored as [artist, title, listeners]. Anything
+# else in the file is from a schema that no longer exists and is dropped
+# rather than guessed at.
+_REPLAY_FIELDS = 3
+
 
 def _note(fact: Fact) -> tuple[str, ...]:
     """What to show beside a track in the batch listing.
@@ -329,7 +334,7 @@ class CuratedRadioEngine:
         # Records this station has played, by folded title, with how many
         # people Last.fm says have heard each. The pool replays are drawn
         # from once a station degrades.
-        self._replayable: dict[str, int] = {}
+        self._replayable: dict[str, list[Any]] = {}
         # Which of them have had their turn, in order. Cleared when the
         # pool has been worked through, so the rotation starts again
         # rather than reaching below the floor.
@@ -381,8 +386,9 @@ class CuratedRadioEngine:
         self._last_pool = [str(a) for a in data.get("last_pool") or []]
         self._last_lead = str(data.get("last_lead") or "")
         self._replayable = {
-            str(title): int(heard)
-            for title, heard in (data.get("replayable") or {}).items()
+            str(title): [str(held[0]), str(held[1]), int(held[2])]
+            for title, held in (data.get("replayable") or {}).items()
+            if isinstance(held, list) and len(held) == _REPLAY_FIELDS
         }
         self._replayed = [str(title) for title in data.get("replayed") or []]
         self._origin_reach = int(data.get("origin_reach") or 0)
@@ -770,11 +776,22 @@ class CuratedRadioEngine:
             self._remember(enqueued, pool_artists, per_artist, title_by_uri, tiers)
             # What this station could bring back later, with how many
             # people have heard each, so replays come back biggest first.
+            artist_of = {
+                uri: who
+                for who, uris in zip(pool_artists, per_artist, strict=True)
+                for uri in uris
+            }
             for uri in enqueued:
                 heard = pools.audience.get(uri)
-                folded = base_title(title_by_uri.get(uri, ""))
-                if heard and folded:
-                    self._replayable[folded] = heard
+                title = title_by_uri.get(uri, "")
+                folded = base_title(title)
+                # The artist and the real title as well as the count. A
+                # replay is not only something to play again: once a
+                # neighbourhood is spent, one of these becomes the record
+                # the next hour is built from, and both a crowd lookup
+                # and an era check need the name the provider gave it.
+                if heard and folded and artist_of.get(uri):
+                    self._replayable[folded] = [artist_of[uri], title, heard]
         playing = set(enqueued)
         played_years = {uri: y for uri, y in years.items() if uri in playing}
         notes = {uri: _note(f) for uri, f in known.items() if uri in playing}
@@ -1394,7 +1411,25 @@ class CuratedRadioEngine:
             # rather than against whatever the last hour drifted to.
             self._origin_lane = await self._async_lane(seed, playing)
             return seed, playing
+        # Past the point where replays could patch the hour, the station
+        # is rebuilt from one of them instead of reseeded from a batch
+        # that has nothing left to give.
+        if any(spent := await self._async_nothing(lead)):
+            return spent
         return await self._async_reseed_song(lead)
+
+    async def _async_nothing(self, lead: str) -> tuple[str, str]:
+        """The spent-neighbourhood seed, and its lane recorded if taken.
+
+        Async only so the lane of the record chosen can be read, which
+        matters: this is a reseed, and a reseed carries its era into
+        every track after it. The station's own origin lane is left
+        alone, so re-anchoring cannot quietly move the era either.
+        """
+        artist, title = self._spent_seed(lead)
+        if artist and title:
+            await self._async_lane(artist, title)
+        return artist, title
 
     async def _async_reseed_song(self, lead: str) -> tuple[str, str]:
         """Which record of the last batch the next hour is built from.
@@ -1709,6 +1744,55 @@ class CuratedRadioEngine:
         detail = (await async_get_facts(self._session, [article])).get(article)
         return self._write_fact(artist, base, article, detail)
 
+    def _heard_counts(self) -> dict[str, int]:
+        """Each replayable record's audience, by folded title."""
+        return {title: int(held[2]) for title, held in self._replayable.items()}
+
+    def _spent_seed(self, lead: str) -> tuple[str, str]:
+        """A record to rebuild the station from, once patching cannot work.
+
+        Jeff's rule, and it closes a hole in the one above. If the last
+        batch came up five Power short and three replays are all that are
+        allowed, patching leaves the hour two short anyway **and** spends
+        the replay pool doing it. Observed on a real 80s station at hop
+        four: twelve Power asked for, seven supplied, nine Secondary
+        played, while reach had actually gone *up*. The artists were
+        still big; their anthems were all played.
+
+        So past the cap the neighbourhood is treated as spent rather than
+        patched, and one of those records becomes what the next hour is
+        built from. Re-anchoring off a record known to land brings a
+        fresh crowd with its own unplayed anthems, where patching just
+        thins the same pool further.
+
+        Empty when the last batch filled its slots, when nothing has been
+        played yet, or when the record would be by the artist already
+        leading, which is ``move_on`` at song level.
+        """
+        last = self._last_batch
+        if last is None or last.power_short <= REPLAYS_PER_BATCH:
+            return "", ""
+        picks, exhausted = replays_wanted(
+            self._heard_counts(), self._replayed, 1, self._settings.replay_drop
+        )
+        if exhausted:
+            self._replayed = []
+        for folded in picks:
+            artist, title, _ = self._replayable[folded]
+            if credits_artist([artist], lead):
+                continue
+            self._replayed.append(folded)
+            _LOGGER.info(
+                "Neighbourhood is spent: %s Power slots short of %s, so "
+                "rebuilding from %s by %s",
+                last.power_short,
+                len(self._settings.clock),
+                title,
+                artist,
+            )
+            return artist, title
+        return "", ""
+
     def _replays_for(self, mode: str) -> set[str]:
         """Titles to let back through the repeat window, if any.
 
@@ -1728,7 +1812,7 @@ class CuratedRadioEngine:
         if last is None or last.reach_drop < threshold:
             return set()
         picks, exhausted = replays_wanted(
-            self._replayable, self._replayed, REPLAYS_PER_BATCH, threshold
+            self._heard_counts(), self._replayed, REPLAYS_PER_BATCH, threshold
         )
         if exhausted:
             _LOGGER.debug("Replay pool worked through; starting the rotation again")
