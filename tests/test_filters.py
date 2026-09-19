@@ -26,6 +26,7 @@ from filters import (
     drop_outliers,
     earliest_year,
     fallen_by,
+    favoured,
     in_lane,
     infobox_artist,
     infobox_genres,
@@ -2452,3 +2453,84 @@ def test_nothing_played_yet_means_nothing_to_replay():
 def test_a_cap_of_zero_brings_nothing_back():
     """The Don Henley guard: thirteen of nineteen replayed once."""
     assert replays_wanted(POOL, [], 0, 55) == ([], False)
+
+
+# --- Favourites ----------------------------------------------------------
+
+
+class _Favable:
+    """Just enough of a provider track for favoured()."""
+
+    def __init__(self, uri: str, name: str, artists: list[str]) -> None:
+        self.uri = uri
+        self.name = name
+        self.artists = artists
+
+
+def test_a_favourite_is_matched_by_folded_artist_and_title():
+    tracks = [
+        _Favable("t://1", "Mad World", ["Tears For Fears"]),
+        _Favable("t://2", "Shout", ["Tears For Fears"]),
+    ]
+    assert favoured(tracks, {"tears for fears|mad world"}) == {"t://1"}
+
+
+def test_a_favourite_survives_a_remaster_or_a_single_edit():
+    """The whole reason this folds rather than matching on URI. A
+    favourite saved against one provider's copy has to be recognised in
+    another's, and the copies rarely agree on the parenthetical.
+    """
+    tracks = [
+        _Favable("t://1", "Mad World (2010 Remaster)", ["Tears For Fears"]),
+        _Favable("t://2", "Fade Into You - Single Edit", ["Mazzy Star"]),
+    ]
+    found = favoured(tracks, {"tears for fears|mad world", "mazzy star|fade into you"})
+    assert found == {"t://1", "t://2"}
+
+
+def test_a_duet_counts_under_either_name():
+    tracks = [_Favable("t://1", "Somebody That I Used To Know", ["Gotye", "Kimbra"])]
+    assert favoured(tracks, {"kimbra|somebody that i used to know"}) == {"t://1"}
+
+
+def test_the_same_title_by_someone_else_is_not_the_favourite():
+    """Mad World is the case that makes this matter: the 1982 Tears For
+    Fears single and the Gary Jules cover are different records, and
+    favouriting one must not promote the other.
+    """
+    tracks = [_Favable("t://1", "Mad World", ["Gary Jules"])]
+    assert favoured(tracks, {"tears for fears|mad world"}) == set()
+
+
+def test_no_favourites_matches_nothing():
+    tracks = [_Favable("t://1", "Mad World", ["Tears For Fears"])]
+    assert favoured(tracks, set()) == set()
+
+
+def test_a_favourite_replays_from_below_the_floor():
+    """minor is at 10% of the best record, far under the 55% floor, so
+    it is not replayable on its numbers. Favouriting it makes it so.
+    """
+    picks, exhausted = replays_wanted(POOL, ["anthem", "big", "solid"], 2, 55)
+    assert exhausted
+    picks, exhausted = replays_wanted(
+        POOL, ["anthem", "big", "solid"], 2, 55, spared={"minor"}
+    )
+    assert picks == ["minor"]
+    assert not exhausted
+
+
+def test_a_favourite_does_not_jump_the_queue():
+    """Sparing changes what is eligible, not the order. A favourite still
+    comes back behind anything with a bigger crowd.
+    """
+    picks, _ = replays_wanted(POOL, [], 2, 55, spared={"minor"})
+    assert picks == ["anthem", "big"]
+
+
+def test_a_favourite_still_waits_its_turn_before_repeating():
+    picks, exhausted = replays_wanted(
+        POOL, ["anthem", "big", "solid", "minor"], 2, 55, spared={"minor"}
+    )
+    assert exhausted
+    assert picks == ["anthem", "big"]

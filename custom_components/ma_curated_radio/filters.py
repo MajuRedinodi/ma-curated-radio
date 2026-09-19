@@ -11,7 +11,7 @@ from __future__ import annotations
 import random
 import re
 import unicodedata
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Final
 
@@ -1625,11 +1625,39 @@ def lane_match(
     return LANE_MATCH
 
 
+def favoured(tracks: Iterable[Any], favourites: Collection[str]) -> set[str]:
+    """The URIs of tracks the listener has favourited.
+
+    Matched on folded ``artist|title`` rather than on URI, because a
+    favourite is saved against one provider's copy of a record and the
+    same record may reach a batch as another provider's. The same folding
+    the fact store uses, so a remaster, a single edit and an album cut are
+    one record here too.
+
+    A track credited to several artists counts if **any** of them match,
+    which is what a duet favourited under either name needs.
+    """
+    if not favourites:
+        return set()
+    found: set[str] = set()
+    for track in tracks:
+        title = base_title(getattr(track, "name", "") or "")
+        uri = getattr(track, "uri", "")
+        if not title or not uri:
+            continue
+        for artist in getattr(track, "artists", ()) or ():
+            if f"{artist.strip().lower()}|{title}" in favourites:
+                found.add(uri)
+                break
+    return found
+
+
 def replays_wanted(
     audience: Mapping[str, int],
     already: Sequence[str],
     limit: int,
     floor_percent: int,
+    spared: Collection[str] = (),
 ) -> tuple[list[str], bool]:
     """Which already-played records to bring back, best first.
 
@@ -1645,13 +1673,24 @@ def replays_wanted(
 
     The floor is the same percentage that decides a station has degraded
     at all, deliberately: one number to move by ear rather than two.
+
+    ``spared`` are titles the floor does not apply to. Favourites go here:
+    the floor exists to keep a replay slot from going to something nobody
+    wanted the first time, and a favourite is the listener saying they
+    did. It changes what is eligible, not the order, so a favourite still
+    comes back behind anything with a bigger crowd, and still waits its
+    turn before repeating.
     """
     if not audience or limit <= 0:
         return [], False
     ranked = sorted(audience.items(), key=lambda pair: (-pair[1], pair[0]))
     floor = ranked[0][1] * (100 - max(0, min(100, floor_percent))) / 100
     used = set(already)
-    fresh = [title for title, heard in ranked if title not in used and heard >= floor]
+    fresh = [
+        title
+        for title, heard in ranked
+        if title not in used and (heard >= floor or title in spared)
+    ]
     if fresh:
         return fresh[:limit], False
     # Everything worth replaying has had its turn. Start the rotation

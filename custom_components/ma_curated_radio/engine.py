@@ -79,6 +79,7 @@ from .filters import (
     depth_bar,
     drop_outliers,
     fallen_by,
+    favoured,
     is_gold,
     keep_one_act,
     lane_match,
@@ -182,6 +183,10 @@ class _Pools:
     # The same songs raw listener counts, which reach only reconstructs
     # and distorts. Kept for judging whether a station is degrading.
     audience: dict[str, int] = field(default_factory=dict)
+    # Drawn records the listener has favourited. Collected while the pools
+    # are built because that is the only point holding both the track
+    # objects and their artist; every later use works off URIs.
+    favoured: set[str] = field(default_factory=set)
 
 
 @dataclass(slots=True)
@@ -331,6 +336,14 @@ class CuratedRadioEngine:
         # session ran 511k, 564k, 456k, 278k, rising once before falling.
         self._origin_reach = 0
         self._origin_audience = 0
+        # Every record the listener has favourited in Music Assistant, as
+        # folded ``artist|title``. Refreshed once a batch rather than held,
+        # because favouriting happens between batches and a station that
+        # only noticed on restart would be no use. Empty when the client
+        # cannot answer, which reads downstream as "no favourites", and
+        # that is the honest reading: every rule below is an exception, so
+        # losing the signal costs nothing but the exception.
+        self._favourites: set[str] = set()
         # Records this station has played, by folded title, with how many
         # people Last.fm says have heard each. The pool replays are drawn
         # from once a station degrades.
@@ -608,6 +621,7 @@ class CuratedRadioEngine:
         crowd_from, crowd_of = await self._async_crowd_seed(
             starting, seed, queue.current_title, lead
         )
+        self._favourites = await self._native.async_favourites()
         artists = [
             lead,
             *await self._async_similar_artists(
@@ -689,6 +703,25 @@ class CuratedRadioEngine:
             for artist, uris in zip(pool_artists, per_artist, strict=True)
         ]
         tiers = tier_of(sized, TIER_DECAY, rank, pools.share)
+        # A drawn favourite is filed as Power. The tiers are a guess at
+        # how well a record is known, made from Last.fm's counts, and
+        # those counts are the thing this project keeps catching out: they
+        # under-read country by roughly ten to one and they say nothing at
+        # all about this household. A favourite outranks the guess.
+        #
+        # Only records already drawn, which is the lane gate Jeff asked
+        # for and the reason this needs no second era or genre test. The
+        # pool is lane-filtered, ``off_era`` has run, and a favourite from
+        # the wrong decade simply never reaches here. Promotion moves a
+        # record up the hour; it never puts one in it.
+        promoted = {uri for uri in pools.favoured if tiers.get(uri) not in (None, "")}
+        for uri in promoted:
+            tiers[uri] = TIER_POWER
+        if promoted:
+            _LOGGER.debug(
+                "Playing %s as Power: favourited",
+                ", ".join(sorted(title_by_uri.get(uri, uri) for uri in promoted)),
+            )
         # Before the clock rather than after, because the Gold slot is
         # decided on a release year and the clock has to know which
         # record is the throwback before it chooses where to put it. The
@@ -876,14 +909,30 @@ class CuratedRadioEngine:
             artist_rank = self._rank(tracks, covered)
             pools.rank.update(artist_rank)
             cap = self._track_cap(is_seed=index == 0)
+            # A favourite is never held back for being too deep. The depth
+            # limit is a guess about what a listener knows, made from
+            # somebody else's listener counts; a favourite is the listener
+            # having already answered the question. Unconditional, unlike
+            # the two uses below: this only ever lets through a record the
+            # artist's own pool already offered, so there is no lane to
+            # break.
+            mine = favoured(tracks, self._favourites)
             uris, titles = self._select(
                 tracks,
                 current_uri=current_uri,
                 excluded_titles=recent_titles | set(pools.title_by_uri.values()),
                 heard=heard,
                 excluded_uris=already_queued
-                | too_deep(
-                    tracks, artist_rank, known.get(artist), bar, cap, floor=USABLE_SHARE
+                | (
+                    too_deep(
+                        tracks,
+                        artist_rank,
+                        known.get(artist),
+                        bar,
+                        cap,
+                        floor=USABLE_SHARE,
+                    )
+                    - mine
                 ),
                 excluded_artists=covered,
                 limit=cap,
@@ -896,6 +945,7 @@ class CuratedRadioEngine:
                     if matches_provider(uri, provider)
                 ]
                 uris, titles = [u for u, _ in kept], [t for _, t in kept]
+            pools.favoured |= mine & set(uris)
             if uris:
                 pools.artists.append(artist)
                 pools.per_artist.append(uris)
@@ -1748,6 +1798,27 @@ class CuratedRadioEngine:
         """Each replayable record's audience, by folded title."""
         return {title: int(held[2]) for title, held in self._replayable.items()}
 
+    def _favoured_replays(self) -> set[str]:
+        """Replayable records the listener has favourited, by folded title.
+
+        These skip the replay floor. The floor keeps a replay slot from
+        going to something nobody wanted the first time; a favourite is
+        the listener having said they did want it, which is the better
+        evidence.
+
+        Lane-gated for free: everything in the replay pool played on this
+        station already, so a favourite that reaches here passed the era
+        and genre tests on its way in. A favourite the station never
+        played is not in this pool and cannot be pulled into it.
+        """
+        if not self._favourites:
+            return set()
+        return {
+            title
+            for title, held in self._replayable.items()
+            if f"{str(held[0]).strip().lower()}|{title}" in self._favourites
+        }
+
     def _spent_seed(self, lead: str) -> tuple[str, str]:
         """A record to rebuild the station from, once patching cannot work.
 
@@ -1812,7 +1883,11 @@ class CuratedRadioEngine:
         if last is None or last.reach_drop < threshold:
             return set()
         picks, exhausted = replays_wanted(
-            self._heard_counts(), self._replayed, REPLAYS_PER_BATCH, threshold
+            self._heard_counts(),
+            self._replayed,
+            REPLAYS_PER_BATCH,
+            threshold,
+            spared=self._favoured_replays(),
         )
         if exhausted:
             _LOGGER.debug("Replay pool worked through; starting the rotation again")

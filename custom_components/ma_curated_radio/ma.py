@@ -24,7 +24,7 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 
 from .const import MA_DOMAIN
-from .filters import credits_artist
+from .filters import base_title, credits_artist
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -262,6 +262,7 @@ class NativeClient:
         self._ma_entry_id = ma_entry_id
         self._queue_items_available = True
         self._search_available = True
+        self._favourites_available = True
 
     def _mass(self) -> Any:
         """Return the Music Assistant client, or None."""
@@ -325,6 +326,52 @@ class NativeClient:
         if not wanted:
             return tracks
         return [track for track in tracks if credits_artist(track.artists, wanted)]
+
+    async def async_favourites(self) -> set[str]:
+        """Every favourited record, as ``artist|title`` keys.
+
+        The one thing a listener says that is unambiguously positive.
+        Everything else this reasons about is somebody else's opinion:
+        Last.fm's listener counts, a chart position, a provider's
+        relevance order. A favourite is the listener's own, about one
+        record, with no interpretation needed.
+
+        Matched by folded artist and title rather than by URI, because
+        the URI is the provider's and a favourite saved against one
+        provider's copy of a record should still be recognised in
+        another's. The same folding the fact store uses, so a remaster
+        and an album cut are one record here as well.
+
+        Empty on anything at all going wrong, and empty is the honest
+        answer: no favourites and no way to read them both mean the same
+        thing downstream, which is that this signal has nothing to say.
+        """
+        if not self._favourites_available:
+            return set()
+        mass = self._mass()
+        if mass is None:
+            return set()
+        try:
+            items = await mass.music.tracks.library_items(favorite=True)
+        except (AttributeError, TypeError) as err:
+            self._favourites_available = False
+            _LOGGER.info(
+                "Music Assistant client has no usable favourites API (%s); "
+                "favourited records will not be treated differently",
+                err,
+            )
+            return set()
+        except Exception as err:  # noqa: BLE001 - never kill a batch for this
+            _LOGGER.debug("Could not read favourites: %s", err)
+            return set()
+        found: set[str] = set()
+        for item in items or []:
+            title = base_title(text_of(item, "name"))
+            for artist in _artist_names(item):
+                if artist and title:
+                    found.add(f"{artist.strip().lower()}|{title}")
+        _LOGGER.debug("Music Assistant reports %s favourited record(s)", len(found))
+        return found
 
     async def async_queued_uris(self, queue_id: str) -> set[str]:
         """Return URIs already sitting in the queue, or an empty set.
