@@ -102,3 +102,20 @@ build_playlist:
       example: tidal
       selector:
         text:
+compare_popularity:
+  fields:
+    config_entry_id:
+      required: false
+      selector:
+        config_entry:
+          integration: ma_curated_radio
+    genres:
+      required: false
+      example: country, eighties
+      selector:
+        text:
+    provider:
+      required: false
+      example: tidal
+      selector:
+        text:

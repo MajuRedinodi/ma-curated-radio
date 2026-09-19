@@ -33,6 +33,7 @@ from homeassistant.helpers.typing import ConfigType
 from .const import (
     ATTR_ARTIST,
     ATTR_CONFIG_ENTRY_ID,
+    ATTR_GENRES,
     ATTR_LENGTH,
     ATTR_LIMIT,
     ATTR_MODE,
@@ -55,8 +56,10 @@ from .const import (
     LEGACY_SEED_LEANS,
     MODE_REPLACE,
     MODES,
+    PROBE_PROVIDER,
     SERVICE_ALLOW_TRACK,
     SERVICE_BUILD_PLAYLIST,
+    SERVICE_COMPARE_POPULARITY,
     SERVICE_FORGET_FEEDBACK,
     SERVICE_RUN_BATCH,
     SERVICE_SEARCH,
@@ -90,6 +93,13 @@ RUN_BATCH_SCHEMA = vol.Schema(
     {**_ENTRY_FIELD, vol.Optional(ATTR_MODE, default=MODE_REPLACE): vol.In(MODES)}
 )
 UNMUTE_ARTIST_SCHEMA = vol.Schema({**_ENTRY_FIELD, vol.Required(ATTR_ARTIST): cv.string})
+COMPARE_POPULARITY_SCHEMA = vol.Schema(
+    {
+        **_ENTRY_FIELD,
+        vol.Optional(ATTR_GENRES, default=list): cv.ensure_list_csv,
+        vol.Optional(ATTR_PROVIDER, default=PROBE_PROVIDER): cv.string,
+    }
+)
 ALLOW_TRACK_SCHEMA = vol.Schema({**_ENTRY_FIELD, vol.Required(ATTR_TRACK): cv.string})
 SEARCH_SCHEMA = vol.Schema(
     {
@@ -191,6 +201,13 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         SERVICE_BUILD_PLAYLIST,
         _make_build_playlist(hass),
         schema=BUILD_PLAYLIST_SCHEMA,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_COMPARE_POPULARITY,
+        _make_compare_popularity(hass),
+        schema=COMPARE_POPULARITY_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
     )
     return True
 
@@ -560,6 +577,26 @@ def _make_search(hass: HomeAssistant):
         }
 
     return _search
+
+
+def _make_compare_popularity(hass: HomeAssistant):
+    """Build the popularity comparison handler."""
+
+    async def _compare_popularity(call: ServiceCall) -> dict[str, Any]:
+        """Measure the provider's popularity score against Last.fm's counts.
+
+        A measurement rather than a feature, and it changes nothing: it
+        queues nothing, writes nothing to the fact store and leaves the
+        station alone. It takes a minute or so, because the lookups are
+        deliberately chunked to stay under a free API key's rate limit.
+        """
+        entry = _resolve(hass, call.data.get(ATTR_CONFIG_ENTRY_ID))
+        return await entry.runtime_data.engine.async_compare_popularity(
+            call.data.get(ATTR_GENRES) or None,
+            call.data.get(ATTR_PROVIDER) or PROBE_PROVIDER,
+        )
+
+    return _compare_popularity
 
 
 def _make_allow_track(hass: HomeAssistant):

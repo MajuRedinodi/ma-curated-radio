@@ -64,6 +64,27 @@ def _explicit(item: Any) -> bool:
     return bool(value)
 
 
+def _popularity(item: Any) -> int:
+    """A track's provider popularity score, 0-100, or zero if absent.
+
+    Zero and "no score" are deliberately the same value. Every reading of
+    this number is comparative, so a record with no score has nothing to
+    compare and belongs at the bottom either way. Providers that do give
+    one do not use zero for a record they carry.
+
+    Clamped rather than trusted: this comes from whichever provider
+    supplied the track, the range is a convention rather than a contract,
+    and a number outside it would quietly distort any average built on it.
+    """
+    value = field_of(item, "popularity")
+    if value is None:
+        value = field_of(field_of(item, "metadata"), "popularity")
+    try:
+        return max(0, min(100, int(value or 0)))
+    except (TypeError, ValueError):
+        return 0
+
+
 def text_of(obj: Any, key: str) -> str:
     """Read ``key`` as a stripped string, or an empty string."""
     return str(field_of(obj, key, "") or "").strip()
@@ -79,6 +100,12 @@ class TrackInfo:
     album: str
     duration: int = 0
     explicit: bool = False
+    # The provider's own 0-100 popularity score, where it gives one, and
+    # zero where it does not. Carried but not yet acted on: it is a third
+    # opinion about how well known a record is, next to Last.fm's raw
+    # listener counts and the share those counts imply, and the point of
+    # having it here is to be able to measure it against them.
+    popularity: int = 0
     artists: list[str] = field(default_factory=list)
     # Provider IDs for the credited artists, aligned with ``artists``. Names
     # are not unique: a search for .38 Special also returned a scream-metal
@@ -95,6 +122,7 @@ class TrackInfo:
             album=text_of(field_of(item, "album"), "name"),
             duration=int(field_of(item, "duration", 0) or 0),
             explicit=_explicit(item),
+            popularity=_popularity(item),
             artists=_artist_names(item),
             artist_uris=_artist_uris(item),
         )

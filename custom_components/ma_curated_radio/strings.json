@@ -216,6 +216,24 @@
     }
   },
   "services": {
+    "compare_popularity": {
+      "name": "Compare popularity measures",
+      "description": "Measures your music provider's own popularity score against Last.fm's listener counts, over a fixed sample of sixty records spread across six genres. A diagnostic: it queues nothing and changes nothing, and takes about a minute.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Player configuration",
+          "description": "Which configured player to act on. Optional when only one is set up."
+        },
+        "genres": {
+          "name": "Genres",
+          "description": "Limit the sample to some of its genres, comma separated: country, eighties, classic-rock, soul, hip-hop, alternative. Leave empty for all six."
+        },
+        "provider": {
+          "name": "Provider",
+          "description": "Whose popularity score to read, for example tidal. Popularity means something different on each provider, so the comparison only means anything pinned to one."
+        }
+      }
+    },
     "build_playlist": {
       "name": "Build playlist",
       "description": "Fills a playlist on your music provider with the same music this queues at home, for somewhere Home Assistant cannot reach. Playback is untouched.",

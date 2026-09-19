@@ -566,3 +566,22 @@ DEFAULT_REPLAY_DROP: Final = 55
 # happens when repeats are allowed without a cap, and it is the single
 # worst thing this has ever done to an evening.
 REPLAYS_PER_BATCH: Final = 3
+
+# --- The popularity probe ------------------------------------------------
+# Measurement scaffolding. Nothing in the station's normal path reads these.
+
+# How many of the sample's records to look up at a time. Sixty artists is
+# sixty Last.fm lookups and sixty provider searches, and firing them all
+# together is how a free API key earns a rate limit.
+PROBE_CHUNK: Final = 6
+# Results to consider per record when resolving it with the provider. The
+# sample names records that are heavily covered and heavily compiled, so
+# the first hit is regularly the wrong pressing and sometimes the wrong
+# act; the match is made on folded title afterwards.
+PROBE_SEARCH: Final = 10
+SERVICE_COMPARE_POPULARITY: Final = "compare_popularity"
+ATTR_GENRES: Final = "genres"
+# Which provider's popularity score the probe reads. A search crosses every
+# enabled provider and popularity means something different on each, so the
+# column is only a measure of anything if it comes from one of them.
+PROBE_PROVIDER: Final = "tidal"

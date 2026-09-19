@@ -38,6 +38,9 @@ from .const import (
     PLAYED_LOOKUPS_PER_BATCH,
     PLAYLIST_CHUNK,
     PLAYLIST_MAX_ROUNDS,
+    PROBE_CHUNK,
+    PROBE_PROVIDER,
+    PROBE_SEARCH,
     QUEUED_MEMORY,
     REPLAYS_PER_BATCH,
     SEARCH_LIMIT,
@@ -126,6 +129,7 @@ from .ma import (
     async_play_media,
     async_search_tracks,
 )
+from .probe import Sample, rank_agreement, sample_for
 from .session import ListeningSession
 from .settings import Settings
 from .wikipedia import ArticleFacts, async_find_article, async_get_facts
@@ -1115,6 +1119,135 @@ class CuratedRadioEngine:
                 ", ".join(f"{name} ({size:,})" for name, size in dropped),
             )
         return keep
+
+    async def async_compare_popularity(
+        self, genres: list[str] | None = None, provider: str = PROBE_PROVIDER
+    ) -> dict[str, Any]:
+        """Measure the provider's popularity score against Last.fm's counts.
+
+        Runs the fixed cross-genre sample in ``probe.py`` and reports, per
+        record: Last.fm's listener count, the share of its artist's
+        biggest that count represents, and the provider's own 0-100
+        popularity score. Then, per genre, the medians of each and how
+        closely share and popularity order the same records.
+
+        The reason for the per-genre split rather than one number over the
+        whole sample: the defect being looked for is a **level shift**
+        between genres, and any statistic computed across all six would
+        average it away. Country reading ten times low against rock is
+        invisible in a pooled correlation and obvious in two medians.
+
+        Sequential in chunks rather than all at once. Sixty artists is
+        sixty Last.fm lookups and sixty provider searches, and firing them
+        together is how a free API key earns a rate limit. This is a
+        measurement that runs once, so it can afford to be slow.
+
+        ``provider`` matters more than it looks. A search runs across
+        every enabled provider, and popularity means something different
+        on each one: it is that provider's own audience, on its own scale.
+        Mixing them would produce a column that is not a measure of
+        anything. Pinned to one provider, and the row says which.
+        """
+        items = sample_for(genres)
+        if not items:
+            return {"records": [], "by_genre": [], "note": "no such genre"}
+        artists = list(dict.fromkeys(item.artist for item in items))
+        tops: dict[str, list[tuple[str, int]] | None] = {}
+        for start in range(0, len(artists), PROBE_CHUNK):
+            tops |= await self._async_top_tracks(artists[start : start + PROBE_CHUNK])
+        sizes = await self._async_sizes(artists)
+
+        records: list[dict[str, Any]] = []
+        for start in range(0, len(items), PROBE_CHUNK):
+            chunk = items[start : start + PROBE_CHUNK]
+            found = await asyncio.gather(
+                *(
+                    self.async_search(item.title, PROBE_SEARCH, item.artist)
+                    for item in chunk
+                )
+            )
+            for item, results in zip(chunk, found, strict=True):
+                usable = [t for t in results if matches_provider(t.uri, provider)]
+                records.append(self._probe_row(item, tops, sizes, usable))
+        return {
+            "provider": provider,
+            "records": records,
+            "by_genre": self._probe_summary(records),
+        }
+
+    def _probe_row(
+        self,
+        item: Sample,
+        tops: Mapping[str, list[tuple[str, int]] | None],
+        sizes: Mapping[str, int],
+        results: list[TrackInfo],
+    ) -> dict[str, Any]:
+        """One sampled record, measured every way available.
+
+        ``matched`` is reported rather than hidden because a title that
+        did not resolve is the one thing that would quietly corrupt the
+        comparison: an unmatched record scores zero on the provider and
+        its real listener count on Last.fm, which looks exactly like a
+        disagreement between the two measures and is not one.
+        """
+        wanted = base_title(item.title)
+        songs = tops.get(item.artist) or []
+        listeners = next(
+            (count for name, count in songs if base_title(name) == wanted), 0
+        )
+        biggest = max((count for _, count in songs), default=0)
+        best = next((t for t in results if base_title(t.name) == wanted), None)
+        return {
+            "genre": item.genre,
+            "artist": item.artist,
+            "title": item.title,
+            "listeners": listeners,
+            "artist_listeners": sizes.get(item.artist, 0),
+            "share": round(listeners / biggest, 3) if biggest else 0.0,
+            "popularity": best.popularity if best else 0,
+            "matched": best.name if best else "",
+        }
+
+    @staticmethod
+    def _probe_summary(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Per-genre medians, and whether share and popularity agree.
+
+        Medians rather than means throughout. One record everybody knows
+        drags a genre's mean far enough to hide the shift being looked
+        for, which is the same reason the station judges its own
+        degradation on a median.
+
+        Only matched records count. An unmatched one has no provider
+        score to compare, and letting its zero into the median would read
+        as the provider rating the whole genre lower.
+        """
+        out: list[dict[str, Any]] = []
+        for genre in dict.fromkeys(row["genre"] for row in records):
+            rows = [r for r in records if r["genre"] == genre]
+            usable = [r for r in rows if r["matched"]]
+            out.append(
+                {
+                    "genre": genre,
+                    "records": len(rows),
+                    "unmatched": len(rows) - len(usable),
+                    "median_listeners": median_of([r["listeners"] for r in usable]),
+                    # Scaled to whole percent and back, because median_of
+                    # is an integer median and five other callers depend
+                    # on it staying one. A share is a fraction here and a
+                    # percentage everywhere a person reads it anyway.
+                    "median_share": median_of(
+                        [round(r["share"] * 100) for r in usable]
+                    ),
+                    "median_popularity": median_of([r["popularity"] for r in usable]),
+                    "share_vs_popularity": rank_agreement(
+                        [(r["share"], r["popularity"]) for r in usable]
+                    ),
+                    "listeners_vs_popularity": rank_agreement(
+                        [(r["listeners"], r["popularity"]) for r in usable]
+                    ),
+                }
+            )
+        return out
 
     async def async_search(
         self, query: str, limit: int, artist: str = ""
