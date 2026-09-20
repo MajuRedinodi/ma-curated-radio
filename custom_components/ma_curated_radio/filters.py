@@ -1397,6 +1397,43 @@ _NOT_A_GENRE: Final = frozenset(
     }
 )
 
+# Tags that fence on the language a record is sung in rather than on how
+# it sounds. They look like genres and are not, and the difference only
+# shows up in what they exclude.
+#
+# Measured on a real station, 2026-09-20. Seeded off Trio, the lane came
+# out as "die wahren perlen deutschsprachiger popmusik, ndw, neue
+# deutsche welle": three tags, all of them the same thing said three
+# ways, and not one of them naming a sound. What it then threw out, while
+# the station was starving for material, was a-ha, Frankie Goes to
+# Hollywood, Pet Shop Boys, Bronski Beat, Nik Kershaw and Culture Club.
+# Those bands sound like Neue Deutsche Welle acts. They differ by
+# language and nothing else, which is what proves the tag is not
+# describing music. It rejected Nena from Trio's own lane.
+#
+# Dropped rather than translated to "new wave", which would be a guess
+# about the sound. Dropping is the honest move and the better one: when
+# nothing musical is left, ``in_lane`` skips the genre test and keeps the
+# decade, so a German record seeds a 1980s station that has room for both
+# Trio and a-ha. That is what a real station does with these records.
+_LANGUAGE_SCENE: Final = frozenset(
+    {
+        "ndw", "neue deutsche welle", "deutsch", "deutschsprachig",
+        "deutschrock", "deutschpop", "deutsche musik", "german pop",
+        "nederpop", "nederlandstalig", "chanson francaise",
+        "chanson française", "musica italiana", "musique francaise",
+        "musique française", "musica en espanol", "música en español",
+    }
+)
+
+# Above this, a tag is somebody's playlist title rather than a genre.
+# Real genre names are short: "drum and bass" and "rock and roll" are
+# three words and nothing legitimate runs longer. The tag that started
+# this was "die wahren perlen deutschsprachiger popmusik", five words,
+# which is a sentence about a collection and not a description of a
+# sound. Enumerating these is hopeless, so they are caught by shape.
+_MAX_GENRE_WORDS: Final = 3
+
 
 def lane_of(tags: Sequence[str], artist: str = "") -> tuple[set[int], set[str]]:
     """Split album tags into the decades and the genres they claim.
@@ -1425,9 +1462,29 @@ def lane_of(tags: Sequence[str], artist: str = "") -> tuple[set[int], set[str]]:
             continue
         if found := _DECADE_TAG.match(tag):
             decades.add(_full_decade(found.group(1)))
-        elif tag not in _NOT_A_GENRE and (not name or name not in tag):
+        elif _is_genre(tag) and (not name or name not in tag):
             genres.add(tag)
     return decades, genres
+
+
+def _is_genre(tag: str) -> bool:
+    """Whether a tag describes a sound, as opposed to a listener or a shelf.
+
+    Three ways a tag fails. It can be the listener filing their own
+    library ("albums i own"), a nationality, or a language. The last is
+    the one that hid the longest, because a language tag reads as a scene
+    and a scene sounds like a genre: "neue deutsche welle" is a real
+    movement with a real sound, and using it as a fence still rejects
+    every band that made the same music in English.
+
+    Length catches the rest. A tag long enough to be a sentence is a
+    playlist title, and no genre needs more than three words.
+    """
+    return (
+        tag not in _NOT_A_GENRE
+        and tag not in _LANGUAGE_SCENE
+        and len(tag.split()) <= _MAX_GENRE_WORDS
+    )
 
 
 def _full_decade(pair: str) -> int:

@@ -2534,3 +2534,64 @@ def test_a_favourite_still_waits_its_turn_before_repeating():
     )
     assert exhausted
     assert picks == ["anthem", "big"]
+
+
+# --- Language is not a genre ---------------------------------------------
+
+
+def test_the_ndw_lane_that_rejected_a_ha():
+    """The defect found on 2026-09-20, on a real station seeded off Trio.
+
+    Every tag the lane carried was the same statement about language,
+    and the fence it built then threw out a-ha, Frankie Goes to
+    Hollywood, Pet Shop Boys and Nena, who make the same music in
+    another language. With nothing musical left, the lane is the decade,
+    which is the station Jeff wanted.
+    """
+    decades, genres = lane_of(
+        [
+            "80s",
+            "die wahren perlen deutschsprachiger popmusik",
+            "ndw",
+            "neue deutsche welle",
+        ]
+    )
+    assert decades == {1980}
+    assert genres == set()
+
+
+def test_an_empty_genre_set_fences_on_the_decade_alone():
+    """Why the fix works: in_lane skips the genre test when the lane has
+    no genres, so a-ha lands in a lane Trio started.
+    """
+    lane = ({1980}, set())
+    assert in_lane(({1980}, {"synthpop", "new wave"}), lane)
+    assert in_lane(({1980}, {"neue deutsche welle"}), lane)
+    assert not in_lane(({2010}, {"synthpop"}), lane)
+
+
+def test_a_playlist_title_is_not_a_genre():
+    _, genres = lane_of(["the very best songs of the eighties", "synthpop"])
+    assert genres == {"synthpop"}
+
+
+def test_a_real_genre_of_three_words_survives():
+    """The cutoff has to clear the longest legitimate names."""
+    _, genres = lane_of(["drum and bass", "rock and roll", "melodic death metal"])
+    assert genres == {"drum and bass", "rock and roll", "melodic death metal"}
+
+
+def test_a_scene_with_a_real_sound_is_still_kept():
+    """Only language markers go. Italo disco and krautrock name sounds,
+    and a station built on either should stay on it.
+    """
+    _, genres = lane_of(["italo disco", "krautrock", "new wave"])
+    assert genres == {"italo disco", "krautrock", "new wave"}
+
+
+def test_a_german_record_keeps_its_musical_tags():
+    """Stripping the language tag must not strip the music with it. Nena
+    tagged pop rock still builds a pop rock lane.
+    """
+    _, genres = lane_of(["neue deutsche welle", "pop rock", "new wave"])
+    assert genres == {"pop rock", "new wave"}
