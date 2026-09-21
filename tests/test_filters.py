@@ -46,6 +46,7 @@ from filters import (
     matches_provider,
     median_of,
     move_on,
+    musical_only,
     neighbourhood_strength,
     off_era,
     performs,
@@ -2595,3 +2596,33 @@ def test_a_german_record_keeps_its_musical_tags():
     """
     _, genres = lane_of(["neue deutsche welle", "pop rock", "new wave"])
     assert genres == {"pop rock", "new wave"}
+
+
+def test_wikipedia_genres_are_filtered_too():
+    """The hole in the first version of the fix, found live on
+    2026-09-20. lane_of stripped "neue deutsche welle" from the album
+    tags and the Wikipedia infobox put it straight back, because the
+    lane is the tags unioned with the fact store's genres. 99
+    Luftballons' infobox says exactly that, and the station went on
+    rejecting Depeche Mode, Blondie, INXS and Men at Work.
+    """
+    assert musical_only(["Neue Deutsche Welle", "Synth-pop"]) == {"synth-pop"}
+    assert musical_only(["NDW"]) == set()
+
+
+def test_filtering_genres_is_case_insensitive():
+    """Wikipedia title-cases its infobox genres and Last.fm does not."""
+    assert musical_only(["NEUE DEUTSCHE WELLE"]) == set()
+    assert musical_only(["Ndw"]) == set()
+
+
+def test_a_record_with_only_a_language_genre_has_none_left():
+    assert musical_only(["ndw", "neue deutsche welle", "deutschpop"]) == set()
+
+
+def test_musical_genres_survive_the_filter():
+    assert musical_only(["Synth-pop", "New Wave", "Post-punk"]) == {
+        "synth-pop",
+        "new wave",
+        "post-punk",
+    }

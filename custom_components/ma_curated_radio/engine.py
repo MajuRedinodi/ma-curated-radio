@@ -92,6 +92,7 @@ from .filters import (
     matches_provider,
     median_of,
     move_on,
+    musical_only,
     neighbourhood_strength,
     off_era,
     performs,
@@ -1814,7 +1815,7 @@ class CuratedRadioEngine:
                 # and keeping its decade too would leave the record matching
                 # the era it was reissued in.
                 decades = {fact.decade}
-            genres |= set(fact.genres)
+            genres |= musical_only(fact.genres)
         self._lanes[key] = (decades, genres)
         return self._lanes[key]
 
@@ -2072,7 +2073,9 @@ class CuratedRadioEngine:
             if tiers.get(uri) != TIER_POWER:
                 continue
             fact = self._facts.get(artist, base_title(title_by_uri.get(uri, "")))
-            if fact is None or not is_gold(years.get(uri), fact.genres, lane):
+            if fact is None or not is_gold(
+                years.get(uri), musical_only(fact.genres), lane
+            ):
                 continue
             if (held := share.get(uri, 0.0)) > top:
                 best, top = uri, held

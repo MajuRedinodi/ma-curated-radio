@@ -1467,6 +1467,34 @@ def lane_of(tags: Sequence[str], artist: str = "") -> tuple[set[int], set[str]]:
     return decades, genres
 
 
+def musical_only(genres: Iterable[str]) -> set[str]:
+    """Keep the genres that describe a sound, drop the rest.
+
+    ``lane_of`` filters Last.fm's album tags on the way in, but the lane
+    is built from those tags **unioned with** the genres the fact store
+    holds, and those come from a Wikipedia infobox rather than from
+    tags. So the filter has to run on both sides or it runs on neither:
+    the first version of this stripped "neue deutsche welle" from the
+    tags and watched Wikipedia put it straight back, because the infobox
+    for 99 Luftballons says exactly that.
+
+    Filtered on the way *out* rather than on the way into the store. The
+    record genuinely is a Neue Deutsche Welle record and the fact should
+    say so; what changes is that the lane will not build a fence out of
+    it. Keeping the store honest also means an existing one needs no
+    migration, and every record already cached is fixed the moment this
+    lands.
+
+    Folded to lower case on the way through, which is not cosmetic.
+    Wikipedia title-cases its infobox ("Neue Deutsche Welle") and
+    Last.fm does not ("neue deutsche welle"), and the lane compares the
+    two sets by intersection. Unfolded, the filter misses every
+    Wikipedia genre and the two spellings never match each other either.
+    """
+    folded = (str(tag).strip().lower() for tag in genres)
+    return {tag for tag in folded if tag and _is_genre(tag)}
+
+
 def _is_genre(tag: str) -> bool:
     """Whether a tag describes a sound, as opposed to a listener or a shelf.
 
