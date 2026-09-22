@@ -43,6 +43,7 @@ from filters import (
     lane_of,
     lead_among_credits,
     lean_toward_strength,
+    looks_like_imitation,
     matches_provider,
     median_of,
     move_on,
@@ -51,6 +52,7 @@ from filters import (
     off_era,
     performs,
     prefer_titles,
+    rank_search,
     reach_of,
     replays_wanted,
     sequence_tiered,
@@ -2626,3 +2628,88 @@ def test_musical_genres_survive_the_filter():
         "new wave",
         "post-punk",
     }
+
+
+# --- Ranking search results ----------------------------------------------
+
+
+class _Hit:
+    """Just enough of a search result for rank_search."""
+
+    def __init__(self, name, artists, album="", popularity=0, version=""):
+        self.name = name
+        self.artists = artists
+        self.album = album
+        self.popularity = popularity
+        self.version = version
+
+
+def test_the_karaoke_records_that_outranked_michael_jackson():
+    """The defect found on 2026-09-22. Searching "Dont Stop Till You Get
+    Enough" put three imitations above the record, because Jackson
+    spells it "Don't Stop 'Til" and they spell it the way it was typed.
+    None of the three names itself a tribute act; the album does.
+    """
+    hits = [
+        _Hit("Dont Stop Till You Get Enough", ["The Tribute Family"],
+             "Dance Hits, (Cover Version), Vol. 8"),
+        _Hit("Dont Stop Till You Get Enough", ["2Green!"],
+             "Value Added Hits, Vol. 1", popularity=3),
+        _Hit("Don't Stop 'Til You Get Enough", ["Michael Jackson"],
+             "Off the Wall", popularity=84),
+    ]
+    assert rank_search(hits)[0].artists == ["Michael Jackson"]
+
+
+def test_an_imitation_sinks_below_even_an_unknown_real_record():
+    hits = [
+        _Hit("Song", ["Karaoke Stars"], "Karaoke Hits", popularity=40),
+        _Hit("Song", ["Some Band"], "Their Album", popularity=1),
+    ]
+    assert rank_search(hits)[0].artists == ["Some Band"]
+
+
+def test_an_obscure_real_record_is_demoted_not_dropped():
+    """Grant Lee Buffalo has a hundredth of Nirvana's audience and is not
+    a karaoke record. Ranking may put them second; it must not lose them.
+    """
+    hits = [
+        _Hit("Fuzzy", ["Grant Lee Buffalo"], "Fuzzy", popularity=57),
+        _Hit("Fuzzy", ["Nirvana"], "Bleach", popularity=90),
+    ]
+    ranked = rank_search(hits)
+    assert len(ranked) == 2
+    assert [h.artists[0] for h in ranked] == ["Nirvana", "Grant Lee Buffalo"]
+
+
+def test_the_provider_order_breaks_ties():
+    hits = [_Hit("A", ["One"], popularity=50), _Hit("B", ["Two"], popularity=50)]
+    assert [h.name for h in rank_search(hits)] == ["A", "B"]
+
+
+def test_an_album_that_is_a_cover_version_volume_is_an_imitation():
+    assert looks_like_imitation(
+        _Hit("Song", ["Anybody"], "Dance Hits, (Cover Version), Vol. 8")
+    )
+
+
+def test_a_real_cover_is_not_an_imitation():
+    """Nothing here matches bare "cover" or "version": a cover is often
+    the best thing in a batch. Only an album announcing itself as a
+    volume of them is a karaoke disc.
+    """
+    assert not looks_like_imitation(
+        _Hit("Hurt", ["Johnny Cash"], "American IV: The Man Comes Around")
+    )
+    assert not looks_like_imitation(
+        _Hit("Mad World", ["Gary Jules"], "Trading Snakeoil for Wolftickets")
+    )
+
+
+def test_an_act_that_names_itself_is_still_caught():
+    assert looks_like_imitation(_Hit("Song", ["The Karaoke Channel"], "Hits"))
+    assert looks_like_imitation(_Hit("Song (Karaoke Version)", ["Whoever"], "Hits"))
+
+
+def test_ranking_an_empty_list_is_empty():
+    assert rank_search([]) == []

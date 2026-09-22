@@ -571,6 +571,11 @@ def _make_search(hass: HomeAssistant):
                     "album": track.album,
                     "artists": track.artists,
                     "duration": track.duration,
+                    # Returned so a dashboard can show why the order came
+                    # out as it did. A tribute act sits near zero next to
+                    # the record it imitates, which is the whole basis of
+                    # the ranking and worth being able to see.
+                    "popularity": track.popularity,
                 }
                 for track in found
             ]

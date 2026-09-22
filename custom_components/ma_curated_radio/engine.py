@@ -97,6 +97,7 @@ from .filters import (
     off_era,
     performs,
     prefer_titles,
+    rank_search,
     reach_of,
     replays_wanted,
     select_fresh_first,
@@ -1283,7 +1284,7 @@ class CuratedRadioEngine:
             if artist:
                 found = [t for t in found if credits_artist(t.artists, artist)]
         if found or not artist:
-            return found
+            return rank_search(found)
         # Filtering by artist found nothing, which is not the same as the
         # recording being absent. Credits disagree with a name for plenty
         # of ordinary reasons: Last.fm asks for "Tom Petty and The
@@ -1299,7 +1300,7 @@ class CuratedRadioEngine:
             loose = await async_search_tracks(
                 self._hass, self._settings.ma_config_entry_id, phrase
             )
-        return loose
+        return rank_search(loose)
 
     async def _async_search(self, artist: str) -> list[TrackInfo]:
         """Search one artist's tracks, natively if the client allows it."""

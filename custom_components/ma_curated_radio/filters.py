@@ -268,6 +268,27 @@ IMITATION_MARKERS: Final = (
     "backing track",
 )
 
+# The same imitations again, as they are labelled on a compilation
+# rather than in an act's name. Checked against the album only, which is
+# why "cover version" can appear here while the rule above deliberately
+# refuses to match "cover" or "version" anywhere else: a record that *is*
+# a cover is welcome and often the best thing in a batch, but an album
+# announcing itself as a volume of cover versions is a karaoke disc.
+#
+# Searching "Dont Stop Till You Get Enough" put three of these above
+# Michael Jackson, because he spells it "Don't Stop 'Til" and they spell
+# it the way people type it. Literal matching rewards the imitation.
+IMITATION_ALBUM_MARKERS: Final = (
+    "cover version",
+    "karaoke",
+    "tribute",
+    "made famous",
+    "as made popular",
+    "backing tracks",
+    "sing-a-long",
+    "singalong",
+)
+
 NON_SONG_MARKERS: Final = (
     "track by track",
     "commentary",
@@ -845,6 +866,62 @@ def is_non_song(name: str, version: str) -> bool:
     return any(
         marker in haystack for marker in (*NON_SONG_MARKERS, *IMITATION_MARKERS)
     )
+
+
+def looks_like_imitation(track: Any) -> bool:
+    """Whether a search hit is a karaoke or tribute recording.
+
+    Three places name it, and a given record gives itself away in only
+    one of them: the act ("Elvis Tribute Band"), the title or version
+    ("Karaoke Version"), or the album it sits on ("Dance Hits, (Cover
+    Version), Vol. 8"). The three results that outranked Michael Jackson
+    were caught by the album alone, their acts being The Tribute Family,
+    2Green! and A.S.K.
+    """
+    credits = " ".join(str(name) for name in getattr(track, "artists", ()) or ())
+    said = f"{credits} {getattr(track, 'name', '')} {getattr(track, 'version', '')}"
+    if any(marker in said.lower() for marker in IMITATION_MARKERS):
+        return True
+    album = str(getattr(track, "album", "") or "").lower()
+    return any(marker in album for marker in IMITATION_ALBUM_MARKERS)
+
+
+def rank_search(tracks: Sequence[Any]) -> list[Any]:
+    """Order search results so the record somebody meant is first.
+
+    A provider ranks on how well the text matches, which is exactly
+    backwards for this. Asked for "Dont Stop Till You Get Enough", Tidal
+    returned three karaoke records above Michael Jackson, because he
+    spells the title "Don't Stop 'Til You Get Enough" and they spell it
+    the way it was typed. The closer the match, the less likely it is to
+    be the real record, because only the imitation bothers to be spelled
+    conveniently.
+
+    So: imitations last, then the biggest audience first, then whatever
+    order the provider gave. Popularity is the provider's own 0-100 and
+    it is unreliable for fine distinctions, which does not matter here.
+    It was measured against Last.fm on 2026-09-18 and found to score
+    *pressings* rather than records, so Bohemian Rhapsody came back at
+    43. Even a number that wrong separates a real record from a tribute
+    act sitting near zero, and that is the only question being asked.
+
+    **Reordered, never dropped.** This ranks a list a person is about to
+    read, and the hit they wanted is sometimes genuinely obscure: Grant
+    Lee Buffalo's "Fuzzy" has a hundredth of Nirvana's audience and is
+    not a karaoke record. Demoting costs them a glance; dropping would
+    cost them the song with no way to tell it had happened.
+    """
+    return [
+        track
+        for _, track in sorted(
+            enumerate(tracks),
+            key=lambda pair: (
+                looks_like_imitation(pair[1]),
+                -int(getattr(pair[1], "popularity", 0) or 0),
+                pair[0],
+            ),
+        )
+    ]
 
 
 def drop_outliers(
