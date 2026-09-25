@@ -82,6 +82,26 @@ it if you want the box this week, or if Emotiva's hold drags on.
 
 ## Also considered
 
+### Denon AVR-S970H — $699.99 at Costco (added 2026-09-25)
+
+The "keep it an AVR" route, and a legitimate one. Verified on Denon's
+own page: **phono (MM) yes, two subwoofer outs, Audyssey MultEQ XT,
+variable crossover, bass redirection, 90W honest** (8Ω, 20Hz–20kHz,
+0.08%, two channels driven), HEOS, AirPlay 2, Ethernet and Wi-Fi.
+**Native Home Assistant control** through the `denonavr` integration
+(power, volume, input, sound mode) with no IR blaster.
+
+It is the same category of box as the RX-V1900, so nothing about how
+the system behaves changes: bass management stays configurable and
+room correction comes back, which is the one thing the TA1 gives up.
+Costs $200 more than the TA1, is MM-only, and no independent bench
+test of its stereo performance could be found; a 2022 Denon in this
+tier is at least the equal of a 2008 Yamaha, but that is a category
+judgement, not a measurement. Costco's Concierge extension does not
+cover receivers; Costco's return window does apply.
+
+Denon AVR-S270BT ($299.99, same listing): **no phono input**. Out.
+
 ### Emotiva BasX TA2+ — $1,299, temporarily unavailable
 
 135W × 2 honest, MM/MC, variable 40–200Hz high-pass, XLR, HDMI ARC,
