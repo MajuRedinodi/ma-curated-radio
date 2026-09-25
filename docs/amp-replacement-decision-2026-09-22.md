@@ -1,5 +1,85 @@
 # Replacing the Yamaha RX-V1900 — decision, 2026-09-22
 
+> ## Current plan — 2026-09-25, wall-mounted bookshelves, no towers
+>
+> The Costco bundle is **off**: the household would rather not have floor
+> speakers, and the front stage had no room for towers without moving
+> the armoire anyway. The existing **Klipsch R-60M** pair (Costco model,
+> current Reference generation, 17.1 lb, 15.75×8×13.25", rear-ported,
+> keyhole on the back) becomes the front L/R, wall-mounted flanking the
+> TV. With the sub taking everything below 80Hz and the attic making
+> real ceiling heights easy, towers give up very little here.
+>
+> **The sub is fixed under warranty.** Klipsch validated the claim on
+> 2026-09-25 and is shipping a replacement plate amplifier; their tech's
+> own words: "noise from a subwoofer in the absence of any input signal
+> is a telltale red flag for a faulty amplifier." Owner-installable:
+> perimeter screws, two woofer leads, LED harness. Unplug 15 minutes
+> first; photograph the lead polarity before pulling them.
+>
+> ### Room (from the plan and photos)
+>
+> Family Room, 14'-7" × 19'-10", **10 ft ceiling**, tray: flat raised
+> centre with the fan, slopes on the two long walls, **flat above the
+> TV wall**. Single-storey with **open attic above** (second floor is
+> over the front of the house; attic access by the stairs).
+>
+> - **TV wall = primary-suite wall.** TV wall-mounted; stand below holds
+>   the receiver, turntable and electric fireplace insert. Armoire hard
+>   left of the stand; record rack and the doorway right of it.
+> - **Recliners mid-room facing the TV; kitchen behind them.** The open
+>   side is the rear, which nothing in a 5.1.2 plan needs.
+> - **Left of the recliners:** the patio wall, three windows, couch.
+> - **Right of the recliners:** the shelf/wand wall, then a large cased
+>   opening to the entry and stairs. Directly right is *air*.
+> - Ceiling has recessed lights either side of the fan (forward, toward
+>   the TV) and a UniFi AP. No existing ceiling speakers.
+>
+> ### Layout
+>
+> | Position | Speaker | Where | Verified price |
+> |---|---|---|---|
+> | Front L/R | **R-60M (owned)** | Wall brackets flanking the TV, tweeters ~48–54" (screen-centre), toe-in, slight down-tilt. **Rear-ported: stand off 3–4" or plug the ports.** | $0 |
+> | Center | **R-50C** — sealed, 18.75" wide, 96dB, no keyhole | Shelf under the TV where the soundbar is | $374.99 Abt, in stock; runs $270–290 on sale |
+> | Surrounds | **R-40M pair** — rear-ported, 1/4-20 threaded insert + keyhole | Left: above the windows. Right: **above the cased opening's header**, so it sits at ~90° rather than forward on the shelf wall. Both ~7–7.5 ft, tilted at the seat | $299.99 Abt, in stock |
+> | Heights (5.1.2) | **2× DS-160CDT** — aimable 35°, 91dB, 8.3" cutout, 4.34" deep, SkyHook clamps | Flat raised ceiling, over the recliners, ≥40" from the fan hub, 3–4 ft either side of centre; aim at the main seat | $349.99 ea, Klipsch |
+> | Sub | **R-120SWi (owned, amp under replacement)** | Front-right by the stand; a second, if ever, goes **front-left** by the window wall, not beside the doorway | $0 |
+> | Receiver | **Denon AVR-S970H** | Top of stand or a cabinet with the door off (needs airflow). Heights = the ceiling pair. Native HA via `denonavr`. | $699.99 Costco (one listing showed $599.99; recheck) |
+>
+> Surrounds at 90–110° to the sides, **not** behind — "rears" are a 7.1
+> layout and a bigger receiver. Atmos adds a height layer on top of the
+> same 5.1 base.
+>
+> ### Brackets — the open item
+>
+> The Chunxiao articulating brackets on hand attach by **bolting into a
+> 3/8"-16 threaded insert**. The R-40M has a **1/4-20** insert and the
+> R-50M a 3/8-16; the manual lists **no insert for the R-60M**, only the
+> keyhole. Check the back of an R-60M: a 3/8" threaded hole means the
+> brackets fit; keyhole only means they do not, and the fronts need a
+> plate-style articulating bracket that screws into the cabinet (or a
+> shelf bracket). The Chunxiao pair can then serve the R-40M surrounds
+> with a 3/8→1/4-20 reducer bushing, which is fine for a light speaker.
+> Every bracket goes into a stud with two lag screws; an articulated
+> arm holding 17 lb over a turntable is not an anchor job.
+>
+> ### Wire, while the attic is open
+>
+> One pair to the two ceiling positions over the recliners (needed now).
+> A second pair to front-height positions (for a future 5.1.4 on a
+> 9-channel receiver). Surround drops inside the walls above the windows
+> and above the opening. Front L/R and center run inside the TV wall
+> from behind the stand.
+>
+> ### Upgrade path
+>
+> 5.1.4 later = swap the S970H for an **AVR-X3800H** ($1,399, 9×105W,
+> MM phono, four sub outs, XT32) and add two more DS-160CDT at the
+> front-height positions. Not stocked by Costco. Everything else
+> carries forward.
+>
+> ---
+>
 > **Superseded on 2026-09-25 by a bigger plan.** The Family Room runs
 > two systems in one room: the TV's Samsung soundbar and sub, and the
 > "Family Room Stereo" (Yamaha, Klipsch R-60M bookshelves, R-120SWi
