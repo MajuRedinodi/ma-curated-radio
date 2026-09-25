@@ -1,5 +1,27 @@
 # Replacing the Yamaha RX-V1900 — decision, 2026-09-22
 
+> **Superseded on 2026-09-25 by a bigger plan.** The Family Room runs
+> two systems in one room: the TV's Samsung soundbar and sub, and the
+> "Family Room Stereo" (Yamaha, Klipsch R-60M bookshelves, R-120SWi
+> sub). Jeff is consolidating both into one 5.1.2 system:
+>
+> - **Denon AVR-S970H** — $699.99 at Costco (specs verified below)
+> - **Klipsch Reference Dolby Atmos 5.0.2 bundle** — $899.97 at Costco,
+>   its lowest price ever (launched $1,799.99): 2× R-806FA Atmos towers,
+>   1× R-50C center, 2× R-40M surrounds
+> - Plus the existing R-120SWi sub, **once its warranty claim resolves**;
+>   this is a dependency, not a side issue. The S970H has two sub outs.
+>
+> Buy both in one Costco order for the Costco Direct multi-item
+> discount. The room has a six-foot attic above it, so run surround
+> wire and a spare pair to the ceiling above the seating for future
+> in-ceiling height speakers, which beat the towers' up-firing modules.
+> Run Audyssey from the main seat. The R-60Ms and Samsung gear get sold
+> or moved; the S970H's seven channels are all used by 5.1.2.
+>
+> This replaces the two-channel plan below. The TA1 is no longer needed.
+> Everything below remains valid for a music-only replacement.
+
 Verified against manufacturer pages, live stock status and independent
 reviews on 2026-09-22. Every "best of 2026" listicle was ignored: two of
 them were caught stating specs that were flatly wrong (a sub out that
