@@ -56,13 +56,20 @@ def _elapsed(state: State | None) -> float:
     A song playing normally therefore reports the same position the whole
     way through, which is why a restart cannot be spotted from the
     position alone.
+
+    Only while playing. A paused player does not advance, and its stored
+    position does not move either, so adding wall time read a ten-minute
+    pause as ten minutes of playback. On resume the real position was ten
+    minutes less, which is exactly what a song starting again looks like,
+    and every resume read the queue as a possible re-pick. Cell 24 of
+    docs/pick-seam-review-2026-09-29.md, and the first half of cell 21.
     """
     if state is None:
         return 0.0
     attrs = state.attributes
     elapsed = float(attrs.get("media_position") or 0)
     updated_at = attrs.get("media_position_updated_at")
-    if isinstance(updated_at, datetime):
+    if isinstance(updated_at, datetime) and state.state == "playing":
         elapsed += max(0.0, (dt_util.utcnow() - updated_at).total_seconds())
     return elapsed
 

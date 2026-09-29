@@ -71,6 +71,9 @@ playlist or album, size changed by 3 or more).
 
 ### F1. Pausing the picked song rebuilds its station (high)
 
+**Fixed in 0.68.0**, both halves, with the four tests below proven to fail
+against 0.67.0 and pass after. Cells 21, 22 and 24 now read "nothing".
+
 Two cells fail, 21 and 22, and they share a cause.
 
 `_elapsed()` adds wall-clock time since `media_position_updated_at` whatever
@@ -170,12 +173,15 @@ nobody has asked about before and watch.
 
 ### F6. The coordinator has no tests (coverage)
 
-`decide()` is well tested. `coordinator.py` is not tested at all: `_elapsed`,
-`_snapshot`, `_handle_state_event`, `_async_decide`, `_async_prime`. F1 lives
-in the untested half and would have been visible from a two-line test of
-`_elapsed` on a paused state. A `FakeHass` with a states dict and a recorded
-`async_call` is enough to drive every cell in the table through the real
-wiring rather than through `decide()` alone.
+**Started in 0.68.0:** `tests/integration/test_coordinator.py` drives the
+real listener with real state changes, a fake `get_queue` service and the
+engine replaced by a recorder. Cells 19, 21 and 24 run through it. Every
+other cell in the table can be added the same way, one fixture tweak each.
+
+`decide()` was well tested. `coordinator.py` was not tested at all:
+`_elapsed`, `_snapshot`, `_handle_state_event`, `_async_decide`,
+`_async_prime`. F1 lived in the untested half and was visible from a
+two-line test of `_elapsed` on a paused state.
 
 ### F7. Player recovering from `unavailable` (rare)
 

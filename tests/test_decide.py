@@ -260,6 +260,37 @@ def test_our_own_write_landing_mid_build_is_not_a_pick():
     assert call(building=True, track_changed=False) is Decision.NOTHING
 
 
+def test_resuming_a_song_that_is_not_ours_is_not_a_pick():
+    """Cell 21 of docs/pick-seam-review-2026-09-29.md.
+
+    The picked song is the one song in every station that somebody else
+    put on, and the one most likely to be paused: it is what was playing
+    when the phone rang. Resumed, it read as a restart, and a restart
+    reading was judged a pick on "not ours" alone. The batch just built
+    for it was dropped and rebuilt around the same song.
+    """
+    resumed = QueueFacts(
+        current_uri="track/pick", next_uri="track/ours", items=21, remaining=20
+    )
+    assert (
+        call(resumed, previous_items=21, next_is_ours=True, track_changed=False)
+        is Decision.NOTHING
+    )
+
+
+def test_a_backward_seek_on_a_song_that_is_not_ours_is_not_a_pick():
+    """Cell 22: the same reading without the pause, and without our batch
+    behind it, so the bulk rule cannot be what saves it."""
+    seeked = QueueFacts(current_uri="track/pick", items=21, remaining=20)
+    assert call(seeked, previous_items=21, track_changed=False) is Decision.NOTHING
+
+
+def test_re_picking_the_song_playing_collapses_the_queue_and_is_still_a_pick():
+    """The rule the two above must not break: 15 September, three times."""
+    collapsed = QueueFacts(current_uri="track/pick", items=1, remaining=0)
+    assert call(collapsed, previous_items=21, track_changed=False) is Decision.PICKED
+
+
 def test_our_batch_starting_mid_build_is_neither_a_pick_nor_a_refill():
     """The picked song ran out while its station was still being written."""
     first_of_ours = QueueFacts(current_uri="track/ours", items=1, remaining=0)

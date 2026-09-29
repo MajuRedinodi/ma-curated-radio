@@ -273,8 +273,15 @@ def decide(
 
     ``track_changed`` is false for a reading taken because the song
     playing started again rather than because a new one did. Nothing
-    ended, so such a reading can only mean a replace: see the guard
-    below.
+    ended, so such a reading can only mean a replace, and the collapse of
+    the queue is the only evidence of one. The song playing was already
+    playing before the reading, so its not being ours says nothing: the
+    picked song is never ours, and it is the song most likely to be
+    paused, because it is what was on when the phone rang. Judged on "not
+    ours" alone, every resume after a pause over three seconds and every
+    backward seek on it was a pick, and the batch just built for it was
+    dropped and rebuilt around the same song. Cells 21 and 22 of
+    docs/pick-seam-review-2026-09-29.md.
     """
     if (
         in_cooldown
@@ -290,8 +297,12 @@ def decide(
         # A replace outranks "we queued it". See was_replaced: a track
         # being one we played earlier says nothing about whether somebody
         # has just chosen it, and choosing a song you already know is the
-        # ordinary way to use a radio.
-        and (was_replaced(queue, previous_items) or not current_is_ours)
+        # ordinary way to use a radio. And "not ours" only counts when a
+        # track actually changed; see ``track_changed`` above.
+        and (
+            was_replaced(queue, previous_items)
+            or (track_changed and not current_is_ours)
+        )
         and not is_bulk_load(
             queue,
             previous_items=previous_items,
