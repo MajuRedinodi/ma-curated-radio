@@ -243,6 +243,29 @@ def test_a_routine_that_owns_the_queue_suppresses_everything(queue):
     assert call(queue, in_cooldown=True) is Decision.NOTHING
 
 
+def test_a_pick_made_while_our_own_batch_is_building_still_wins():
+    """Macarena at 15:04:18, "I Think I'm Paranoid" at 15:04:50, 29 September.
+
+    The Macarena station was still building, and every reading taken
+    while a batch of ours is being written used to be discarded so the
+    write itself was not read as a pick. The second pick went with them,
+    and twenty Eurodance tracks were written in behind Garbage.
+    """
+    assert call(building=True) is Decision.PICKED
+
+
+def test_our_own_write_landing_mid_build_is_not_a_pick():
+    """The write collapses the queue to one track without changing the
+    song playing, which is what tells a reading of it from a pick."""
+    assert call(building=True, track_changed=False) is Decision.NOTHING
+
+
+def test_our_batch_starting_mid_build_is_neither_a_pick_nor_a_refill():
+    """The picked song ran out while its station was still being written."""
+    first_of_ours = QueueFacts(current_uri="track/ours", items=1, remaining=0)
+    assert call(first_of_ours, building=True, current_is_ours=True) is Decision.NOTHING
+
+
 # --- The seam between a batch and the track it follows -----------------
 
 POOLS = ["Electric Light Orchestra", "Boston", "Styx"]

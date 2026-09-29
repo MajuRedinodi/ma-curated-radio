@@ -237,9 +237,27 @@ def decide(
     bulk_threshold: int,
     refill_threshold: int,
     in_cooldown: bool = False,
+    building: bool = False,
     track_changed: bool = True,
 ) -> Decision:
     """Work out what a track change means.
+
+    ``building`` is true while a batch of this integration's own is still
+    being written. The write collapses the queue to one track for a
+    moment, which is the signature of a replace, so every reading taken
+    mid-build used to be discarded so the write was not mistaken for a
+    pick. Real picks went with it. Observed 29 September: Macarena was
+    picked at 15:04:18 and "I Think I'm Paranoid" thirty-two seconds
+    later, while the Macarena station was still building. The second
+    pick was read as our own write, the engine's rule that the latest
+    pick wins never heard about it, and twenty Eurodance tracks were
+    written in behind Garbage.
+
+    What tells the two apart is the song playing. Our own write never
+    changes it: the batch lands behind it. So a reading mid-build of the
+    same song, or of one of ours now playing because the picked song ran
+    out, is the write or its ordinary progression, and a different song
+    that is not ours is somebody choosing again.
 
     ``current_is_ours`` is the important one. A track this integration
     queued is never a manual pick, even when it fails the expected-next
@@ -258,7 +276,12 @@ def decide(
     ended, so such a reading can only mean a replace: see the guard
     below.
     """
-    if in_cooldown or is_transitional(queue):
+    if (
+        in_cooldown
+        or is_transitional(queue)
+        # Our own write, or its ordinary progression; see ``building``.
+        or (building and (not track_changed or current_is_ours))
+    ):
         return Decision.NOTHING
 
     picked = (
@@ -278,11 +301,13 @@ def decide(
     )
     if picked:
         return Decision.PICKED
-    if not track_changed:
+    if building or not track_changed:
         # No track ended, so there is nothing to top up for and nothing to
         # judge. Without this, seeking backwards near the end of a batch
         # would refill early and record the song being seeked as a skip,
         # suppressing for a month the song somebody had just gone back to.
+        # And whatever else a mid-build reading is, it is not a refill:
+        # the batch being written is the top-up.
         return Decision.NOTHING
     if queue.remaining <= refill_threshold:
         return Decision.REFILL

@@ -264,13 +264,17 @@ class CuratedRadioDetector:
                 # expected before the blank rather than against the blank.
                 return
 
-            # A batch of ours still being written owns the queue, and a
-            # queue read halfway through one is not a decision to make.
-            # It genuinely has been replaced down to a single track at
-            # that moment, by us, which is exactly what the new
-            # replaced-to-one rule below is looking for. Left unguarded
-            # it would read our own write as a pick and start another.
-            cooling = self._in_cooldown() or bool(self._runs)
+            # A batch of ours still being written owns the queue. It
+            # genuinely has been replaced down to a single track at that
+            # moment, by us, which is exactly what the replaced-to-one
+            # rule is looking for, so a reading taken mid-write must not
+            # start another station. It used to be folded into the
+            # cooldown and discarded outright, which also discarded a
+            # real pick made during the build; ``decide`` now tells the
+            # two apart, so that the engine's superseding rule gets to
+            # hear about the newer pick.
+            cooling = self._in_cooldown()
+            building = bool(self._runs)
             verdict = decide(
                 facts,
                 expected_uri=self._expected_next,
@@ -280,6 +284,7 @@ class CuratedRadioDetector:
                 bulk_threshold=self._settings.bulk_tracks,
                 refill_threshold=self._settings.refill_threshold,
                 in_cooldown=cooling,
+                building=building,
                 track_changed=track_changed,
             )
 
@@ -300,7 +305,7 @@ class CuratedRadioDetector:
                     MODE_REFILL,
                     continuing=self._engine.was_queued(queue.current_uri),
                 )
-            elif not cooling:
+            elif not cooling and not building:
                 # Nothing to do about the queue, but the track that just
                 # ended was still either played through or skipped.
                 await self._async_record_feedback(outgoing)
