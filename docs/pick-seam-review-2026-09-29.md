@@ -43,7 +43,7 @@ playlist or album, size changed by 3 or more).
 | 2 | E1 | foreign song | one | idle | pick | pick | ok, tested |
 | 3 | E1 | song we queued earlier | one | idle | pick (dashboard re-pick) | pick | ok, tested (Bublé) |
 | 4 | E1 | foreign song | +1, next is ours | idle | pick (MA app "play now") | pick | ok |
-| 5 | E1 | song we queued earlier | +1, next is ours | idle | pick (MA app "play now" of a known song) | **nothing** | **FAILS, F2** |
+| 5 | E1 | song we queued earlier | +1, next is ours | idle | pick (MA app "play now" of a known song) | n/a | does not occur: measured 30 Sep, "Play now" replaces the queue (cell 3) |
 | 6 | E1 | ours, two tracks ahead (double Next) | intact | idle | nothing | nothing | ok, tested (Lady Gaga) |
 | 7 | E1 | ours, one back (Previous) | intact | idle | nothing | nothing | ok |
 | 8 | E1 | foreign | big foreign | idle | nothing (leave the playlist alone) | nothing | ok, tested |
@@ -117,6 +117,17 @@ the next one started.
 Two lines each, two tests each. I would ship both.
 
 ### F2. Re-picking a known song from the MA app is invisible (medium)
+
+**Closed by measurement, 30 September 20:14.** Jeff used the Music Assistant
+app's "Play now" on Jessie's Girl, a song the station had played that
+afternoon, while a 17-track batch was running. The queue did not grow by
+one: it collapsed to a single item (`item_count: 1, current_index: 0`),
+the same shape as the dashboard's `enqueue: replace`. `was_replaced` fired,
+the detector logged "Manual pick", and a station was built around it. Cell 5
+as written below does not occur on this Music Assistant version; "Play now"
+replaces. Insertion is what "Play next" and "Add to queue" do, and neither
+jumps playback, so neither is a pick. No rule needed. The original analysis
+is kept for the record.
 
 Cell 5. The dashboard plays with `enqueue: replace`, so the queue collapses
 and `was_replaced` outranks "we queued it". The Music Assistant app's "Play
@@ -199,8 +210,8 @@ the track without judging it.
    button.
 2. **F6 alongside it**, because F1's `_elapsed` half needs a coordinator
    test to exist at all. Build the fake once; every later cell is cheap.
-3. **F2 after one live measurement** of what "Play now" from the app looks
-   like in `get_queue`.
+3. ~~F2 after one live measurement~~ Measured: "Play now" replaces, so F2
+   is closed with no change.
 4. **F3 and F7** together as one small hardening release; both are "re-read
    the queue when the world changed under you".
 5. **F5** as a measurement, not a fix, until it is seen.
