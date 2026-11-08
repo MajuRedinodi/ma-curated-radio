@@ -44,6 +44,8 @@ from .const import (
     QUEUED_MEMORY,
     REPLAYS_PER_BATCH,
     SEARCH_LIMIT,
+    SEED_ARTIST_RETRIES,
+    SEED_ARTIST_RETRY_SECONDS,
     SEED_LEAN_ARTIST,
     SEED_LEAN_DISCOVERY,
     SEED_LEAN_MULTIPLIER,
@@ -563,6 +565,18 @@ class CuratedRadioEngine:
         queue = await async_get_queue(self._hass, settings.player)
         if queue is None:
             return BatchResult(mode=mode, skipped_reason="no_queue")
+        # A pick can be read before Music Assistant has filled in the new
+        # track's artist, and giving up then left the queue at one song with
+        # no station behind it. Look again a few times before concluding
+        # there is nothing to seed from.
+        for _ in range(SEED_ARTIST_RETRIES):
+            if queue.seed_artist:
+                break
+            await asyncio.sleep(SEED_ARTIST_RETRY_SECONDS)
+            fresh = await async_get_queue(self._hass, settings.player)
+            if fresh is None:
+                break
+            queue = fresh
         if not queue.seed_artist:
             _LOGGER.debug("No artist on the current track; nothing to seed from")
             return BatchResult(mode=mode, skipped_reason="no_seed_artist")

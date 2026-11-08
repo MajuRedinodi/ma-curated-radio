@@ -536,6 +536,11 @@ FACTS_SAVE_DELAY: Final = 30
 LANE_LOOKUPS_PER_BATCH: Final = 20
 PLAYED_LOOKUPS_PER_BATCH: Final = 30
 
+# A pick can be read before Music Assistant has filled in the new track's
+# artist. Re-read the queue this many times, this far apart, before giving up.
+SEED_ARTIST_RETRIES: Final = 3
+SEED_ARTIST_RETRY_SECONDS: Final = 2
+
 # --- Letting a station repeat itself -------------------------------------
 
 # How far a station may fall below where it started before records it has
