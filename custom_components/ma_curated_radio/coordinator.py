@@ -109,6 +109,9 @@ class CuratedRadioDetector:
         self._engine = engine
         self._skips = skips
         self._expected_next = ""
+        # The queue slot id of that track, which survives the URI changing
+        # when it starts; see decide.is_expected.
+        self._expected_next_id = ""
         self._last_manual_pick: datetime | None = None
         self._queue_items: int | None = None
         self._task: asyncio.Task[None] | None = None
@@ -203,6 +206,7 @@ class CuratedRadioDetector:
             # and a pick that never happened replaces the queue.
             self._playing_track = queue.current_uri
         self._expected_next = queue.next_uri
+        self._expected_next_id = queue.next_item_id
         self._queue_items = queue.items
 
     @callback
@@ -236,6 +240,7 @@ class CuratedRadioDetector:
             # Switched off. Still worth following the queue so that turning
             # it back on does not read the next track as a manual pick.
             self._expected_next = ""
+            self._expected_next_id = ""
             return
 
         # Nothing ended when a song merely started again, so there is no
@@ -264,6 +269,7 @@ class CuratedRadioDetector:
                 next_uri=queue.next_uri,
                 items=queue.items,
                 remaining=queue.remaining,
+                current_item_id=queue.current_item_id,
             )
             if is_transitional(facts):
                 # Between tracks. Ignored outright, expectation included, so
@@ -285,6 +291,7 @@ class CuratedRadioDetector:
             verdict = decide(
                 facts,
                 expected_uri=self._expected_next,
+                expected_item_id=self._expected_next_id,
                 current_is_ours=self._engine.was_queued(queue.current_uri),
                 next_is_ours=self._engine.was_queued(queue.next_uri),
                 previous_items=self._queue_items,
@@ -321,6 +328,7 @@ class CuratedRadioDetector:
             # than trusting the snapshot taken above.
             post = await async_get_queue(self._hass, self._settings.player)
             self._expected_next = post.next_uri if post else ""
+            self._expected_next_id = post.next_item_id if post else ""
             self._queue_items = post.items if post else queue.items
             self._playing_credits = post.artists if post else queue.artists
         except asyncio.CancelledError:

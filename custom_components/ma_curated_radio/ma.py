@@ -136,6 +136,12 @@ class QueueSnapshot:
     current_uri: str = ""
     current_title: str = ""
     next_uri: str = ""
+    # Music Assistant's own id for each queue slot. Stable while a track
+    # moves from "next" to "playing", which the URI is not: a local file
+    # queued from a playlist is listed as next under its file URI and then
+    # plays under its library URI.
+    current_item_id: str = ""
+    next_item_id: str = ""
     seed_artist: str = ""
     items: int = 0
     current_index: int = 0
@@ -202,6 +208,8 @@ async def async_get_queue(hass: HomeAssistant, player: str) -> QueueSnapshot | N
         current_uri=text_of(current, "uri"),
         current_title=text_of(current, "name"),
         next_uri=text_of(_media_item(field_of(queue, "next_item")), "uri"),
+        current_item_id=text_of(field_of(queue, "current_item"), "queue_item_id"),
+        next_item_id=text_of(field_of(queue, "next_item"), "queue_item_id"),
         seed_artist=artists[0] if artists else "",
         items=int(field_of(queue, "items", 0) or 0),
         current_index=int(field_of(queue, "current_index", 0) or 0),

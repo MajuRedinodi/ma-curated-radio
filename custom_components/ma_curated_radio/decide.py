@@ -38,6 +38,25 @@ class QueueFacts:
     next_uri: str = ""
     items: int = 0
     remaining: int = 0
+    current_item_id: str = ""
+
+
+def is_expected(queue: QueueFacts, expected_uri: str, expected_item_id: str) -> bool:
+    """True when the track now playing is the one the queue said was next.
+
+    The queue slot's own id is the reliable test. The URI is not: a local
+    file queued from a playlist is listed as next under its file URI
+    (``filesystem_nfs--...://track/...``) and then plays under its library
+    URI (``library://track/250``). Compared by URI alone, every track of
+    such a playlist read as somebody choosing it, and the playlist was
+    replaced by a station at its second track. Observed 21 November with a
+    Christmas playlist built from NAS files, twice in a row.
+
+    The URI stays as a fallback for readings that carry no id.
+    """
+    if expected_item_id and queue.current_item_id:
+        return queue.current_item_id == expected_item_id
+    return queue.current_uri == expected_uri
 
 
 def is_bulk_load(
@@ -239,6 +258,7 @@ def decide(
     in_cooldown: bool = False,
     building: bool = False,
     track_changed: bool = True,
+    expected_item_id: str = "",
 ) -> Decision:
     """Work out what a track change means.
 
@@ -293,7 +313,7 @@ def decide(
 
     picked = (
         bool(expected_uri)
-        and queue.current_uri != expected_uri
+        and not is_expected(queue, expected_uri, expected_item_id)
         # A replace outranks "we queued it". See was_replaced: a track
         # being one we played earlier says nothing about whether somebody
         # has just chosen it, and choosing a song you already know is the

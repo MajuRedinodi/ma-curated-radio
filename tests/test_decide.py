@@ -69,6 +69,45 @@ def test_playing_the_expected_track_is_not_a_pick():
     assert call(queue) is Decision.NOTHING
 
 
+def test_a_playlist_track_changing_uri_as_it_starts_is_not_a_pick():
+    """The Christmas playlist replaced at its second track, twice.
+
+    A NAS file queued from a playlist is listed as next under its file URI
+    and plays under its library URI. The queue slot keeps its id, so that
+    is what is compared.
+    """
+    playing = QueueFacts(
+        current_uri="library://track/250",
+        items=261,
+        remaining=259,
+        current_item_id="slot-2",
+    )
+    verdict = call(
+        playing,
+        expected_uri="filesystem_nfs://track/Christmas/02.wav",
+        expected_item_id="slot-2",
+        previous_items=261,
+    )
+    assert verdict is not Decision.PICKED
+
+
+def test_a_different_slot_is_a_pick_even_with_the_same_uri():
+    """Choosing again the song that was next is still a choice."""
+    playing = QueueFacts(
+        current_uri="track/expected",
+        items=21,
+        remaining=19,
+        current_item_id="slot-new",
+    )
+    verdict = call(playing, expected_item_id="slot-old", previous_items=20)
+    assert verdict is Decision.PICKED
+
+
+def test_without_ids_the_uri_still_decides():
+    queue = QueueFacts(current_uri="track/expected", items=20, remaining=9)
+    assert call(queue, expected_item_id="slot-old") is Decision.NOTHING
+
+
 def test_a_loaded_playlist_is_left_alone():
     """Choosing to play a playlist is a decision to hear it.
 
