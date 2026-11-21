@@ -55,6 +55,22 @@ def test_holiday_tracks_are_skipped_by_album_as_well_as_title():
     assert uris(tracks) == []
 
 
+def test_a_holiday_station_keeps_only_holiday_tracks():
+    """Jeff, 21 November: a Christmas pick should build a Christmas station."""
+    tracks = [
+        Track("t1", "Misty"),
+        Track("t2", "Sleigh Ride", album="Merry Christmas"),
+        Track("t3", "Winter Wonderland"),
+    ]
+    rules = SelectionRules(skip_holiday=False, holiday_only=True)
+    assert uris(tracks, rules) == ["t2", "t3"]
+
+
+def test_holiday_music_is_simply_allowed_outside_a_holiday_station():
+    tracks = [Track("t1", "Misty"), Track("t2", "Sleigh Ride", album="Merry Christmas")]
+    assert uris(tracks, SelectionRules(skip_holiday=False)) == ["t1", "t2"]
+
+
 def test_commentary_is_skipped_even_when_it_runs_long():
     """Taylor Swift's Track by Track entries chart alongside the songs."""
     tracks = [Track("t1", "Anti-Hero - Track by Track", duration=300)]

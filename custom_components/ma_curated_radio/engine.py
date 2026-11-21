@@ -105,6 +105,7 @@ from .filters import (
     sequence_tiered,
     song_audience,
     song_shares,
+    starts_holiday_station,
     stratified_bands,
     strong_artists,
     tier_of,
@@ -288,6 +289,10 @@ class CuratedRadioEngine:
         # remembered past the session and the lane falls back to album
         # tags exactly as it did before any of this existed.
         self._facts = facts if facts is not None else FactBook()
+        # Whether the station running is a holiday one: started from a
+        # holiday song while holiday music is allowed. Decided when a
+        # station starts and kept through its refills.
+        self._holiday_station = False
         # How many candidates this batch may still look up while choosing
         # what to play. Reset per batch, since the point is to bound one
         # batch rather than the evening. The records it goes on to queue
@@ -571,6 +576,21 @@ class CuratedRadioEngine:
         starting = starts_station(
             refilling=mode == MODE_REFILL, continuing=continuing
         )
+        if starting:
+            self._holiday_station = starts_holiday_station(
+                skip_holiday=settings.filter_holiday,
+                name=queue.current_title,
+                version=queue.current_version,
+                album=queue.current_album,
+                path=queue.current_path,
+            )
+            if self._holiday_station:
+                _LOGGER.debug(
+                    "Holiday station: %s is a holiday song", queue.current_title
+                )
+        elif settings.filter_holiday:
+            # Switched on mid-station: that ends the holiday station too.
+            self._holiday_station = False
         # Settle which name Last.fm should be asked about, once, on the
         # song that starts the station. A duet that merely comes up later
         # must not redefine it. A refill onto music that is not ours starts
@@ -671,7 +691,10 @@ class CuratedRadioEngine:
             heard=self._history.heard(),
             wanted=wanted,
         )
-        bar = depth_bar(await self._async_sizes(artists))
+        # A holiday station lifts the depth limit. Christmas records are
+        # almost never among an artist's best-known songs by listener
+        # count, so the limit would leave a Christmas station nothing.
+        bar = 0 if self._holiday_station else depth_bar(await self._async_sizes(artists))
         pools = await gather(bar=bar)
         if not pools.per_artist and bar:
             # Better a deeper song than a station that stops.
@@ -1303,13 +1326,29 @@ class CuratedRadioEngine:
         return rank_search(loose)
 
     async def _async_search(self, artist: str) -> list[TrackInfo]:
-        """Search one artist's tracks, natively if the client allows it."""
+        """Search one artist's tracks, natively if the client allows it.
+
+        A holiday station searches the artist's Christmas records first.
+        A plain artist search returns their hits, and the holiday filter
+        would then leave nothing.
+        """
+        festive: list[TrackInfo] = []
+        if self._holiday_station:
+            festive = (
+                await self._native.async_search_tracks(
+                    f"{artist} christmas", SEARCH_LIMIT, credited_to=artist
+                )
+                or []
+            )
         found = await self._native.async_search_tracks(artist, SEARCH_LIMIT)
         if found is None:
             found = await async_search_tracks(
                 self._hass, self._settings.ma_config_entry_id, artist
             )
-        return found
+        if not festive:
+            return found
+        seen = {track.uri for track in festive}
+        return festive + [track for track in found if track.uri not in seen]
 
     async def _async_sizes(self, artists: list[str]) -> dict[str, int]:
         """Audience size per artist, cached for the life of the session.
@@ -2291,6 +2330,7 @@ class CuratedRadioEngine:
             skip_live=settings.filter_live,
             skip_remix=settings.filter_remix,
             skip_holiday=settings.filter_holiday,
+            holiday_only=self._holiday_station and not settings.filter_holiday,
         )
 
     def _select(

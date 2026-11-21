@@ -67,7 +67,7 @@
           "provider_filter": "Comma-separated provider prefixes to restrict tracks to, for example tidal. Leave empty to allow every provider.",
           "filter_live": "Drop live versions, which rank high in popularity searches but rarely suit background listening.",
           "filter_remix": "Drop remixes and club mixes. Off by default, since a remix is sometimes the version people know. Worth turning on for a station whose era the remixes are not from.",
-          "filter_holiday": "Drop Christmas and other holiday content, which a popularity ranking will surface year round."
+          "filter_holiday": "On: drop Christmas and other holiday content, which a popularity ranking will surface year round. Off: holiday songs are allowed, and picking one builds an all-holiday station."
         }
       }
     }

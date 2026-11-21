@@ -142,6 +142,11 @@ class QueueSnapshot:
     # plays under its library URI.
     current_item_id: str = ""
     next_item_id: str = ""
+    current_version: str = ""
+    current_album: str = ""
+    # The file a local track streams from, which for an untagged rip is
+    # the only description it has. Empty for streaming providers.
+    current_path: str = ""
     seed_artist: str = ""
     items: int = 0
     current_index: int = 0
@@ -156,6 +161,14 @@ class QueueSnapshot:
 def _media_item(queue_item: Any) -> Any:
     """Unwrap the media_item off a queue item."""
     return field_of(queue_item, "media_item")
+
+
+def _local_path(queue_item: Any) -> str:
+    """The file a local track streams from, or "" for anything else."""
+    details = field_of(queue_item, "stream_details")
+    if not text_of(details, "provider").startswith("filesystem"):
+        return ""
+    return text_of(details, "item_id")
 
 
 def _artist_names(media_item: Any) -> list[str]:
@@ -210,6 +223,9 @@ async def async_get_queue(hass: HomeAssistant, player: str) -> QueueSnapshot | N
         next_uri=text_of(_media_item(field_of(queue, "next_item")), "uri"),
         current_item_id=text_of(field_of(queue, "current_item"), "queue_item_id"),
         next_item_id=text_of(field_of(queue, "next_item"), "queue_item_id"),
+        current_version=text_of(current, "version"),
+        current_album=text_of(field_of(current, "album"), "name"),
+        current_path=_local_path(field_of(queue, "current_item")),
         seed_artist=artists[0] if artists else "",
         items=int(field_of(queue, "items", 0) or 0),
         current_index=int(field_of(queue, "current_index", 0) or 0),

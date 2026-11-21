@@ -579,6 +579,26 @@ def is_holiday(name: str, version: str, album: str) -> bool:
     return bool(_SANTA.search(haystack))
 
 
+def starts_holiday_station(
+    *, skip_holiday: bool, name: str, version: str, album: str, path: str = ""
+) -> bool:
+    """True when a station should be all holiday music.
+
+    Jeff, 21 November: with "Skip holiday tracks" on, every holiday song
+    is kept out. With it off, picking a Christmas song should build a
+    Christmas station, not a station that drifts into the artist's
+    ordinary hits after one song.
+
+    ``path`` is the file a local track was read from. A burned CD ripped
+    without tags plays as "01" by Johnny Mathis on no album at all, and
+    the folder it sits in ("Christmas/We Wish You a Merry Christmas") is
+    the only place that says what it is.
+    """
+    if skip_holiday:
+        return False
+    return is_holiday(name, version, f"{album} {path}".strip())
+
+
 def clean_similar_artists(
     candidates: list[tuple[str, float]], seed_artist: str
 ) -> list[tuple[str, float]]:
@@ -981,6 +1001,9 @@ class SelectionRules:
     skip_live: bool = True
     skip_remix: bool = False
     skip_holiday: bool = True
+    # A holiday station: the song that started it was a Christmas song and
+    # holiday music is allowed, so only holiday tracks belong in it.
+    holiday_only: bool = False
 
 
 def select_fresh_first(
@@ -1102,7 +1125,7 @@ def select_tracks(
             rules.skip_remix and is_remix(track.name, track.version)
         ):
             continue
-        if rules.skip_holiday and is_holiday(track.name, track.version, track.album):
+        if _wrong_for_season(track, rules):
             continue
         title = base_title(track.name)
         if not title or title in titles_out or title in titles:
@@ -1110,6 +1133,15 @@ def select_tracks(
         uris.append(track.uri)
         titles.append(title)
     return uris, titles
+
+
+def _wrong_for_season(track: Any, rules: SelectionRules) -> bool:
+    """A holiday track when holiday music is skipped, or any other track
+    on a holiday station."""
+    if not (rules.skip_holiday or rules.holiday_only):
+        return False
+    holiday = is_holiday(track.name, track.version, track.album)
+    return holiday if rules.skip_holiday else not holiday
 
 
 def _ordered_for_selection(tracks: list[Any], rules: SelectionRules) -> list[Any]:

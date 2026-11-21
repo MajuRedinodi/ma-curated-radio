@@ -58,6 +58,7 @@ from filters import (
     sequence_tiered,
     song_audience,
     song_shares,
+    starts_holiday_station,
     stratified_bands,
     stratified_sample,
     strong_artists,
@@ -2713,3 +2714,32 @@ def test_an_act_that_names_itself_is_still_caught():
 
 def test_ranking_an_empty_list_is_empty():
     assert rank_search([]) == []
+
+
+def test_a_christmas_pick_starts_a_holiday_station_when_allowed():
+    assert starts_holiday_station(
+        skip_holiday=False, name="White Christmas", version="", album=""
+    )
+
+
+def test_no_holiday_station_while_holiday_music_is_skipped():
+    assert not starts_holiday_station(
+        skip_holiday=True, name="White Christmas", version="", album=""
+    )
+
+
+def test_an_ordinary_pick_is_not_a_holiday_station():
+    assert not starts_holiday_station(
+        skip_holiday=False, name="Misty", version="", album="Heavenly"
+    )
+
+
+def test_an_untagged_rip_is_judged_by_its_folder():
+    """Jeff's burned CBS CD plays as "01" by Johnny Mathis on no album."""
+    assert starts_holiday_station(
+        skip_holiday=False,
+        name="01",
+        version="",
+        album="",
+        path="Christmas/We Wish You a Merry Christmas - CBS Special Products/x.wav",
+    )
