@@ -91,6 +91,25 @@ def test_a_playlist_track_changing_uri_as_it_starts_is_not_a_pick():
     assert verdict is not Decision.PICKED
 
 
+def test_a_stale_expectation_inside_an_unchanged_queue_is_not_a_pick():
+    """0.68.1 still replaced the Christmas playlist at its second track.
+
+    The expectation was read while Music Assistant still described the
+    replaced station, so it named a slot that would never play. The queue
+    had not changed size, which no pick leaves it.
+    """
+    playing = QueueFacts(
+        current_uri="library://track/250",
+        items=261,
+        remaining=259,
+        current_item_id="slot-2",
+    )
+    verdict = call(
+        playing, expected_item_id="old-station-slot", previous_items=261
+    )
+    assert verdict is not Decision.PICKED
+
+
 def test_a_different_slot_is_a_pick_even_with_the_same_uri():
     """Choosing again the song that was next is still a choice."""
     playing = QueueFacts(

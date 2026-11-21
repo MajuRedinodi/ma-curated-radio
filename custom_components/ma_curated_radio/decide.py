@@ -41,6 +41,24 @@ class QueueFacts:
     current_item_id: str = ""
 
 
+def same_queue(queue: QueueFacts, *, previous_items: int | None) -> bool:
+    """True when the queue playing is the one already there, unchanged in size.
+
+    Needed because the expectation itself can be stale. Right after a
+    playlist is loaded, Music Assistant reports the new item count while
+    ``next_item`` still describes the station that was replaced, so the
+    expectation recorded then names a track that will never play. The
+    playlist's second track then read as a pick. Observed 21 November on
+    0.68.1: the Christmas playlist again replaced at "Julie Andrews - 02".
+
+    A pick always changes the queue's size: Music Assistant inserts the
+    chosen track (one more) or replaces the queue (collapses it). A queue
+    of the same size is the same queue playing on, or somebody moving
+    around inside it, and neither is a request for a station.
+    """
+    return previous_items is not None and previous_items > 1 and queue.items == previous_items
+
+
 def is_expected(queue: QueueFacts, expected_uri: str, expected_item_id: str) -> bool:
     """True when the track now playing is the one the queue said was next.
 
@@ -314,6 +332,7 @@ def decide(
     picked = (
         bool(expected_uri)
         and not is_expected(queue, expected_uri, expected_item_id)
+        and not same_queue(queue, previous_items=previous_items)
         # A replace outranks "we queued it". See was_replaced: a track
         # being one we played earlier says nothing about whether somebody
         # has just chosen it, and choosing a song you already know is the
